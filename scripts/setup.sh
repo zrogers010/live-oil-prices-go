@@ -67,12 +67,13 @@ else
 fi
 
 # Sudoers for service management
-cat > /etc/sudoers.d/deploy-liveoilprices << 'SUDOERS'
-deploy ALL=(ALL) NOPASSWD: /bin/systemctl restart liveoilprices
-deploy ALL=(ALL) NOPASSWD: /bin/systemctl stop liveoilprices
-deploy ALL=(ALL) NOPASSWD: /bin/systemctl start liveoilprices
-deploy ALL=(ALL) NOPASSWD: /bin/systemctl status liveoilprices
-deploy ALL=(ALL) NOPASSWD: /bin/systemctl reload nginx
+SYSTEMCTL_PATH=$(which systemctl)
+cat > /etc/sudoers.d/deploy-liveoilprices << SUDOERS
+deploy ALL=(ALL) NOPASSWD: $SYSTEMCTL_PATH restart liveoilprices
+deploy ALL=(ALL) NOPASSWD: $SYSTEMCTL_PATH stop liveoilprices
+deploy ALL=(ALL) NOPASSWD: $SYSTEMCTL_PATH start liveoilprices
+deploy ALL=(ALL) NOPASSWD: $SYSTEMCTL_PATH status liveoilprices
+deploy ALL=(ALL) NOPASSWD: $SYSTEMCTL_PATH reload nginx
 SUDOERS
 chmod 0440 /etc/sudoers.d/deploy-liveoilprices
 
