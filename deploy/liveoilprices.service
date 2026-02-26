@@ -1,0 +1,32 @@
+[Unit]
+Description=Live Oil Prices Server
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=deploy
+Group=deploy
+WorkingDirectory=/opt/liveoilprices
+ExecStart=/opt/liveoilprices/bin/server
+Restart=always
+RestartSec=3
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=liveoilprices
+
+Environment=PORT=8080
+
+# Hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/liveoilprices
+PrivateTmp=true
+
+# Resource limits
+LimitNOFILE=65536
+MemoryMax=512M
+
+[Install]
+WantedBy=multi-user.target

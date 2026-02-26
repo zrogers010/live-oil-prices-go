@@ -1,0 +1,38 @@
+# Binaries
+bin/
+server
+*.exe
+*.out
+
+# Dependencies
+node_modules/
+
+# Build artifacts
+web/static/js/*.js
+web/static/js/*.js.map
+
+# Environment / secrets
+.env
+.env.*
+*.pem
+*.key
+*.crt
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Screenshots (dev testing only)
+screenshots/
+screenshot-test.js
+test-commodity-pages.js
+
+# Logs
+*.log

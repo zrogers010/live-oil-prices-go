@@ -1,0 +1,18 @@
+{
+  "name": "live-oil-prices",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "esbuild web/src/app.ts --bundle --outfile=web/static/js/app.js --minify --sourcemap --target=es2020 && esbuild web/src/detail.ts --bundle --outfile=web/static/js/detail.js --minify --sourcemap --target=es2020",
+    "dev": "esbuild web/src/app.ts web/src/detail.ts --bundle --outdir=web/static/js --sourcemap --target=es2020 --watch"
+  },
+  "dependencies": {
+    "lightweight-charts": "^4.2.1"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.58.2",
+    "esbuild": "^0.24.2",
+    "playwright": "^1.58.2",
+    "typescript": "^5.7.3"
+  }
+}

@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en" itemscope itemtype="https://schema.org/WebPage">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Oil Price Chart — Live Oil Prices</title>
+    <meta name="description" content="Live price chart, real-time market data, and breaking news for energy commodities. Interactive candlestick charts with multiple timeframes.">
+    <meta name="robots" content="index, follow">
+    <meta name="theme-color" content="#0B1120">
+
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Live Oil Prices">
+    <meta property="og:title" content="Oil Price Chart — Live Oil Prices">
+    <meta property="og:description" content="Live price chart, real-time data, and breaking news for energy commodities.">
+    <meta property="og:locale" content="en_US">
+    <meta name="twitter:card" content="summary">
+
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect rx='20' width='100' height='100' fill='%230B1120'/><text x='50' y='68' text-anchor='middle' font-size='50' fill='%233B82F6'>◆</text></svg>">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/css/styles.css">
+</head>
+<body>
+    <nav class="navbar" id="navbar" aria-label="Main navigation">
+        <div class="nav-container">
+            <a href="/" class="nav-logo" aria-label="Live Oil Prices — Home">
+                <span class="logo-icon">◆</span>
+                <span class="logo-text">LIVE<span class="logo-accent">OIL</span>PRICES</span>
+            </a>
+            <div class="nav-links" id="navLinks">
+                <a href="/#markets" class="nav-link">Markets</a>
+                <a href="/#charts" class="nav-link">Charts</a>
+                <a href="/#news" class="nav-link">News</a>
+            </div>
+            <button class="mobile-menu-btn" id="mobileMenuBtn" aria-label="Toggle navigation menu" aria-expanded="false">
+                <span></span><span></span><span></span>
+            </button>
+        </div>
+    </nav>
+
+    <main class="detail-page">
+        <nav class="container" aria-label="Breadcrumb">
+            <div class="detail-breadcrumb" itemscope itemtype="https://schema.org/BreadcrumbList">
+                <span itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+                    <a href="/" class="breadcrumb-link" itemprop="item">
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M10 13l-5-5 5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                        <span itemprop="name">Markets</span>
+                    </a>
+                    <meta itemprop="position" content="1">
+                </span>
+                <span class="breadcrumb-sep">/</span>
+                <span class="breadcrumb-current" id="breadcrumbName" itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+                    <span itemprop="name">Loading...</span>
+                    <meta itemprop="position" content="2">
+                </span>
+            </div>
+        </nav>
+
+        <div class="container">
+            <header class="detail-header" id="detailHeader">
+                <div class="detail-header-left">
+                    <div class="detail-symbol-badge" id="detailSymbol">—</div>
+                    <div>
+                        <h1 class="detail-name" id="detailName">Loading...</h1>
+                        <p class="detail-subtitle">Energy Commodity · Real-Time Data</p>
+                    </div>
+                </div>
+                <div class="detail-header-right">
+                    <div class="detail-price" id="detailPrice">—</div>
+                    <div class="detail-change" id="detailChange">—</div>
+                </div>
+            </header>
+        </div>
+
+        <div class="container">
+            <div class="detail-stats" id="detailStats" role="list" aria-label="Price statistics"></div>
+        </div>
+
+        <div class="container">
+            <div class="chart-panel">
+                <div class="chart-controls">
+                    <div class="chart-controls-left">
+                        <h2 class="chart-panel-title" id="chartTitle">Price Chart</h2>
+                    </div>
+                    <div class="chart-timeframes" id="chartTimeframes" role="tablist" aria-label="Chart timeframe">
+                        <button class="chart-tf-btn" data-days="7" role="tab">1W</button>
+                        <button class="chart-tf-btn" data-days="30" role="tab">1M</button>
+                        <button class="chart-tf-btn active" data-days="90" role="tab" aria-selected="true">3M</button>
+                        <button class="chart-tf-btn" data-days="180" role="tab">6M</button>
+                        <button class="chart-tf-btn" data-days="365" role="tab">1Y</button>
+                    </div>
+                </div>
+                <div class="chart-stats" id="chartStats"></div>
+                <div class="chart-container detail-chart-container" id="chartContainer" role="img" aria-label="Price chart"></div>
+                <div class="chart-info" id="chartInfo">
+                    <div class="chart-info-item"><span class="chart-info-label">Open</span><span class="chart-info-value" id="chartOpen">—</span></div>
+                    <div class="chart-info-item"><span class="chart-info-label">High</span><span class="chart-info-value" id="chartHigh">—</span></div>
+                    <div class="chart-info-item"><span class="chart-info-label">Low</span><span class="chart-info-value" id="chartLow">—</span></div>
+                    <div class="chart-info-item"><span class="chart-info-label">Close</span><span class="chart-info-value" id="chartClose">—</span></div>
+                    <div class="chart-info-item"><span class="chart-info-label">Volume</span><span class="chart-info-value" id="chartVolume">—</span></div>
+                </div>
+            </div>
+        </div>
+
+        <section class="container" aria-labelledby="newsTitle">
+            <div class="detail-news-section">
+                <h2 class="subsection-title" id="newsTitle">Related News</h2>
+                <div class="news-grid" id="newsGrid" role="feed" aria-label="Related energy news"></div>
+            </div>
+        </section>
+
+        <section class="container" aria-label="Other energy markets">
+            <div class="detail-related">
+                <h2 class="subsection-title">Other Energy Markets</h2>
+                <div class="related-grid" id="relatedGrid"></div>
+            </div>
+        </section>
+    </main>
+
+    <footer class="footer" role="contentinfo">
+        <div class="container">
+            <div class="footer-bottom" style="border-top: none;">
+                <p>&copy; 2026 Live Oil Prices. All rights reserved.</p>
+                <div class="footer-legal">
+                    <a href="#">Privacy Policy</a>
+                    <a href="#">Terms of Service</a>
+                    <a href="#">Disclaimer</a>
+                </div>
+            </div>
+            <p class="footer-disclaimer">Market data is provided for informational purposes only and should not be considered as financial advice. Past performance does not guarantee future results. Trading commodities involves substantial risk of loss.</p>
+        </div>
+    </footer>
+
+    <script src="/js/detail.js"></script>
+</body>
+</html>

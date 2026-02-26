@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en" itemscope itemtype="https://schema.org/WebSite">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live Oil Prices — Real-Time Crude Oil, WTI, Brent & Energy Market Data</title>
+    <meta name="description" content="Live oil prices updated every 15 seconds. Track WTI crude, Brent crude, natural gas, heating oil, RBOB gasoline, and OPEC basket prices with interactive charts and breaking energy market news.">
+    <meta name="keywords" content="oil prices, crude oil price, WTI price, Brent crude price, live oil prices, oil price today, natural gas price, heating oil, RBOB gasoline, OPEC, energy market, oil chart, oil news">
+    <link rel="canonical" href="https://liveoilprices.com/">
+    <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
+    <meta name="author" content="Live Oil Prices">
+    <meta name="theme-color" content="#0B1120">
+
+    <!-- Open Graph -->
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Live Oil Prices">
+    <meta property="og:title" content="Live Oil Prices — Real-Time Crude Oil & Energy Market Data">
+    <meta property="og:description" content="Track WTI, Brent, natural gas, and 10+ energy commodities with live prices, interactive charts, and breaking market news.">
+    <meta property="og:url" content="https://liveoilprices.com/">
+    <meta property="og:locale" content="en_US">
+
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Live Oil Prices — Real-Time Crude Oil & Energy Market Data">
+    <meta name="twitter:description" content="Track WTI, Brent, natural gas, and 10+ energy commodities with live prices, interactive charts, and breaking market news.">
+
+    <!-- Structured Data: Organization -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "Organization",
+      "name": "Live Oil Prices",
+      "url": "https://liveoilprices.com",
+      "description": "Real-time energy market data, interactive oil price charts, and breaking energy news.",
+      "sameAs": []
+    }
+    </script>
+
+    <!-- Structured Data: WebSite with SearchAction -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebSite",
+      "name": "Live Oil Prices",
+      "url": "https://liveoilprices.com",
+      "description": "Live crude oil prices, energy market charts, and breaking oil and gas news.",
+      "potentialAction": {
+        "@type": "SearchAction",
+        "target": "https://liveoilprices.com/commodity/{search_term_string}",
+        "query-input": "required name=search_term_string"
+      }
+    }
+    </script>
+
+    <!-- Structured Data: FinancialProduct for price data -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "Service",
+      "name": "Live Oil Price Data",
+      "serviceType": "Financial Market Data",
+      "provider": {
+        "@type": "Organization",
+        "name": "Live Oil Prices"
+      },
+      "description": "Real-time prices for WTI Crude Oil, Brent Crude Oil, Natural Gas, Heating Oil, RBOB Gasoline, OPEC Basket, Dubai Crude, Murban Crude, Western Canadian Select, and ICE Gasoil.",
+      "areaServed": "Worldwide",
+      "availableChannel": {
+        "@type": "ServiceChannel",
+        "serviceUrl": "https://liveoilprices.com"
+      }
+    }
+    </script>
+
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect rx='20' width='100' height='100' fill='%230B1120'/><text x='50' y='68' text-anchor='middle' font-size='50' fill='%233B82F6'>◆</text></svg>">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/css/styles.css">
+</head>
+<body>
+    <nav class="navbar" id="navbar" aria-label="Main navigation">
+        <div class="nav-container">
+            <a href="/" class="nav-logo" aria-label="Live Oil Prices — Home">
+                <span class="logo-icon">◆</span>
+                <span class="logo-text">LIVE<span class="logo-accent">OIL</span>PRICES</span>
+            </a>
+            <div class="nav-links" id="navLinks">
+                <a href="#markets" class="nav-link">Markets</a>
+                <a href="#charts" class="nav-link">Charts</a>
+                <a href="#news" class="nav-link">News</a>
+            </div>
+            <button class="mobile-menu-btn" id="mobileMenuBtn" aria-label="Toggle navigation menu" aria-expanded="false">
+                <span></span><span></span><span></span>
+            </button>
+        </div>
+    </nav>
+
+    <div class="ticker-bar" id="tickerBar" role="marquee" aria-label="Live energy commodity prices">
+        <div class="ticker-track" id="tickerTrack"></div>
+    </div>
+
+    <main>
+        <section class="hero" id="hero">
+            <div class="hero-bg"><div class="hero-grid-pattern"></div><div class="hero-glow"></div></div>
+            <div class="container hero-content">
+                <div class="hero-badge"><span class="badge-dot"></span>Live Energy Market Data</div>
+                <h1 class="hero-title">
+                    Live Oil Prices<br>
+                    <span class="gradient-text">& Energy Market Data</span>
+                </h1>
+                <p class="hero-subtitle">
+                    Real-time crude oil prices for WTI, Brent, and 10+ energy commodities.
+                    Interactive charts, breaking market news, and comprehensive data
+                    for traders, analysts, and energy professionals.
+                </p>
+                <div class="hero-cta">
+                    <a href="#markets" class="btn btn-primary btn-lg">
+                        View Live Prices
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M6 3l5 5-5 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                    </a>
+                    <a href="#charts" class="btn btn-outline btn-lg">Explore Charts</a>
+                </div>
+                <div class="hero-stats">
+                    <div class="hero-stat"><span class="hero-stat-value">10+</span><span class="hero-stat-label">Energy Commodities</span></div>
+                    <div class="hero-stat-divider"></div>
+                    <div class="hero-stat"><span class="hero-stat-value">15s</span><span class="hero-stat-label">Price Updates</span></div>
+                    <div class="hero-stat-divider"></div>
+                    <div class="hero-stat"><span class="hero-stat-value">80+</span><span class="hero-stat-label">News Sources</span></div>
+                    <div class="hero-stat-divider"></div>
+                    <div class="hero-stat"><span class="hero-stat-value">24/7</span><span class="hero-stat-label">Market Coverage</span></div>
+                </div>
+            </div>
+        </section>
+
+        <section class="section" id="markets" aria-labelledby="markets-heading">
+            <div class="container">
+                <header class="section-header">
+                    <div class="section-label">Live Market Data</div>
+                    <h2 class="section-title" id="markets-heading">Oil & Energy Prices Today</h2>
+                    <p class="section-desc">Real-time prices for crude oil benchmarks and energy commodities, updated every 15 seconds.</p>
+                </header>
+                <div class="price-grid" id="priceGrid" role="list" aria-label="Energy commodity prices"></div>
+
+                <div class="market-table-wrapper">
+                    <h3 class="subsection-title">All Energy Commodity Prices</h3>
+                    <div class="market-table-scroll">
+                        <table class="market-table" id="marketTable" aria-label="Complete energy market price data">
+                            <thead>
+                                <tr>
+                                    <th scope="col">Commodity</th>
+                                    <th scope="col">Price</th>
+                                    <th scope="col">Change</th>
+                                    <th scope="col">% Change</th>
+                                    <th scope="col" class="hide-mobile">Day High</th>
+                                    <th scope="col" class="hide-mobile">Day Low</th>
+                                    <th scope="col" class="hide-mobile">Volume</th>
+                                </tr>
+                            </thead>
+                            <tbody id="marketTableBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="section section-dark" id="charts" aria-labelledby="charts-heading">
+            <div class="container">
+                <header class="section-header">
+                    <div class="section-label">Interactive Charts</div>
+                    <h2 class="section-title" id="charts-heading">Oil Price Charts</h2>
+                    <p class="section-desc">Professional candlestick charts with volume analysis for WTI, Brent, natural gas, and more. Multiple timeframes from 1 week to 1 year.</p>
+                </header>
+                <div class="chart-panel">
+                    <div class="chart-controls">
+                        <div class="chart-symbols" id="chartSymbols" role="tablist" aria-label="Select commodity">
+                            <button class="chart-symbol-btn active" data-symbol="WTI" role="tab" aria-selected="true">WTI Crude</button>
+                            <button class="chart-symbol-btn" data-symbol="BRENT" role="tab" aria-selected="false">Brent Crude</button>
+                            <button class="chart-symbol-btn" data-symbol="NATGAS" role="tab" aria-selected="false">Natural Gas</button>
+                            <button class="chart-symbol-btn" data-symbol="HEATING" role="tab" aria-selected="false">Heating Oil</button>
+                            <button class="chart-symbol-btn" data-symbol="RBOB" role="tab" aria-selected="false">RBOB Gasoline</button>
+                            <button class="chart-symbol-btn" data-symbol="OPEC" role="tab" aria-selected="false">OPEC Basket</button>
+                        </div>
+                        <div class="chart-timeframes" id="chartTimeframes" role="tablist" aria-label="Select timeframe">
+                            <button class="chart-tf-btn" data-days="7" role="tab">1W</button>
+                            <button class="chart-tf-btn" data-days="30" role="tab">1M</button>
+                            <button class="chart-tf-btn active" data-days="90" role="tab" aria-selected="true">3M</button>
+                            <button class="chart-tf-btn" data-days="180" role="tab">6M</button>
+                            <button class="chart-tf-btn" data-days="365" role="tab">1Y</button>
+                        </div>
+                    </div>
+                    <div class="chart-stats" id="chartStats"></div>
+                    <div class="chart-container" id="chartContainer" role="img" aria-label="Oil price candlestick chart"></div>
+                    <div class="chart-info" id="chartInfo">
+                        <div class="chart-info-item"><span class="chart-info-label">Open</span><span class="chart-info-value" id="chartOpen">—</span></div>
+                        <div class="chart-info-item"><span class="chart-info-label">High</span><span class="chart-info-value" id="chartHigh">—</span></div>
+                        <div class="chart-info-item"><span class="chart-info-label">Low</span><span class="chart-info-value" id="chartLow">—</span></div>
+                        <div class="chart-info-item"><span class="chart-info-label">Close</span><span class="chart-info-value" id="chartClose">—</span></div>
+                        <div class="chart-info-item"><span class="chart-info-label">Volume</span><span class="chart-info-value" id="chartVolume">—</span></div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="section section-dark" id="news" aria-labelledby="news-heading">
+            <div class="container">
+                <header class="section-header">
+                    <div class="section-label">Market Intelligence</div>
+                    <h2 class="section-title" id="news-heading">Energy Market News</h2>
+                    <p class="section-desc">Breaking news and analysis from Reuters, Bloomberg, CNBC, and 50+ sources covering oil, gas, refining, and global energy markets.</p>
+                </header>
+                <nav class="news-filters" id="newsFilters" aria-label="Filter news by category">
+                    <button class="news-filter-btn active" data-category="all">All</button>
+                    <button class="news-filter-btn" data-category="Oil Markets">Oil</button>
+                    <button class="news-filter-btn" data-category="OPEC">OPEC</button>
+                    <button class="news-filter-btn" data-category="Natural Gas">Nat Gas</button>
+                    <button class="news-filter-btn" data-category="Refining">Refining</button>
+                    <button class="news-filter-btn" data-category="Extraction">Extraction</button>
+                    <button class="news-filter-btn" data-category="International">International</button>
+                    <button class="news-filter-btn" data-category="Technology">Technology</button>
+                </nav>
+                <div class="news-featured" id="newsFeatured"></div>
+                <div class="news-grid" id="newsGrid" role="feed" aria-label="Energy news articles"></div>
+            </div>
+        </section>
+    </main>
+
+    <footer class="footer" role="contentinfo">
+        <div class="container">
+            <div class="footer-grid">
+                <div class="footer-brand">
+                    <a href="/" class="nav-logo" aria-label="Live Oil Prices">
+                        <span class="logo-icon">◆</span>
+                        <span class="logo-text">LIVE<span class="logo-accent">OIL</span>PRICES</span>
+                    </a>
+                    <p class="footer-tagline">The most comprehensive free source for live oil prices, energy market charts, and breaking industry news — trusted by traders, analysts, and energy professionals worldwide.</p>
+                </div>
+                <div class="footer-links-group">
+                    <h4>Commodities</h4>
+                    <a href="/commodity/WTI">WTI Crude Oil</a>
+                    <a href="/commodity/BRENT">Brent Crude Oil</a>
+                    <a href="/commodity/NATGAS">Natural Gas</a>
+                    <a href="/commodity/HEATING">Heating Oil</a>
+                    <a href="/commodity/RBOB">RBOB Gasoline</a>
+                </div>
+                <div class="footer-links-group">
+                    <h4>More Markets</h4>
+                    <a href="/commodity/OPEC">OPEC Basket</a>
+                    <a href="/commodity/DUBAI">Dubai Crude</a>
+                    <a href="/commodity/MURBAN">Murban Crude</a>
+                    <a href="/commodity/WCS">Western Canadian Select</a>
+                    <a href="/commodity/GASOIL">ICE Gasoil</a>
+                </div>
+                <div class="footer-links-group">
+                    <h4>Platform</h4>
+                    <a href="#markets">Live Prices</a>
+                    <a href="#charts">Oil Charts</a>
+                    <a href="#news">Energy News</a>
+                </div>
+            </div>
+            <div class="footer-bottom">
+                <p>&copy; 2026 Live Oil Prices. All rights reserved.</p>
+                <div class="footer-legal">
+                    <a href="#">Privacy Policy</a>
+                    <a href="#">Terms of Service</a>
+                    <a href="#">Disclaimer</a>
+                </div>
+            </div>
+            <p class="footer-disclaimer">Market data is provided for informational purposes only and should not be considered as financial advice. Oil prices are indicative and may differ from exchange-quoted prices. Past performance does not guarantee future results. Trading commodities involves substantial risk of loss.</p>
+        </div>
+    </footer>
+
+    <script src="/js/app.js"></script>
+</body>
+</html>
