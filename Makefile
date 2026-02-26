@@ -26,4 +26,4 @@ clean:
 	rm -rf bin/ node_modules/ web/static/js/app.js web/static/js/app.js.map web/static/js/detail.js web/static/js/detail.js.map
 
 deploy:
-	bash deploy.sh
+	bash scripts/deploy.sh

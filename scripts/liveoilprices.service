@@ -7,8 +7,8 @@ Wants=network-online.target
 Type=simple
 User=deploy
 Group=deploy
-WorkingDirectory=/opt/liveoilprices
-ExecStart=/opt/liveoilprices/bin/server
+WorkingDirectory=/home/deploy/liveoilprices
+ExecStart=/home/deploy/liveoilprices/bin/server
 Restart=always
 RestartSec=3
 StandardOutput=journal
@@ -17,14 +17,10 @@ SyslogIdentifier=liveoilprices
 
 Environment=PORT=8080
 
-# Hardening
 NoNewPrivileges=true
-ProtectSystem=strict
-ProtectHome=true
-ReadWritePaths=/opt/liveoilprices
+ProtectHome=no
 PrivateTmp=true
 
-# Resource limits
 LimitNOFILE=65536
 MemoryMax=512M
 
