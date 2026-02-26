@@ -6,6 +6,8 @@
 # ──────────────────────────────────────────────────────────
 set -euo pipefail
 
+export PATH=$PATH:/usr/local/go/bin
+
 APP_DIR="/opt/liveoilprices"
 BIN="$APP_DIR/bin/server"
 SERVICE="liveoilprices"
