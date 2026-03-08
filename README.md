@@ -68,3 +68,5 @@ make dev
 | Variable | Default | Description |
 |---|---|---|
 | `PORT` | `8080` | Server port |
+
+GitHub App smoke test.
