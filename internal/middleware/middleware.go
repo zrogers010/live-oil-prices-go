@@ -27,8 +27,15 @@ func CORS(next http.Handler) http.Handler {
 func Logging(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
+
+		// Add a simple request ID for tracing
+		requestID := r.Header.Get("X-Request-Id")
+		if requestID == "" {
+			requestID = fmt.Sprintf("req-%d", time.Now().UnixNano())
+		}
+
 		next.ServeHTTP(w, r)
-		log.Printf("%s %s %v", r.Method, r.URL.Path, time.Since(start))
+		log.Printf("%s %s %s %v", r.Method, r.URL.Path, requestID, time.Since(start))
 	})
 }
 
