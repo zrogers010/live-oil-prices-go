@@ -9,7 +9,13 @@ async function fetchJSON<T>(url: string): Promise<T> {
       const errorText = await res.text();
       console.error(`API error fetching ${url}:`, res.status, errorText);
       // Throw a more informative error with response details for better debugging
-      const err = new Error(`API error: ${res.status} - ${errorText}`);
+      // Redact potential sensitive data in error text before throwing
+      const redactedErrorText = errorText.replace(/\b(\d{12,16}|\d{3}-\d{2}-\d{4})\b/g, '[REDACTED]');
+
+      // Log redacted error text separately for audit purposes without throwing it
+      console.info(`Redacted API error detail: ${redactedErrorText}`);
+
+      const err = new Error(`API error: ${res.status} - ${redactedErrorText}`);
       throw err;
     }
     return res.json();
