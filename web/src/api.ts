@@ -8,6 +8,10 @@ async function fetchJSON<T>(url: string): Promise<T> {
     if (!res.ok) {
       const errorText = await res.text();
       console.error(`API error fetching ${url}:`, res.status, errorText);
+      // For 404 errors, return null as T to allow optional resource handling
+      if (res.status === 404) {
+        return null as unknown as T;
+      }
       // Throw a more informative error with response details for better debugging
       // Redact potential sensitive data in error text before throwing
       const redactedErrorText = errorText.replace(/\b(\d{12,16}|\d{3}-\d{2}-\d{4})\b/g, '[REDACTED]');
