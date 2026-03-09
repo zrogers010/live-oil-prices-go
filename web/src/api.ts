@@ -3,9 +3,18 @@ import type { Price, ChartData, NewsArticle, Prediction, MarketAnalysis } from '
 const BASE = '';
 
 async function fetchJSON<T>(url: string): Promise<T> {
-  const res = await fetch(`${BASE}${url}`);
-  if (!res.ok) throw new Error(`API error: ${res.status}`);
-  return res.json();
+  try {
+    const res = await fetch(`${BASE}${url}`);
+    if (!res.ok) {
+      const errorText = await res.text();
+      console.error(`API error fetching ${url}:`, res.status, errorText);
+      throw new Error(`API error: ${res.status}`);
+    }
+    return res.json();
+  } catch (error) {
+    console.error(`Network error fetching ${url}:`, error);
+    throw error;
+  }
 }
 
 export function getPrices(): Promise<Price[]> {
