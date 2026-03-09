@@ -1,4 +1,4 @@
-.PHONY: all build build-frontend build-backend run dev clean deploy
+.PHONY: all build build-frontend build-backend run dev clean deploy test test-go test-ts
 
 all: build
 
@@ -27,3 +27,11 @@ clean:
 
 deploy:
 	bash scripts/deploy.sh
+
+test: test-go test-ts
+
+test-go:
+	go test ./...
+
+test-ts:
+	npm run test:types
