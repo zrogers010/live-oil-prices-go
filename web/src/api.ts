@@ -8,7 +8,9 @@ async function fetchJSON<T>(url: string): Promise<T> {
     if (!res.ok) {
       const errorText = await res.text();
       console.error(`API error fetching ${url}:`, res.status, errorText);
-      throw new Error(`API error: ${res.status}`);
+      // Throw a more informative error with response details for better debugging
+      const err = new Error(`API error: ${res.status} - ${errorText}`);
+      throw err;
     }
     return res.json();
   } catch (error) {
