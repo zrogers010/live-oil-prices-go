@@ -3,17 +3,29 @@ package handlers
 import (
 	"encoding/json"
 	"live-oil-prices-go/internal/middleware"
-	"live-oil-prices-go/internal/services"
+	"live-oil-prices-go/internal/models"
 	"net/http"
 	"strconv"
 )
 
-type API struct {
-	market *services.MarketDataService
-	news   *services.NewsFeedService
+type MarketDataClient interface {
+	GetPrices() []models.Price
+	GetChartData(symbol string, days int, interval string) models.ChartData
+	GetPredictions() []models.Prediction
+	GetAnalysis() models.MarketAnalysis
 }
 
-func NewAPI(market *services.MarketDataService, news *services.NewsFeedService) *API {
+type NewsClient interface {
+	GetNews() []models.NewsArticle
+	GetNewsByID(id string) *models.NewsArticle
+}
+
+type API struct {
+	market MarketDataClient
+	news   NewsClient
+}
+
+func NewAPI(market MarketDataClient, news NewsClient) *API {
 	return &API{market: market, news: news}
 }
 
