@@ -57,16 +57,12 @@ type responseWriter struct {
 }
 
 func (rw *responseWriter) Header() http.Header {
-	return rw.headers
+	// Use the wrapped ResponseWriter's Header to capture headers correctly
+	return rw.ResponseWriter.Header()
 }
 
 func (rw *responseWriter) WriteHeader(statusCode int) {
 	rw.ResponseWriter.WriteHeader(statusCode)
-
-	// Capture headers when WriteHeader is called
-	for k, v := range rw.ResponseWriter.Header() {
-		rw.headers[k] = v
-	}
 }
 
 func (rw *responseWriter) Write(b []byte) (int, error) {
