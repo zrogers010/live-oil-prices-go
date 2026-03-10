@@ -7,6 +7,11 @@ import (
 	"time"
 )
 
+var (
+	// logPrintf is replaceable in tests to capture log output deterministically.
+	logPrintf = log.Printf
+)
+
 func Chain(h http.Handler) http.Handler {
 	return Logging(CORS(Recovery(h)))
 }
@@ -36,7 +41,14 @@ func Logging(next http.Handler) http.Handler {
 		}
 
 		next.ServeHTTP(w, r)
-		log.Printf("%s %s %s %v", r.Method, r.URL.Path, requestID, time.Since(start))
+
+		// Include retry count header if present for observability
+		retryCount := r.Header.Get("X-Retry-Count")
+		if retryCount != "" {
+			logPrintf("%s %s %s %v retry=%s", r.Method, r.URL.Path, requestID, time.Since(start), retryCount)
+		} else {
+			logPrintf("%s %s %s %v", r.Method, r.URL.Path, requestID, time.Since(start))
+		}
 	})
 }
 

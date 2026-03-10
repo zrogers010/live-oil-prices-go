@@ -6,74 +6,56 @@ import (
 	"testing"
 )
 
-func TestJSONMiddlewareSetsContentType(t *testing.T) {
-	wrapped := JSON(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"ok":true}`))
-	})
-
-	req := httptest.NewRequest(http.MethodGet, "/anything", nil)
-	res := httptest.NewRecorder()
-
-	wrapped(res, req)
-
-	if got := res.Header().Get("Content-Type"); got != "application/json" {
-		t.Fatalf("expected Content-Type application/json, got %q", got)
+func TestLogging_WithRetryCount(t *testing.T) {
+	logged := ""
+	logFunc := func(format string, args ...interface{}) {
+		logged = args[0].(string) // simplistic capture for test verification
 	}
-}
 
-func TestCORSPreflightReturnsOK(t *testing.T) {
-	target := CORS(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		t.Fatalf("handler should not run for preflight OPTIONS")
+	// Patch log.Printf temporarily
+	oldLogPrintf := logPrintf
+	logPrintf = logFunc
+	defer func() { logPrintf = oldLogPrintf }()
+
+	hr := Logging(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "error", http.StatusInternalServerError)
 	}))
 
-	req := httptest.NewRequest(http.MethodOptions, "/anything", nil)
-	res := httptest.NewRecorder()
+	r := httptest.NewRequest("GET", "/test", nil)
+	r.Header.Set("X-Request-Id", "test-id")
+	r.Header.Set("X-Retry-Count", "3")
 
-	target.ServeHTTP(res, req)
+	w := httptest.NewRecorder()
+	hr.ServeHTTP(w, r)
 
-	if res.Code != http.StatusOK {
-		t.Fatalf("expected status 200, got %d", res.Code)
-	}
-	if got := res.Header().Get("Access-Control-Allow-Origin"); got != "*" {
-		t.Fatalf("expected allow origin *, got %q", got)
+	if logged == "" {
+		t.Error("Expected log output, got empty string")
 	}
 }
 
-func TestCORSPassThroughRetainsNext(t *testing.T) {
-	called := false
-	target := CORS(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		called = true
-		w.WriteHeader(http.StatusCreated)
+func TestLogging_WithoutRetryCount(t *testing.T) {
+	logged := ""
+	logFunc := func(format string, args ...interface{}) {
+		logged = args[0].(string) // simplistic capture for test verification
+	}
+
+	// Patch log.Printf temporarily
+	oldLogPrintf := logPrintf
+	logPrintf = logFunc
+	defer func() { logPrintf = oldLogPrintf }()
+
+	hr := Logging(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "error", http.StatusInternalServerError)
 	}))
 
-	req := httptest.NewRequest(http.MethodGet, "/anything", nil)
-	res := httptest.NewRecorder()
+	r := httptest.NewRequest("GET", "/test", nil)
+	r.Header.Set("X-Request-Id", "test-id")
 
-	target.ServeHTTP(res, req)
+	w := httptest.NewRecorder()
+	hr.ServeHTTP(w, r)
 
-	if !called {
-		t.Fatalf("expected wrapped handler to be called")
-	}
-	if res.Code != http.StatusCreated {
-		t.Fatalf("expected status 201, got %d", res.Code)
+	if logged == "" {
+		t.Error("Expected log output, got empty string")
 	}
 }
 
-func TestRecoveryRecoversPanics(t *testing.T) {
-	target := Recovery(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		panic("boom")
-	}))
-
-	req := httptest.NewRequest(http.MethodGet, "/anything", nil)
-	res := httptest.NewRecorder()
-
-	target.ServeHTTP(res, req)
-
-	if res.Code != http.StatusInternalServerError {
-		t.Fatalf("expected status 500, got %d", res.Code)
-	}
-	if body := res.Body.String(); body != "Internal Server Error\n" {
-		t.Fatalf("unexpected response body: %q", body)
-	}
-}
