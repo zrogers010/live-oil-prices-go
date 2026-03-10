@@ -59,7 +59,3 @@ func TestLogging_WithoutRetryCount(t *testing.T) {
 	}
 }
 
-// Shim logPrintf variable to intercept log.Printf calls for testing
-var logPrintf = func(format string, args ...interface{}) {
-	// noop
-}
