@@ -32,11 +32,24 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          node-version: "20"
       - name: Install dependencies
         run: |
-          npm cache clean --force
-          npm ci --prefer-online --no-audit --no-fund
+          set -euo pipefail
+          npm config set registry https://registry.npmjs.org/
+          for attempt in 1 2 3; do
+            echo "npm ci attempt ${attempt}"
+            npm cache clean --force
+            rm -rf node_modules ~/.npm/_cacache
+            if npm ci --no-audit --no-fund --ignore-scripts --prefer-online --fetch-retries=8 --fetch-retry-factor=2 --fetch-timeout=120000; then
+              break
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "npm ci failed after 3 attempts"
+              exit 1
+            fi
+            sleep 5
+          done
       - name: Type check
         run: npm run test:types
       - name: Build TypeScript bundles
