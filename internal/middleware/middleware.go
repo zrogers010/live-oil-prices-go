@@ -36,7 +36,14 @@ func Logging(next http.Handler) http.Handler {
 		}
 
 		next.ServeHTTP(w, r)
-		log.Printf("%s %s %s %v", r.Method, r.URL.Path, requestID, time.Since(start))
+
+		// Include retry count header if present for observability
+		retryCount := r.Header.Get("X-Retry-Count")
+		if retryCount != "" {
+			log.Printf("%s %s %s %v retry=%s", r.Method, r.URL.Path, requestID, time.Since(start), retryCount)
+		} else {
+			log.Printf("%s %s %s %v", r.Method, r.URL.Path, requestID, time.Since(start))
+		}
 	})
 }
 
