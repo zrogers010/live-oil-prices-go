@@ -15,6 +15,13 @@ async function fetchJSON<T>(url: string): Promise<T> {
       // Throw a more informative error with response details for better debugging
       // Redact potential sensitive data in error text before throwing
       const redactedErrorText = errorText.replace(/\b(\d{12,16}|\d{3}-\d{2}-\d{4})\b/g, '[REDACTED]');
+
+      // Add retry-after header logging for rate limiting transparency
+      const retryAfter = res.headers.get('retry-after');
+      if (retryAfter) {
+        console.warn(`API rate limited, retry after: ${retryAfter} seconds`);
+      }
+
       const err = new Error(`API error: ${res.status} - ${redactedErrorText}`);
       throw err;
     }
