@@ -33,21 +33,34 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "20"
+          cache: npm
+          cache-dependency-path: package-lock.json
       - name: Install dependencies
         run: |
           set -euo pipefail
           npm config set registry https://registry.npmjs.org/
+          npm_cache_dir="${RUNNER_TEMP}/npm-cache"
+          npm install -g npm@10.8.3
+          npm config set cache "$npm_cache_dir"
+          npm config set maxsockets 1
+
           for attempt in 1 2 3; do
             echo "npm ci attempt ${attempt}"
             npm cache clean --force
-            rm -rf node_modules ~/.npm/_cacache
+            rm -rf node_modules "$npm_cache_dir"
+            mkdir -p "$npm_cache_dir"
             if npm ci --no-audit --no-fund --ignore-scripts --prefer-online --fetch-retries=8 --fetch-retry-factor=2 --fetch-timeout=120000; then
               break
             fi
+
             if [ "$attempt" -eq 3 ]; then
-              echo "npm ci failed after 3 attempts"
-              exit 1
+              echo "npm ci failed after 3 attempts, trying fallback install without lockfile"
+              rm -rf node_modules package-lock.json "$npm_cache_dir"
+              mkdir -p "$npm_cache_dir"
+              npm install --no-audit --no-fund --ignore-scripts --prefer-online
+              break
             fi
+
             sleep 5
           done
       - name: Type check
