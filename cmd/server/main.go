@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"live-oil-prices-go/internal/handlers"
-	"live-oil-prices-go/internal/models"
 	"live-oil-prices-go/internal/middleware"
 	"live-oil-prices-go/internal/services"
 	"log"
@@ -18,18 +17,6 @@ import (
 var commoditySymbols = []string{
 	"WTI", "BRENT", "NATGAS", "HEATING", "RBOB",
 	"OPEC", "DUBAI", "MURBAN", "WCS", "GASOIL",
-}
-
-type marketDataClient interface {
-	GetPrices() []models.Price
-	GetChartData(symbol string, days int, interval string) models.ChartData
-	GetPredictions() []models.Prediction
-	GetAnalysis() models.MarketAnalysis
-}
-
-type newsClient interface {
-	GetNews() []models.NewsArticle
-	GetNewsByID(id string) *models.NewsArticle
 }
 
 func main() {
@@ -72,7 +59,7 @@ func main() {
 	}
 }
 
-func newServerHandler(market marketDataClient, news newsClient) http.Handler {
+func newServerHandler(market handlers.MarketDataClient, news handlers.NewsClient) http.Handler {
 	api := handlers.NewAPI(market, news)
 
 	mux := http.NewServeMux()
