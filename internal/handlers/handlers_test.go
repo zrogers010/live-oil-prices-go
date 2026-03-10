@@ -32,7 +32,7 @@ func (f *fakeMarketDataService) GetChartData(symbol string, days int, interval s
 func (f *fakeMarketDataService) GetPredictions() []models.Prediction {
 	if f.getPredictionsFunc == nil {
 		return nil
-  }
+	}
 	return f.getPredictionsFunc()
 }
 
