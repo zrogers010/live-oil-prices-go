@@ -16,10 +16,10 @@ async function fetchJSON<T>(url: string): Promise<T> {
       }
       
       // Add retry-after header logging for rate limiting transparency
-      const retryAfter = res.headers.get('retry-after');
-      if (retryAfter) {
-        console.warn(`API rate limited, retry after: ${retryAfter} seconds`);
-      }
+      // const retryAfter = res.headers.get('retry-after');
+      // if (retryAfter) {
+      //   console.warn(`API rate limited, retry after: ${retryAfter} seconds`);
+      // }
 
       const err = new Error(`API error: ${res.status} - ${redactedErrorText}`);
       throw err;
