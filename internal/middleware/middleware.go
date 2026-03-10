@@ -7,6 +7,11 @@ import (
 	"time"
 )
 
+var (
+	// logPrintf is replaceable in tests to capture log output deterministically.
+	logPrintf = log.Printf
+)
+
 func Chain(h http.Handler) http.Handler {
 	return Logging(CORS(Recovery(h)))
 }
