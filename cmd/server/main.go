@@ -27,31 +27,7 @@ func main() {
 
 	marketService := services.NewMarketDataService()
 	newsService := services.NewNewsFeedService()
-	api := handlers.NewAPI(marketService, newsService)
-
-	mux := http.NewServeMux()
-	api.RegisterRoutes(mux)
-
-	mux.HandleFunc("GET /commodity/{symbol}", func(w http.ResponseWriter, r *http.Request) {
-		http.ServeFile(w, r, "web/static/commodity.html")
-	})
-
-	mux.HandleFunc("GET /sitemap.xml", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/xml; charset=utf-8")
-		now := time.Now().Format("2006-01-02")
-		fmt.Fprint(w, `<?xml version="1.0" encoding="UTF-8"?>`)
-		fmt.Fprint(w, `<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">`)
-		fmt.Fprintf(w, `<url><loc>https://liveoilprices.com/</loc><lastmod>%s</lastmod><changefreq>always</changefreq><priority>1.0</priority></url>`, now)
-		for _, sym := range commoditySymbols {
-			fmt.Fprintf(w, `<url><loc>https://liveoilprices.com/commodity/%s</loc><lastmod>%s</lastmod><changefreq>always</changefreq><priority>0.8</priority></url>`, sym, now)
-		}
-		fmt.Fprint(w, `</urlset>`)
-	})
-
-	staticFS := http.FileServer(http.Dir("web/static"))
-	mux.Handle("/", staticFS)
-
-	handler := middleware.Chain(mux)
+	handler := newServerHandler(marketService, newsService)
 
 	srv := &http.Server{
 		Addr:         ":" + port,
@@ -81,4 +57,31 @@ func main() {
 	if err := srv.ListenAndServe(); err != http.ErrServerClosed {
 		log.Fatalf("Server error: %v", err)
 	}
+}
+
+func newServerHandler(market handlers.MarketDataClient, news handlers.NewsClient) http.Handler {
+	api := handlers.NewAPI(market, news)
+
+	mux := http.NewServeMux()
+	api.RegisterRoutes(mux)
+
+	mux.HandleFunc("GET /commodity/{symbol}", func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFile(w, r, "web/static/commodity.html")
+	})
+
+	mux.HandleFunc("GET /sitemap.xml", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/xml; charset=utf-8")
+		now := time.Now().Format("2006-01-02")
+		fmt.Fprint(w, `<?xml version="1.0" encoding="UTF-8"?>`)
+		fmt.Fprint(w, `<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">`)
+		fmt.Fprintf(w, `<url><loc>https://liveoilprices.com/</loc><lastmod>%s</lastmod><changefreq>always</changefreq><priority>1.0</priority></url>`, now)
+		for _, sym := range commoditySymbols {
+			fmt.Fprintf(w, `<url><loc>https://liveoilprices.com/commodity/%s</loc><lastmod>%s</lastmod><changefreq>always</changefreq><priority>0.8</priority></url>`, sym, now)
+		}
+		fmt.Fprint(w, `</urlset>`)
+	})
+
+	mux.Handle("/", http.FileServer(http.Dir("web/static")))
+
+	return middleware.Chain(mux)
 }

@@ -3,6 +3,8 @@ bin/
 server
 *.exe
 *.out
+!cmd/server/
+!cmd/server/*.go
 
 # Dependencies
 node_modules/

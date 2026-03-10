@@ -4,7 +4,8 @@
   "private": true,
   "scripts": {
     "build": "esbuild web/src/app.ts --bundle --outfile=web/static/js/app.js --minify --sourcemap --target=es2020 && esbuild web/src/detail.ts --bundle --outfile=web/static/js/detail.js --minify --sourcemap --target=es2020",
-    "dev": "esbuild web/src/app.ts web/src/detail.ts --bundle --outdir=web/static/js --sourcemap --target=es2020 --watch"
+    "dev": "esbuild web/src/app.ts web/src/detail.ts --bundle --outdir=web/static/js --sourcemap --target=es2020 --watch",
+    "test:types": "tsc --noEmit --project tsconfig.json"
   },
   "dependencies": {
     "lightweight-charts": "^4.2.1"
