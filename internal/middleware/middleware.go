@@ -47,9 +47,9 @@ func Logging(next http.Handler) http.Handler {
 
 		retryAfter := wr.Header().Get("Retry-After")
 		if retryAfter != "" {
-			log.Printf("%s %s %s %v [Retry-After: %s]", r.Method, r.URL.Path, requestID, time.Since(start), retryAfter)
+			logPrintf("%s %s %s %v [Retry-After: %s]", r.Method, r.URL.Path, requestID, time.Since(start), retryAfter)
 		} else {
-			log.Printf("%s %s %s %v", r.Method, r.URL.Path, requestID, time.Since(start))
+			logPrintf("%s %s %s %v", r.Method, r.URL.Path, requestID, time.Since(start))
 		}
 	})
 }
