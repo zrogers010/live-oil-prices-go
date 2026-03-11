@@ -29,3 +29,23 @@ HTMLElement.prototype.removeEventListener = function() {};
 
 // Mock setAttribute to noop
 HTMLElement.prototype.setAttribute = function() {};
+
+// Mock innerHTML property for elements
+Object.defineProperty(HTMLElement.prototype, 'innerHTML', {
+  get: function() { return this._innerHTML || ''; },
+  set: function(value) { this._innerHTML = value; },
+  configurable: true,
+});
+
+// Mock classList with add/remove/toggle/contains noops
+Object.defineProperty(HTMLElement.prototype, 'classList', {
+  get: function() {
+    return {
+      add: function() {},
+      remove: function() {},
+      toggle: function() {},
+      contains: function() { return false; },
+    };
+  },
+  configurable: true,
+});
