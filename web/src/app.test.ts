@@ -1,3 +1,6 @@
+// Mock window.open to prevent errors in tests
+window.open = jest.fn();
+
 import '../setupMocks';
 import { jest } from '@jest/globals';
 import { loadPrices, loadChart, loadNews, setError, clearError, setLoading } from './app';
