@@ -1,3 +1,4 @@
+import '../setupMocks';
 import { jest } from '@jest/globals';
 import { loadPrices, loadChart, loadNews, setError, clearError, setLoading } from './app';
 import * as api from './api';
