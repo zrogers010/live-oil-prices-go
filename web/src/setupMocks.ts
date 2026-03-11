@@ -22,7 +22,10 @@ HTMLElement.prototype.closest = function () { return this; };
 HTMLElement.prototype.querySelectorAll = () => [];
 
 // Mock addEventListener to noop
-HTMLElement.prototype.addEventListener = () => {};
+HTMLElement.prototype.addEventListener = function() {};
 
 // Mock removeEventListener to noop
-HTMLElement.prototype.removeEventListener = () => {};
+HTMLElement.prototype.removeEventListener = function() {};
+
+// Mock setAttribute to noop
+HTMLElement.prototype.setAttribute = function() {};
