@@ -43,21 +43,23 @@ describe('App error and loading state', () => {
     expect(loader.style.display).toBe('none');
   });
 
+  import { act } from '@testing-library/react';
+
   test('loadPrices sets error on API failure', async () => {
     jest.spyOn(api, 'getPrices').mockRejectedValue(new Error('API failure'));
-    await loadPrices();
+    await act(async () => { await loadPrices(); });
     expect(errorContainer.textContent).toMatch(/failed to load prices/i);
   });
 
   test('loadChart sets error on API failure', async () => {
     jest.spyOn(api, 'getChartData').mockRejectedValue(new Error('API failure'));
-    await loadChart('WTI', 90);
+    await act(async () => { await loadChart('WTI', 90); });
     expect(errorContainer.textContent).toMatch(/failed to load chart/i);
   });
 
   test('loadNews sets error on API failure', async () => {
     jest.spyOn(api, 'getNews').mockRejectedValue(new Error('API failure'));
-    await loadNews();
+    await act(async () => { await loadNews(); });
     expect(errorContainer.textContent).toMatch(/failed to load news/i);
   });
 });
