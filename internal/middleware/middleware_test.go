@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -9,7 +10,7 @@ import (
 func TestLogging_WithRetryCount(t *testing.T) {
 	logged := ""
 	logFunc := func(format string, args ...interface{}) {
-		logged = args[0].(string) // simplistic capture for test verification
+		logged = fmt.Sprintf(format, args...)
 	}
 
 	// Patch log.Printf temporarily
@@ -36,7 +37,7 @@ func TestLogging_WithRetryCount(t *testing.T) {
 func TestLogging_WithoutRetryCount(t *testing.T) {
 	logged := ""
 	logFunc := func(format string, args ...interface{}) {
-		logged = args[0].(string) // simplistic capture for test verification
+		logged = fmt.Sprintf(format, args...)
 	}
 
 	// Patch log.Printf temporarily
@@ -58,4 +59,3 @@ func TestLogging_WithoutRetryCount(t *testing.T) {
 		t.Error("Expected log output, got empty string")
 	}
 }
-

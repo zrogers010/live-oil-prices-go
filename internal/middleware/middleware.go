@@ -40,17 +40,40 @@ func Logging(next http.Handler) http.Handler {
 			requestID = fmt.Sprintf("req-%d", time.Now().UnixNano())
 		}
 
-		next.ServeHTTP(w, r)
+		// Wrap ResponseWriter to capture headers
+		wr := &responseWriter{ResponseWriter: w, headers: http.Header{}}
 
-		// Include retry count header if present for observability
-		retryCount := r.Header.Get("X-Retry-Count")
-		if retryCount != "" {
-			logPrintf("%s %s %s %v retry=%s", r.Method, r.URL.Path, requestID, time.Since(start), retryCount)
+		next.ServeHTTP(wr, r)
+
+		retryAfter := wr.Header().Get("Retry-After")
+		if retryAfter != "" {
+			logPrintf("%s %s %s %v [Retry-After: %s]", r.Method, r.URL.Path, requestID, time.Since(start), retryAfter)
 		} else {
 			logPrintf("%s %s %s %v", r.Method, r.URL.Path, requestID, time.Since(start))
 		}
 	})
 }
+
+// responseWriter wraps http.ResponseWriter to capture headers
+// needed for logging after next.ServeHTTP call.
+type responseWriter struct {
+	http.ResponseWriter
+	headers http.Header
+}
+
+func (rw *responseWriter) Header() http.Header {
+	// Use the wrapped ResponseWriter's Header to capture headers correctly
+	return rw.ResponseWriter.Header()
+}
+
+func (rw *responseWriter) WriteHeader(statusCode int) {
+	rw.ResponseWriter.WriteHeader(statusCode)
+}
+
+func (rw *responseWriter) Write(b []byte) (int, error) {
+	return rw.ResponseWriter.Write(b)
+}
+
 
 func Recovery(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
