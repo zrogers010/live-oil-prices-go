@@ -1,6 +1,8 @@
 // Mock window.open to prevent errors in tests
 window.open = jest.fn();
 
+jest.useFakeTimers();
+
 import '../setupMocks';
 import { jest } from '@jest/globals';
 import { loadPrices, loadChart, loadNews, setError, clearError, setLoading } from './app';
@@ -49,19 +51,28 @@ describe('App error and loading state', () => {
 
   test('loadPrices sets error on API failure', async () => {
     jest.spyOn(api, 'getPrices').mockRejectedValue(new Error('API failure'));
-    await act(async () => { await loadPrices(); await delay(10); });
+    await act(async () => {
+      await loadPrices();
+      jest.advanceTimersByTime(10);
+    });
     expect(errorContainer.textContent).toMatch(/failed to load prices/i);
   });
 
   test('loadChart sets error on API failure', async () => {
     jest.spyOn(api, 'getChartData').mockRejectedValue(new Error('API failure'));
-    await act(async () => { await loadChart('WTI', 90); await delay(10); });
+    await act(async () => {
+      await loadChart('WTI', 90);
+      jest.advanceTimersByTime(10);
+    });
     expect(errorContainer.textContent).toMatch(/failed to load chart/i);
   });
 
   test('loadNews sets error on API failure', async () => {
     jest.spyOn(api, 'getNews').mockRejectedValue(new Error('API failure'));
-    await act(async () => { await loadNews(); await delay(10); });
+    await act(async () => {
+      await loadNews();
+      jest.advanceTimersByTime(10);
+    });
     expect(errorContainer.textContent).toMatch(/failed to load news/i);
   });
 });
