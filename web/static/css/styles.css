@@ -429,11 +429,10 @@ a.ticker-item:hover .ticker-symbol {
 
 .hero {
   position: relative;
-  min-height: 100vh;
   display: flex;
   align-items: center;
   padding-top: calc(var(--nav-height) + var(--ticker-height) + 48px);
-  padding-bottom: 80px;
+  padding-bottom: 48px;
   overflow: hidden;
 }
 
@@ -528,48 +527,161 @@ a.ticker-item:hover .ticker-symbol {
   line-height: 1.7;
 }
 
+/* Hero Prices */
+
+.hero-prices {
+  display: flex;
+  justify-content: center;
+  align-items: stretch;
+  gap: 0;
+  margin-bottom: 32px;
+  flex-wrap: wrap;
+}
+
+.hero-price-card {
+  flex: 1;
+  max-width: 400px;
+  min-width: 280px;
+  padding: 32px 40px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  border-radius: var(--radius-lg);
+}
+
+.hero-price-card:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.hero-price-divider {
+  width: 1px;
+  background: var(--border);
+  align-self: stretch;
+  margin: 8px 0;
+}
+
+.hero-price-label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+
+.hero-price-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.hero-price-contract {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--accent);
+  letter-spacing: 0.02em;
+}
+
+.hero-price-amount {
+  font-family: var(--font-mono);
+  font-size: clamp(48px, 8vw, 72px);
+  font-weight: 800;
+  color: var(--text-heading);
+  letter-spacing: -0.03em;
+  line-height: 1;
+  margin-bottom: 8px;
+}
+
+.hero-price-change {
+  font-family: var(--font-mono);
+  font-size: 18px;
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+
+.hero-price-change.positive { color: var(--green); }
+.hero-price-change.negative { color: var(--red); }
+
+.hero-price-meta {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.hero-price-source {
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 2px 8px;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 4px;
+}
+
+.hero-secondary-prices {
+  display: flex;
+  justify-content: center;
+  gap: 24px;
+  margin-bottom: 40px;
+  flex-wrap: wrap;
+}
+
+.hero-secondary-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 12px 20px;
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border);
+  min-width: 140px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.hero-secondary-item:hover {
+  border-color: var(--border-hover);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.hero-secondary-name {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 4px;
+}
+
+.hero-secondary-price {
+  font-family: var(--font-mono);
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-heading);
+  margin-bottom: 2px;
+}
+
+.hero-secondary-change {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.hero-secondary-change.positive { color: var(--green); }
+.hero-secondary-change.negative { color: var(--red); }
+
+.hero-secondary-contract {
+  font-size: 10px;
+  color: var(--accent);
+  margin-top: 4px;
+}
+
 .hero-cta {
   display: flex;
   gap: 16px;
   justify-content: center;
-  margin-bottom: 64px;
+  margin-bottom: 32px;
   flex-wrap: wrap;
-}
-
-.hero-stats {
-  display: flex;
-  justify-content: center;
-  gap: 0;
-  flex-wrap: wrap;
-}
-
-.hero-stat {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 0 40px;
-}
-
-.hero-stat-divider {
-  width: 1px;
-  height: 48px;
-  background: var(--border);
-  align-self: center;
-}
-
-.hero-stat-value {
-  font-family: var(--font-mono);
-  font-size: 28px;
-  font-weight: 700;
-  color: var(--text-heading);
-  letter-spacing: -0.02em;
-}
-
-.hero-stat-label {
-  font-size: 13px;
-  color: var(--text-muted);
-  margin-top: 4px;
-  letter-spacing: 0.02em;
 }
 
 /* ============================================
@@ -617,6 +729,14 @@ a.ticker-item:hover .ticker-symbol {
   font-weight: 600;
   color: var(--text-heading);
   margin-top: 2px;
+}
+
+.price-card-contract {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--accent);
+  margin-top: 2px;
+  letter-spacing: 0.02em;
 }
 
 .price-card-badge {
@@ -1269,6 +1389,16 @@ a.ticker-item:hover .ticker-symbol {
   font-size: 13px;
 }
 
+.table-contract {
+  font-size: 12px;
+  color: var(--accent);
+  font-weight: 500;
+}
+
+.table-contract.estimate {
+  color: var(--text-muted);
+}
+
 /* ============================================
    Chart Stats
    ============================================ */
@@ -1741,39 +1871,58 @@ a.ticker-item:hover .ticker-symbol {
 
   /* Hero */
   .hero {
-    min-height: auto;
-    padding-top: calc(var(--nav-height) + var(--ticker-height) + 40px);
-    padding-bottom: 48px;
+    padding-top: calc(var(--nav-height) + var(--ticker-height) + 24px);
+    padding-bottom: 32px;
   }
 
   .hero-title {
-    font-size: clamp(32px, 9vw, 52px);
+    font-size: clamp(28px, 7vw, 40px);
+    margin-bottom: 16px;
+  }
+
+  .hero-prices {
+    flex-direction: column;
+    align-items: center;
+    gap: 0;
+  }
+
+  .hero-price-card {
+    padding: 20px 16px;
+    text-align: center;
+    max-width: none;
+  }
+
+  .hero-price-label {
+    align-items: center;
+  }
+
+  .hero-price-divider {
+    width: 80%;
+    height: 1px;
+    margin: 0;
+  }
+
+  .hero-price-meta {
+    justify-content: center;
+  }
+
+  .hero-secondary-prices {
+    gap: 12px;
+  }
+
+  .hero-secondary-item {
+    min-width: 120px;
+    padding: 10px 14px;
   }
 
   .hero-cta {
     flex-direction: column;
     align-items: stretch;
-    margin-bottom: 48px;
+    margin-bottom: 24px;
   }
 
   .hero-cta .btn {
     justify-content: center;
-  }
-
-  .hero-stats {
-    flex-direction: column;
-    gap: 16px;
-  }
-
-  .hero-stat {
-    flex-direction: row;
-    justify-content: center;
-    gap: 12px;
-    padding: 0;
-  }
-
-  .hero-stat-divider {
-    display: none;
   }
 
   /* Price Grid */

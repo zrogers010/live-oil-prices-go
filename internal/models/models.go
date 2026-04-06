@@ -10,6 +10,8 @@ type Price struct {
 	Low       float64 `json:"low"`
 	Volume    int64   `json:"volume"`
 	UpdatedAt string  `json:"updatedAt"`
+	Contract  string  `json:"contract,omitempty"`
+	Source    string  `json:"source,omitempty"`
 }
 
 type OHLCV struct {

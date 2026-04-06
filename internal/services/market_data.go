@@ -11,24 +11,26 @@ import (
 type MarketDataService struct {
 	rng        *rand.Rand
 	basePrices map[string]float64
+	yahoo      *YahooFinanceService
 }
 
 func NewMarketDataService() *MarketDataService {
 	bases := map[string]float64{
-		"WTI":    72.45,
-		"BRENT":  76.82,
-		"NATGAS": 3.24,
+		"WTI":     72.45,
+		"BRENT":   76.82,
+		"NATGAS":  3.24,
 		"HEATING": 2.35,
-		"RBOB":   2.18,
-		"OPEC":   74.50,
-		"DUBAI":  75.10,
-		"MURBAN": 76.30,
-		"WCS":    58.20,
-		"GASOIL": 685.50,
+		"RBOB":    2.18,
+		"OPEC":    74.50,
+		"DUBAI":   75.10,
+		"MURBAN":  76.30,
+		"WCS":     58.20,
+		"GASOIL":  685.50,
 	}
 	return &MarketDataService{
 		rng:        rand.New(rand.NewSource(time.Now().UnixNano())),
 		basePrices: bases,
+		yahoo:      NewYahooFinanceService(),
 	}
 }
 
@@ -57,9 +59,19 @@ var allCommodities = []struct {
 }
 
 func (s *MarketDataService) GetPrices() []models.Price {
+	var yahooData map[string]models.Price
+	if s.yahoo != nil {
+		yahooData = s.yahoo.GetPrices()
+	}
 	now := time.Now().UTC().Format(time.RFC3339)
 	prices := make([]models.Price, len(allCommodities))
+
 	for i, c := range allCommodities {
+		if yp, ok := yahooData[c.symbol]; ok {
+			prices[i] = yp
+			continue
+		}
+		// Synthetic fallback for commodities without a Yahoo Finance ticker
 		base := s.basePrices[c.symbol]
 		volatility := base * 0.008
 		change := (s.rng.Float64() - 0.45) * volatility
@@ -79,17 +91,24 @@ func (s *MarketDataService) GetPrices() []models.Price {
 			Low:       math.Round(low*100) / 100,
 			Volume:    volume,
 			UpdatedAt: now,
+			Source:    "estimate",
 		}
 	}
 	return prices
 }
 
-// GetChartData generates OHLCV candles. interval: "2h","4h","1d"
 func (s *MarketDataService) GetChartData(symbol string, days int, interval string) models.ChartData {
 	base, ok := s.basePrices[symbol]
 	if !ok {
 		base = 72.0
 	}
+
+	if s.yahoo != nil {
+		if yp, ok := s.yahoo.GetPrices()[symbol]; ok {
+			base = yp.Price
+		}
+	}
+
 	name := symbol
 	if n, ok := commodityNames[symbol]; ok {
 		name = n
@@ -217,6 +236,11 @@ func (s *MarketDataService) GetPredictions() []models.Prediction {
 func (s *MarketDataService) GetAnalysis() models.MarketAnalysis {
 	now := time.Now().UTC().Format(time.RFC3339)
 	wtiPrice := s.basePrices["WTI"]
+	if s.yahoo != nil {
+		if yp, ok := s.yahoo.GetPrices()["WTI"]; ok {
+			wtiPrice = yp.Price
+		}
+	}
 	return models.MarketAnalysis{
 		Sentiment: "bullish", Score: 72,
 		Summary: fmt.Sprintf("The crude oil market is displaying bullish momentum with WTI trading near $%.2f. Technical indicators are aligned with an upward bias as the 50-day moving average has crossed above the 200-day MA, forming a golden cross pattern. Fundamental drivers including OPEC+ supply discipline, declining US inventories, and resilient global demand support the constructive outlook. Key risk factors include potential demand slowdown from economic headwinds and the possibility of OPEC+ policy changes.", wtiPrice),
