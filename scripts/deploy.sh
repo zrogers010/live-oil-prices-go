@@ -42,7 +42,9 @@ fi
 
 # ---------- Build frontend ----------
 echo "[2/4] Building frontend..."
-npm install --silent 2>/dev/null
+npm cache clean --force 2>/dev/null || true
+rm -rf node_modules
+npm install
 npm run build
 echo "  Frontend built."
 
