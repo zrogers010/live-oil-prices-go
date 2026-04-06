@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Shareable ETH chart snapshot." />
+  <title>Chart Snapshot</title>
+  <link rel="stylesheet" href="/css/styles.css">
+</head>
+<body>
+  <div class="share-page">
+    <a class="share-back" href="/">← Back to Home</a>
+
+    <div class="share-wrapper">
+      <p class="share-kicker">Shareable chart snapshot</p>
+      <h1 class="share-title" id="share-title">ETH-USD (1Y)</h1>
+      <p class="share-created" id="share-created">Created ...</p>
+
+        <div class="share-actions-wrap">
+        <button id="shareMenuToggle" class="share-menu-btn">Share</button>
+        <span id="shareActionBadge" class="share-action-badge" role="status" aria-live="polite"></span>
+        <div id="shareMenu" class="share-dropdown" hidden>
+          <button id="copyImageLink" class="share-dropdown-item" type="button">Copy image link</button>
+          <button id="downloadImage" class="share-dropdown-item" type="button">Download image</button>
+        </div>
+      </div>
+
+      <div id="shareToast" class="share-toast" role="status" aria-live="polite"></div>
+
+      <img id="shareImage" alt="ETH-USD chart snapshot" class="share-image" />
+
+      <div class="share-url-block">
+        <p class="share-url-label">Share URL</p>
+        <p class="share-url-text" id="share-url"></p>
+      </div>
+    </div>
+  </div>
+
+  <script src="/js/share.js"></script>
+</body>
+</html>

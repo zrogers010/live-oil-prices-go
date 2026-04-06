@@ -8,6 +8,8 @@ export interface Price {
   low: number;
   volume: number;
   updatedAt: string;
+  contract?: string;
+  source?: string;
 }
 
 export interface OHLCV {

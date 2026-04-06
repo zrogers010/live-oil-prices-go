@@ -119,26 +119,40 @@
                     Live Oil Prices<br>
                     <span class="gradient-text">& Energy Market Data</span>
                 </h1>
-                <p class="hero-subtitle">
-                    Real-time crude oil prices for WTI, Brent, and 10+ energy commodities.
-                    Interactive charts, breaking market news, and comprehensive data
-                    for traders, analysts, and energy professionals.
-                </p>
+                <div class="hero-prices" id="heroPrices">
+                    <div class="hero-price-card" id="heroWTI" data-symbol="WTI">
+                        <div class="hero-price-label">
+                            <span class="hero-price-name">WTI Crude Oil</span>
+                            <span class="hero-price-contract" id="heroWTIContract">Loading...</span>
+                        </div>
+                        <div class="hero-price-amount" id="heroWTIPrice">—</div>
+                        <div class="hero-price-change" id="heroWTIChange">—</div>
+                        <div class="hero-price-meta">
+                            <span class="hero-price-source" id="heroWTISource"></span>
+                            <span class="hero-price-updated" id="heroWTIUpdated"></span>
+                        </div>
+                    </div>
+                    <div class="hero-price-divider"></div>
+                    <div class="hero-price-card" id="heroBRENT" data-symbol="BRENT">
+                        <div class="hero-price-label">
+                            <span class="hero-price-name">Brent Crude Oil</span>
+                            <span class="hero-price-contract" id="heroBRENTContract">Loading...</span>
+                        </div>
+                        <div class="hero-price-amount" id="heroBRENTPrice">—</div>
+                        <div class="hero-price-change" id="heroBRENTChange">—</div>
+                        <div class="hero-price-meta">
+                            <span class="hero-price-source" id="heroBRENTSource"></span>
+                            <span class="hero-price-updated" id="heroBRENTUpdated"></span>
+                        </div>
+                    </div>
+                </div>
+                <div class="hero-secondary-prices" id="heroSecondaryPrices"></div>
                 <div class="hero-cta">
                     <a href="#markets" class="btn btn-primary btn-lg">
-                        View Live Prices
+                        View All Markets
                         <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M6 3l5 5-5 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
                     </a>
                     <a href="#charts" class="btn btn-outline btn-lg">Explore Charts</a>
-                </div>
-                <div class="hero-stats">
-                    <div class="hero-stat"><span class="hero-stat-value">10+</span><span class="hero-stat-label">Energy Commodities</span></div>
-                    <div class="hero-stat-divider"></div>
-                    <div class="hero-stat"><span class="hero-stat-value">15s</span><span class="hero-stat-label">Price Updates</span></div>
-                    <div class="hero-stat-divider"></div>
-                    <div class="hero-stat"><span class="hero-stat-value">80+</span><span class="hero-stat-label">News Sources</span></div>
-                    <div class="hero-stat-divider"></div>
-                    <div class="hero-stat"><span class="hero-stat-value">24/7</span><span class="hero-stat-label">Market Coverage</span></div>
                 </div>
             </div>
         </section>
@@ -159,6 +173,7 @@
                             <thead>
                                 <tr>
                                     <th scope="col">Commodity</th>
+                                    <th scope="col">Contract</th>
                                     <th scope="col">Price</th>
                                     <th scope="col">Change</th>
                                     <th scope="col">% Change</th>
