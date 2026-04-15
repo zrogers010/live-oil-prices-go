@@ -2470,6 +2470,96 @@ a.ticker-item:hover .ticker-symbol {
   background: var(--red-bg);
 }
 
+/* About / Educational Content */
+
+.detail-about-section {
+  margin-bottom: 48px;
+}
+
+.about-content {
+  margin-bottom: 28px;
+}
+
+.about-content p {
+  font-size: 15px;
+  color: var(--text-secondary);
+  line-height: 1.8;
+}
+
+.about-details-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.about-detail-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+}
+
+.about-detail-card h3 {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-heading);
+  margin-bottom: 16px;
+}
+
+.about-detail-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.about-detail-row:last-child {
+  border-bottom: none;
+}
+
+.about-detail-label {
+  font-size: 13px;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.about-detail-value {
+  font-size: 13px;
+  color: var(--text-primary);
+  font-weight: 600;
+  text-align: right;
+}
+
+.about-factors-list {
+  list-style: none;
+  padding: 0;
+}
+
+.about-factors-list li {
+  position: relative;
+  padding: 8px 0 8px 20px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  border-bottom: 1px solid var(--border);
+}
+
+.about-factors-list li:last-child {
+  border-bottom: none;
+}
+
+.about-factors-list li::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 14px;
+  width: 6px;
+  height: 6px;
+  background: var(--accent);
+  border-radius: 50%;
+}
+
 /* Detail page mobile */
 
 @media (max-width: 768px) {
@@ -2508,6 +2598,10 @@ a.ticker-item:hover .ticker-symbol {
 
   .related-grid {
     grid-template-columns: repeat(2, 1fr);
+  }
+
+  .about-details-grid {
+    grid-template-columns: 1fr;
   }
 }
 

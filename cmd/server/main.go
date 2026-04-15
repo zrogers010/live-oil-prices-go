@@ -25,6 +25,10 @@ func main() {
 		port = "8080"
 	}
 
+	if err := handlers.InitCommodityTemplate("web/templates/commodity.html"); err != nil {
+		log.Fatalf("Failed to parse commodity template: %v", err)
+	}
+
 	marketService := services.NewMarketDataService()
 	newsService := services.NewNewsFeedService()
 	handler := newServerHandler(marketService, newsService)
@@ -65,9 +69,7 @@ func newServerHandler(market handlers.MarketDataClient, news handlers.NewsClient
 	mux := http.NewServeMux()
 	api.RegisterRoutes(mux)
 
-	mux.HandleFunc("GET /commodity/{symbol}", func(w http.ResponseWriter, r *http.Request) {
-		http.ServeFile(w, r, "web/static/commodity.html")
-	})
+	mux.HandleFunc("GET /commodity/{symbol}", api.ServeCommodityPage)
 
 	mux.HandleFunc("GET /sitemap.xml", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/xml; charset=utf-8")
