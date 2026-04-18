@@ -43,6 +43,10 @@ func (f *fakeMarketDataService) GetAnalysis() models.MarketAnalysis {
 	return f.getAnalysisFunc()
 }
 
+func (f *fakeMarketDataService) GetHeroChart(symbol string, maxLiveBars int) models.HeroChart {
+	return models.HeroChart{Symbol: symbol, Mode: "warming-up", Bars: []models.PythCandle{}}
+}
+
 type fakeNewsFeedService struct {
 	getNewsFunc     func() []models.NewsArticle
 	getNewsByIDFunc func(id string) *models.NewsArticle

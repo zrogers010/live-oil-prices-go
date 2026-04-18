@@ -12,6 +12,7 @@ type MarketDataService struct {
 	rng        *rand.Rand
 	basePrices map[string]float64
 	yahoo      *YahooFinanceService
+	pyth       *PythService
 }
 
 func NewMarketDataService() *MarketDataService {
@@ -31,6 +32,7 @@ func NewMarketDataService() *MarketDataService {
 		rng:        rand.New(rand.NewSource(time.Now().UnixNano())),
 		basePrices: bases,
 		yahoo:      NewYahooFinanceService(),
+		pyth:       NewPythService(),
 	}
 }
 
@@ -63,11 +65,27 @@ func (s *MarketDataService) GetPrices() []models.Price {
 	if s.yahoo != nil {
 		yahooData = s.yahoo.GetPrices()
 	}
+	var pythData map[string]PythQuote
+	if s.pyth != nil {
+		pythData = s.pyth.GetQuotes()
+	}
 	now := time.Now().UTC().Format(time.RFC3339)
 	prices := make([]models.Price, len(allCommodities))
 
 	for i, c := range allCommodities {
-		if yp, ok := yahooData[c.symbol]; ok {
+		yp, hasYahoo := yahooData[c.symbol]
+		pq, hasPyth := pythData[c.symbol]
+
+		switch {
+		case hasPyth && hasYahoo:
+			// Real-time Pyth tick over Yahoo daily metadata.
+			prices[i] = applyPyth(yp, pq)
+			continue
+		case hasPyth:
+			// Pyth-only: surface the live tick, no daily baseline.
+			prices[i] = applyPyth(models.Price{Symbol: c.symbol, Name: c.name}, pq)
+			continue
+		case hasYahoo:
 			prices[i] = yp
 			continue
 		}
@@ -215,22 +233,231 @@ func (s *MarketDataService) generateIntraday(base float64, days int, hoursPerCan
 
 func r2(v float64) float64 { return math.Round(v*100) / 100 }
 
+// predictionSymbols defines which symbols we publish a forecast for, and the
+// horizon used. We only forecast symbols backed by real Yahoo history; falling
+// back to a flat "no signal" prediction if history is not yet loaded.
+var predictionSymbols = []struct {
+	symbol  string
+	name    string
+	horizon int
+}{
+	{"WTI", "WTI Crude Oil", 7},
+	{"BRENT", "Brent Crude Oil", 7},
+	{"NATGAS", "Natural Gas", 7},
+	{"HEATING", "Heating Oil", 7},
+}
+
+const predictionDisclaimer = "Statistical forecast for informational purposes only. Not investment advice."
+
 func (s *MarketDataService) GetPredictions() []models.Prediction {
 	prices := s.GetPrices()
 	pm := make(map[string]float64)
+	sources := make(map[string]string)
 	for _, p := range prices {
 		pm[p.Symbol] = p.Price
+		sources[p.Symbol] = p.Source
 	}
-	return []models.Prediction{
-		{Symbol: "WTI", Name: "WTI Crude Oil", Current: pm["WTI"], Predicted: r2(pm["WTI"] * 1.028), Timeframe: "7 days", Confidence: 0.78, Direction: "bullish",
-			Analysis: "Technical indicators show a bullish divergence on the daily RSI, while MACD has crossed above the signal line. Fundamental support from declining inventories and OPEC+ production discipline reinforces the upward bias. Key resistance at $74.50."},
-		{Symbol: "BRENT", Name: "Brent Crude Oil", Current: pm["BRENT"], Predicted: r2(pm["BRENT"] * 1.022), Timeframe: "7 days", Confidence: 0.74, Direction: "bullish",
-			Analysis: "Brent is trading above its 50-day moving average with increasing volume. Geopolitical risk premium remains elevated. Support at $75.50, resistance at $79.00. The Brent-WTI spread is widening, suggesting global supply tightness."},
-		{Symbol: "NATGAS", Name: "Natural Gas", Current: pm["NATGAS"], Predicted: r2(pm["NATGAS"] * 1.045), Timeframe: "7 days", Confidence: 0.65, Direction: "bullish",
-			Analysis: "Cold weather forecasts for the US Northeast are driving short-term bullish sentiment. Storage levels remain below the 5-year average. LNG export demand continues to provide a floor. Volatility expected to remain elevated."},
-		{Symbol: "HEATING", Name: "Heating Oil", Current: pm["HEATING"], Predicted: r2(pm["HEATING"] * 1.018), Timeframe: "7 days", Confidence: 0.71, Direction: "bullish",
-			Analysis: "Heating oil demand remains seasonally strong. Distillate inventories are below the 5-year range. Refining margins support continued production, but European demand competition keeps prices firm."},
+
+	out := make([]models.Prediction, 0, len(predictionSymbols))
+	for _, ps := range predictionSymbols {
+		current := pm[ps.symbol]
+		var history []float64
+		if s.yahoo != nil {
+			history = s.yahoo.GetHistory(ps.symbol)
+		}
+
+		if len(history) < 30 {
+			out = append(out, fallbackPrediction(ps.symbol, ps.name, current, ps.horizon))
+			continue
+		}
+
+		// Splice the live current price as the most recent close so the forecast
+		// reflects intraday movement, not just the last completed daily bar.
+		closes := history
+		if current > 0 {
+			closes = append(append([]float64{}, history...), current)
+		}
+
+		f, err := Forecast(closes, ps.horizon)
+		if err != nil {
+			out = append(out, fallbackPrediction(ps.symbol, ps.name, current, ps.horizon))
+			continue
+		}
+
+		predSource := sources[ps.symbol]
+		if predSource == "" {
+			predSource = "yahoo"
+		}
+		out = append(out, models.Prediction{
+			Symbol:        ps.symbol,
+			Name:          ps.name,
+			Current:       r2(f.Current),
+			Predicted:     r2(f.Predicted),
+			PredictedLow:  r2(f.Low),
+			PredictedHigh: r2(f.High),
+			Timeframe:     fmt.Sprintf("%d days", ps.horizon),
+			Confidence:    math.Round(f.Confidence*100) / 100,
+			Direction:     f.Direction,
+			Analysis:      buildAnalysis(ps.name, f),
+			Model:         "holt-linear+rsi/macd",
+			Source:        predSource,
+			Disclaimer:    predictionDisclaimer,
+		})
 	}
+	return out
+}
+
+// fallbackPrediction is returned when we don't yet have enough history loaded
+// (e.g. cold start, or Yahoo unreachable). The "predicted" value mirrors the
+// current price so the UI doesn't show a misleading move.
+func fallbackPrediction(symbol, name string, current float64, horizon int) models.Prediction {
+	return models.Prediction{
+		Symbol:     symbol,
+		Name:       name,
+		Current:    r2(current),
+		Predicted:  r2(current),
+		Timeframe:  fmt.Sprintf("%d days", horizon),
+		Confidence: 0.0,
+		Direction:  "neutral",
+		Analysis:   "Forecast unavailable — insufficient historical data loaded yet. Please retry shortly.",
+		Model:      "fallback",
+		Source:     "estimate",
+		Disclaimer: predictionDisclaimer,
+	}
+}
+
+// buildAnalysis composes a short, fact-based commentary from the indicator
+// readings. Kept deliberately simple and quantitative; no fabricated narrative.
+func buildAnalysis(name string, f ForecastResult) string {
+	delta := f.Predicted - f.Current
+	pct := 0.0
+	if f.Current != 0 {
+		pct = (delta / f.Current) * 100
+	}
+
+	rsiLabel := "neutral"
+	switch {
+	case f.RSI14 >= 70:
+		rsiLabel = "overbought"
+	case f.RSI14 >= 55:
+		rsiLabel = "bullish"
+	case f.RSI14 <= 30:
+		rsiLabel = "oversold"
+	case f.RSI14 <= 45:
+		rsiLabel = "bearish"
+	}
+
+	macdLabel := "flat"
+	switch {
+	case f.MACDHist > 0:
+		macdLabel = "above signal (bullish)"
+	case f.MACDHist < 0:
+		macdLabel = "below signal (bearish)"
+	}
+
+	bandPct := 0.0
+	if f.Current != 0 {
+		bandPct = ((f.High - f.Low) / 2 / f.Current) * 100
+	}
+
+	trendArticle := "a"
+	if f.Trend == "uptrend" {
+		trendArticle = "an"
+	}
+
+	return fmt.Sprintf(
+		"%s: %d-day Holt linear forecast points to $%.2f (%+.2f%% from $%.2f), with an 80%% interval of $%.2f–$%.2f (±%.1f%%). "+
+			"RSI(14) is %.1f (%s), MACD histogram is %s, and the 50/200-day MA configuration suggests %s %s. "+
+			"Confidence: %.0f%%.",
+		name,
+		f.HorizonDays,
+		f.Predicted, pct, f.Current,
+		f.Low, f.High, bandPct,
+		f.RSI14, rsiLabel,
+		macdLabel,
+		trendArticle, f.Trend,
+		f.Confidence*100,
+	)
+}
+
+// GetPythCandles surfaces the streaming 1-minute candle buffer for a single
+// symbol so the homepage hero chart can render true real-time bars. Returns
+// nil if Pyth is unavailable or hasn't accumulated any ticks yet.
+func (s *MarketDataService) GetPythCandles(symbol string, max int) []models.PythCandle {
+	if s.pyth == nil {
+		return nil
+	}
+	return s.pyth.GetCandles(symbol, max)
+}
+
+// pythLiveWindow defines how recent the latest Pyth tick must be for us to
+// treat the feed as actively streaming. Outside this window the underlying
+// market is paused (weekend/holiday/maintenance) and we should fall back to
+// Yahoo's intraday series for a meaningful chart.
+//
+// 5 minutes was chosen because Pyth's WTI publishers can briefly go quiet
+// during low-activity periods even when markets are technically open
+// (e.g. Sunday evening reopen). 5 min absorbs those pauses without
+// flipping the chart over and back.
+const pythLiveWindow = 5 * time.Minute
+
+// GetHeroChart returns the current best-available chart for the homepage
+// hero. When Pyth is publishing fresh ticks we serve the 1-minute streaming
+// candle buffer; otherwise we fall back to the prior session's intraday
+// Yahoo bars so the chart has something to render on weekends/holidays.
+//
+// `maxLiveBars` caps the live window (in 1-minute bars) when streaming.
+// It's ignored in fallback mode — prior-session mode always returns the
+// full session's bars (typically 80–280 5-min bars).
+func (s *MarketDataService) GetHeroChart(symbol string, maxLiveBars int) models.HeroChart {
+	out := models.HeroChart{Symbol: symbol, Bars: []models.PythCandle{}}
+
+	// 1) Try Pyth streaming candles first.
+	if s.pyth != nil {
+		if q, ok := s.pyth.GetQuote(symbol); ok && time.Since(q.PublishedAt) <= pythLiveWindow {
+			bars := s.pyth.GetCandles(symbol, maxLiveBars)
+			if len(bars) > 0 {
+				out.Mode = "live"
+				out.Interval = "1m"
+				out.Source = "pyth"
+				out.UpdatedAt = q.PublishedAt.Format(time.RFC3339)
+				out.Bars = bars
+				return out
+			}
+		}
+	}
+
+	// 2) Fall back to the prior-session intraday Yahoo series.
+	if s.yahoo != nil {
+		bars, sessionDate, interval := s.yahoo.GetPriorSessionIntraday(symbol)
+		if len(bars) > 0 {
+			out.Mode = "prior-session"
+			out.Interval = interval
+			out.Source = "yahoo"
+			out.SessionDate = sessionDate
+			last := bars[len(bars)-1]
+			out.UpdatedAt = time.Unix(last.Time, 0).UTC().Format(time.RFC3339)
+			// Reshape OHLCV (which carries volume we don't need here) into
+			// the same PythCandle shape the live mode uses, so the frontend
+			// has a single bar type to render.
+			out.Bars = make([]models.PythCandle, len(bars))
+			for i, b := range bars {
+				out.Bars[i] = models.PythCandle{
+					Time:  b.Time,
+					Open:  b.Open,
+					High:  b.High,
+					Low:   b.Low,
+					Close: b.Close,
+				}
+			}
+			return out
+		}
+	}
+
+	// 3) Nothing available — empty payload, frontend renders the cold-start
+	// "warming up the live feed" placeholder.
+	out.Mode = "warming-up"
+	return out
 }
 
 func (s *MarketDataService) GetAnalysis() models.MarketAnalysis {
