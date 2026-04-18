@@ -45,14 +45,19 @@ type NewsArticle struct {
 }
 
 type Prediction struct {
-	Symbol     string  `json:"symbol"`
-	Name       string  `json:"name"`
-	Current    float64 `json:"current"`
-	Predicted  float64 `json:"predicted"`
-	Timeframe  string  `json:"timeframe"`
-	Confidence float64 `json:"confidence"`
-	Direction  string  `json:"direction"`
-	Analysis   string  `json:"analysis"`
+	Symbol        string  `json:"symbol"`
+	Name          string  `json:"name"`
+	Current       float64 `json:"current"`
+	Predicted     float64 `json:"predicted"`
+	PredictedLow  float64 `json:"predictedLow,omitempty"`
+	PredictedHigh float64 `json:"predictedHigh,omitempty"`
+	Timeframe     string  `json:"timeframe"`
+	Confidence    float64 `json:"confidence"`
+	Direction     string  `json:"direction"`
+	Analysis      string  `json:"analysis"`
+	Model         string  `json:"model,omitempty"`  // e.g. "holt-linear" or "fallback"
+	Source        string  `json:"source,omitempty"` // data source: "yahoo" or "estimate"
+	Disclaimer    string  `json:"disclaimer,omitempty"`
 }
 
 type TechnicalSignals struct {

@@ -215,22 +215,145 @@ func (s *MarketDataService) generateIntraday(base float64, days int, hoursPerCan
 
 func r2(v float64) float64 { return math.Round(v*100) / 100 }
 
+// predictionSymbols defines which symbols we publish a forecast for, and the
+// horizon used. We only forecast symbols backed by real Yahoo history; falling
+// back to a flat "no signal" prediction if history is not yet loaded.
+var predictionSymbols = []struct {
+	symbol  string
+	name    string
+	horizon int
+}{
+	{"WTI", "WTI Crude Oil", 7},
+	{"BRENT", "Brent Crude Oil", 7},
+	{"NATGAS", "Natural Gas", 7},
+	{"HEATING", "Heating Oil", 7},
+}
+
+const predictionDisclaimer = "Statistical forecast for informational purposes only. Not investment advice."
+
 func (s *MarketDataService) GetPredictions() []models.Prediction {
 	prices := s.GetPrices()
 	pm := make(map[string]float64)
 	for _, p := range prices {
 		pm[p.Symbol] = p.Price
 	}
-	return []models.Prediction{
-		{Symbol: "WTI", Name: "WTI Crude Oil", Current: pm["WTI"], Predicted: r2(pm["WTI"] * 1.028), Timeframe: "7 days", Confidence: 0.78, Direction: "bullish",
-			Analysis: "Technical indicators show a bullish divergence on the daily RSI, while MACD has crossed above the signal line. Fundamental support from declining inventories and OPEC+ production discipline reinforces the upward bias. Key resistance at $74.50."},
-		{Symbol: "BRENT", Name: "Brent Crude Oil", Current: pm["BRENT"], Predicted: r2(pm["BRENT"] * 1.022), Timeframe: "7 days", Confidence: 0.74, Direction: "bullish",
-			Analysis: "Brent is trading above its 50-day moving average with increasing volume. Geopolitical risk premium remains elevated. Support at $75.50, resistance at $79.00. The Brent-WTI spread is widening, suggesting global supply tightness."},
-		{Symbol: "NATGAS", Name: "Natural Gas", Current: pm["NATGAS"], Predicted: r2(pm["NATGAS"] * 1.045), Timeframe: "7 days", Confidence: 0.65, Direction: "bullish",
-			Analysis: "Cold weather forecasts for the US Northeast are driving short-term bullish sentiment. Storage levels remain below the 5-year average. LNG export demand continues to provide a floor. Volatility expected to remain elevated."},
-		{Symbol: "HEATING", Name: "Heating Oil", Current: pm["HEATING"], Predicted: r2(pm["HEATING"] * 1.018), Timeframe: "7 days", Confidence: 0.71, Direction: "bullish",
-			Analysis: "Heating oil demand remains seasonally strong. Distillate inventories are below the 5-year range. Refining margins support continued production, but European demand competition keeps prices firm."},
+
+	out := make([]models.Prediction, 0, len(predictionSymbols))
+	for _, ps := range predictionSymbols {
+		current := pm[ps.symbol]
+		var history []float64
+		if s.yahoo != nil {
+			history = s.yahoo.GetHistory(ps.symbol)
+		}
+
+		if len(history) < 30 {
+			out = append(out, fallbackPrediction(ps.symbol, ps.name, current, ps.horizon))
+			continue
+		}
+
+		// Splice the live current price as the most recent close so the forecast
+		// reflects intraday movement, not just the last completed daily bar.
+		closes := history
+		if current > 0 {
+			closes = append(append([]float64{}, history...), current)
+		}
+
+		f, err := Forecast(closes, ps.horizon)
+		if err != nil {
+			out = append(out, fallbackPrediction(ps.symbol, ps.name, current, ps.horizon))
+			continue
+		}
+
+		out = append(out, models.Prediction{
+			Symbol:        ps.symbol,
+			Name:          ps.name,
+			Current:       r2(f.Current),
+			Predicted:     r2(f.Predicted),
+			PredictedLow:  r2(f.Low),
+			PredictedHigh: r2(f.High),
+			Timeframe:     fmt.Sprintf("%d days", ps.horizon),
+			Confidence:    math.Round(f.Confidence*100) / 100,
+			Direction:     f.Direction,
+			Analysis:      buildAnalysis(ps.name, f),
+			Model:         "holt-linear+rsi/macd",
+			Source:        "yahoo",
+			Disclaimer:    predictionDisclaimer,
+		})
 	}
+	return out
+}
+
+// fallbackPrediction is returned when we don't yet have enough history loaded
+// (e.g. cold start, or Yahoo unreachable). The "predicted" value mirrors the
+// current price so the UI doesn't show a misleading move.
+func fallbackPrediction(symbol, name string, current float64, horizon int) models.Prediction {
+	return models.Prediction{
+		Symbol:     symbol,
+		Name:       name,
+		Current:    r2(current),
+		Predicted:  r2(current),
+		Timeframe:  fmt.Sprintf("%d days", horizon),
+		Confidence: 0.0,
+		Direction:  "neutral",
+		Analysis:   "Forecast unavailable — insufficient historical data loaded yet. Please retry shortly.",
+		Model:      "fallback",
+		Source:     "estimate",
+		Disclaimer: predictionDisclaimer,
+	}
+}
+
+// buildAnalysis composes a short, fact-based commentary from the indicator
+// readings. Kept deliberately simple and quantitative; no fabricated narrative.
+func buildAnalysis(name string, f ForecastResult) string {
+	delta := f.Predicted - f.Current
+	pct := 0.0
+	if f.Current != 0 {
+		pct = (delta / f.Current) * 100
+	}
+
+	rsiLabel := "neutral"
+	switch {
+	case f.RSI14 >= 70:
+		rsiLabel = "overbought"
+	case f.RSI14 >= 55:
+		rsiLabel = "bullish"
+	case f.RSI14 <= 30:
+		rsiLabel = "oversold"
+	case f.RSI14 <= 45:
+		rsiLabel = "bearish"
+	}
+
+	macdLabel := "flat"
+	switch {
+	case f.MACDHist > 0:
+		macdLabel = "above signal (bullish)"
+	case f.MACDHist < 0:
+		macdLabel = "below signal (bearish)"
+	}
+
+	bandPct := 0.0
+	if f.Current != 0 {
+		bandPct = ((f.High - f.Low) / 2 / f.Current) * 100
+	}
+
+	trendArticle := "a"
+	if f.Trend == "uptrend" {
+		trendArticle = "an"
+	}
+
+	return fmt.Sprintf(
+		"%s: %d-day Holt linear forecast points to $%.2f (%+.2f%% from $%.2f), with an 80%% interval of $%.2f–$%.2f (±%.1f%%). "+
+			"RSI(14) is %.1f (%s), MACD histogram is %s, and the 50/200-day MA configuration suggests %s %s. "+
+			"Confidence: %.0f%%.",
+		name,
+		f.HorizonDays,
+		f.Predicted, pct, f.Current,
+		f.Low, f.High, bandPct,
+		f.RSI14, rsiLabel,
+		macdLabel,
+		trendArticle, f.Trend,
+		f.Confidence*100,
+	)
 }
 
 func (s *MarketDataService) GetAnalysis() models.MarketAnalysis {

@@ -103,6 +103,7 @@
     <div class="nav-links" id="navLinks">
         <a href="#markets" class="nav-link">Markets</a>
         <a href="#charts" class="nav-link">Charts</a>
+        <a href="#forecast" class="nav-link">Forecast</a>
         <a href="#news" class="nav-link">News</a>
     </div>
 
@@ -224,6 +225,21 @@
                         <div class="chart-info-item"><span class="chart-info-label">Volume</span><span class="chart-info-value" id="chartVolume">—</span></div>
                     </div>
                 </div>
+            </div>
+        </section>
+
+        <section class="section" id="forecast" aria-labelledby="forecast-heading">
+            <div class="container">
+                <header class="section-header">
+                    <div class="section-label">Statistical Outlook</div>
+                    <h2 class="section-title" id="forecast-heading">7-Day Price Forecasts</h2>
+                    <p class="section-desc">Model-driven 7-day forecasts for major energy benchmarks, combining a Holt linear trend model with RSI and MACD technical signals on 2 years of daily history.</p>
+                </header>
+                <div class="forecast-disclaimer" role="note">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+                    <span>Statistical forecasts for informational purposes only. Not investment advice. Past performance does not guarantee future results.</span>
+                </div>
+                <div class="forecast-grid" id="forecastGrid" role="list" aria-label="Price forecasts"></div>
             </div>
         </section>
 

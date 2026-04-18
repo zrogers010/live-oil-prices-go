@@ -1,6 +1,6 @@
-import { getPrices, getChartData, getNews } from './api';
+import { getPrices, getChartData, getNews, getPredictions } from './api';
 import { initChart, updateChartData, subscribeCrosshair } from './charts';
-import type { Price, ChartData, NewsArticle, OHLCV } from './types';
+import type { Price, ChartData, NewsArticle, OHLCV, Prediction } from './types';
 
 let currentSymbol = 'WTI';
 let currentDays = 90;
@@ -22,6 +22,7 @@ async function loadAllData(): Promise<void> {
     await Promise.all([
       loadPrices(),
       loadChart(currentSymbol, currentDays),
+      loadForecasts(),
       loadNews(),
     ]);
   } catch (e) {
@@ -349,6 +350,141 @@ function renderChartStats(chartData: ChartData): void {
     <div class="chart-stat-item">
       <span class="chart-stat-label">Last Close</span>
       <span class="chart-stat-val">$${last.close.toFixed(2)}</span>
+    </div>
+  `;
+}
+
+// ─── Forecasts ──────────────────────────────────────────
+
+async function loadForecasts(): Promise<void> {
+  try {
+    const predictions = await getPredictions();
+    renderForecasts(predictions || []);
+  } catch (err) {
+    console.error('Failed to load forecasts:', err);
+    const grid = document.getElementById('forecastGrid');
+    if (grid) {
+      grid.innerHTML = `<p class="forecast-empty">Forecasts are temporarily unavailable. Please retry in a few minutes.</p>`;
+    }
+  }
+}
+
+function renderForecasts(predictions: Prediction[]): void {
+  const grid = document.getElementById('forecastGrid');
+  if (!grid) return;
+
+  if (!predictions.length) {
+    grid.innerHTML = `<p class="forecast-empty">No forecasts available.</p>`;
+    return;
+  }
+
+  grid.innerHTML = predictions.map(forecastCardHtml).join('');
+}
+
+function forecastCardHtml(p: Prediction): string {
+  const delta = p.predicted - p.current;
+  const pct = p.current ? (delta / p.current) * 100 : 0;
+  const sign = delta >= 0 ? '+' : '';
+  const dirClass =
+    p.direction === 'bullish' ? 'bullish' :
+    p.direction === 'bearish' ? 'bearish' :
+    'neutral';
+  const arrow =
+    p.direction === 'bullish' ? '↑' :
+    p.direction === 'bearish' ? '↓' :
+    '→';
+
+  const confidencePct = Math.round((p.confidence || 0) * 100);
+  const confidenceLabel =
+    confidencePct >= 70 ? 'High' :
+    confidencePct >= 50 ? 'Moderate' :
+    confidencePct > 0 ? 'Low' :
+    'Unavailable';
+
+  const low = p.predictedLow ?? p.predicted;
+  const high = p.predictedHigh ?? p.predicted;
+  const rangeBar = renderRangeBar(p.current, low, p.predicted, high);
+
+  const sourceLabel = p.source === 'yahoo' ? 'NYMEX / ICE via Yahoo Finance' : 'Estimate';
+  const modelLabel = p.model || 'statistical';
+
+  return `
+    <article class="forecast-card forecast-${dirClass}" data-symbol="${p.symbol}" role="listitem">
+      <header class="forecast-card-header">
+        <div>
+          <div class="forecast-card-symbol">${p.symbol}</div>
+          <div class="forecast-card-name">${p.name}</div>
+        </div>
+        <span class="forecast-direction-badge ${dirClass}" aria-label="Forecast direction: ${p.direction}">
+          <span class="forecast-arrow">${arrow}</span>${p.direction}
+        </span>
+      </header>
+
+      <div class="forecast-prices">
+        <div class="forecast-price-block">
+          <span class="forecast-price-label">Now</span>
+          <span class="forecast-price-value">$${p.current.toFixed(2)}</span>
+        </div>
+        <div class="forecast-arrow-divider" aria-hidden="true">
+          <svg width="20" height="14" viewBox="0 0 20 14" fill="none"><path d="M1 7h18m0 0L13 1m6 6l-6 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </div>
+        <div class="forecast-price-block">
+          <span class="forecast-price-label">${p.timeframe}</span>
+          <span class="forecast-price-value forecast-${dirClass}-text">$${p.predicted.toFixed(2)}</span>
+          <span class="forecast-price-delta ${dirClass}">${sign}${delta.toFixed(2)} (${sign}${pct.toFixed(2)}%)</span>
+        </div>
+      </div>
+
+      ${rangeBar}
+
+      <div class="forecast-confidence">
+        <div class="forecast-confidence-row">
+          <span class="forecast-meta-label">Confidence</span>
+          <span class="forecast-confidence-value">${confidenceLabel} · ${confidencePct}%</span>
+        </div>
+        <div class="forecast-confidence-bar" role="progressbar" aria-valuenow="${confidencePct}" aria-valuemin="0" aria-valuemax="100">
+          <div class="forecast-confidence-fill ${dirClass}" style="width: ${confidencePct}%"></div>
+        </div>
+      </div>
+
+      <p class="forecast-analysis">${p.analysis}</p>
+
+      <footer class="forecast-card-footer">
+        <span class="forecast-footnote">Model: <code>${modelLabel}</code></span>
+        <span class="forecast-footnote">Source: ${sourceLabel}</span>
+      </footer>
+    </article>
+  `;
+}
+
+// renderRangeBar visualises low-mid-high prediction interval relative to the
+// current price. The current price marker shows where we sit inside the band.
+function renderRangeBar(current: number, low: number, predicted: number, high: number): string {
+  if (!high || high <= low) {
+    return '';
+  }
+  const span = high - low;
+  const pos = (val: number) =>
+    Math.max(0, Math.min(100, ((val - low) / span) * 100));
+
+  const currentPos = pos(current);
+  const predictedPos = pos(predicted);
+
+  return `
+    <div class="forecast-range" aria-label="80% prediction interval">
+      <div class="forecast-range-row">
+        <span class="forecast-range-label">80% range</span>
+        <span class="forecast-range-values">$${low.toFixed(2)} – $${high.toFixed(2)}</span>
+      </div>
+      <div class="forecast-range-bar">
+        <div class="forecast-range-track"></div>
+        <div class="forecast-range-marker forecast-range-current" style="left: ${currentPos}%" title="Current $${current.toFixed(2)}"></div>
+        <div class="forecast-range-marker forecast-range-predicted" style="left: ${predictedPos}%" title="Predicted $${predicted.toFixed(2)}"></div>
+      </div>
+      <div class="forecast-range-legend">
+        <span class="forecast-legend-item"><span class="forecast-legend-dot current"></span>Now</span>
+        <span class="forecast-legend-item"><span class="forecast-legend-dot predicted"></span>Forecast</span>
+      </div>
     </div>
   `;
 }

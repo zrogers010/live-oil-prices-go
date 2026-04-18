@@ -47,10 +47,15 @@ export interface Prediction {
   name: string;
   current: number;
   predicted: number;
+  predictedLow?: number;
+  predictedHigh?: number;
   timeframe: string;
   confidence: number;
   direction: string;
   analysis: string;
+  model?: string;
+  source?: string;
+  disclaimer?: string;
 }
 
 export interface TechnicalSignals {
