@@ -6,6 +6,7 @@ import (
 	"live-oil-prices-go/internal/models"
 	"net/http"
 	"strconv"
+	"strings"
 )
 
 type MarketDataClient interface {
@@ -13,6 +14,7 @@ type MarketDataClient interface {
 	GetChartData(symbol string, days int, interval string) models.ChartData
 	GetPredictions() []models.Prediction
 	GetAnalysis() models.MarketAnalysis
+	GetHeroChart(symbol string, maxLiveBars int) models.HeroChart
 }
 
 type NewsClient interface {
@@ -32,6 +34,7 @@ func NewAPI(market MarketDataClient, news NewsClient) *API {
 func (a *API) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/prices", middleware.JSON(a.GetPrices))
 	mux.HandleFunc("GET /api/charts/{symbol}", middleware.JSON(a.GetChartData))
+	mux.HandleFunc("GET /api/hero/{symbol}", middleware.JSON(a.GetHeroChart))
 	mux.HandleFunc("GET /api/news", middleware.JSON(a.GetNews))
 	mux.HandleFunc("GET /api/news/{id}", middleware.JSON(a.GetNewsArticle))
 	mux.HandleFunc("GET /api/predictions", middleware.JSON(a.GetPredictions))
@@ -75,6 +78,30 @@ func (a *API) GetNewsArticle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	json.NewEncoder(w).Encode(article)
+}
+
+// GetHeroChart returns the homepage hero chart payload, choosing
+// automatically between live streaming Pyth candles and a fallback view of
+// the most recent complete trading day's intraday Yahoo bars.
+//
+// Query params:
+//   - max: cap the number of LIVE bars returned (default 360 = 6 hours).
+//     Hard ceiling 720 (12 hours). Ignored in prior-session mode, which
+//     always returns the full session.
+func (a *API) GetHeroChart(w http.ResponseWriter, r *http.Request) {
+	symbol := strings.ToUpper(r.PathValue("symbol"))
+	if symbol == "" {
+		symbol = "WTI"
+	}
+
+	max := 360
+	if v := r.URL.Query().Get("max"); v != "" {
+		if parsed, err := strconv.Atoi(v); err == nil && parsed > 0 && parsed <= 720 {
+			max = parsed
+		}
+	}
+
+	json.NewEncoder(w).Encode(a.market.GetHeroChart(symbol, max))
 }
 
 func (a *API) GetPredictions(w http.ResponseWriter, r *http.Request) {

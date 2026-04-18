@@ -1,4 +1,4 @@
-import type { Price, ChartData, NewsArticle, Prediction, MarketAnalysis } from './types';
+import type { Price, ChartData, NewsArticle, Prediction, MarketAnalysis, HeroChart } from './types';
 
 const BASE = '';
 
@@ -37,6 +37,15 @@ export function getPrices(): Promise<Price[]> {
 
 export function getChartData(symbol: string, days: number = 90): Promise<ChartData> {
   return fetchJSON<ChartData>(`/api/charts/${symbol}?days=${days}`);
+}
+
+/** getHeroChart fetches the homepage hero chart payload. The server picks
+ *  the right mode automatically: streaming 1-minute Pyth candles when the
+ *  market is live, or a 1-day intraday Yahoo series for the prior session
+ *  when the feed is paused (weekends, holidays). `max` only affects the
+ *  live mode; prior-session mode always returns the full session. */
+export function getHeroChart(symbol: string, max: number = 360): Promise<HeroChart> {
+  return fetchJSON<HeroChart>(`/api/hero/${symbol}?max=${max}`);
 }
 
 export function getNews(): Promise<NewsArticle[]> {

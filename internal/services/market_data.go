@@ -12,6 +12,7 @@ type MarketDataService struct {
 	rng        *rand.Rand
 	basePrices map[string]float64
 	yahoo      *YahooFinanceService
+	pyth       *PythService
 }
 
 func NewMarketDataService() *MarketDataService {
@@ -31,6 +32,7 @@ func NewMarketDataService() *MarketDataService {
 		rng:        rand.New(rand.NewSource(time.Now().UnixNano())),
 		basePrices: bases,
 		yahoo:      NewYahooFinanceService(),
+		pyth:       NewPythService(),
 	}
 }
 
@@ -63,11 +65,27 @@ func (s *MarketDataService) GetPrices() []models.Price {
 	if s.yahoo != nil {
 		yahooData = s.yahoo.GetPrices()
 	}
+	var pythData map[string]PythQuote
+	if s.pyth != nil {
+		pythData = s.pyth.GetQuotes()
+	}
 	now := time.Now().UTC().Format(time.RFC3339)
 	prices := make([]models.Price, len(allCommodities))
 
 	for i, c := range allCommodities {
-		if yp, ok := yahooData[c.symbol]; ok {
+		yp, hasYahoo := yahooData[c.symbol]
+		pq, hasPyth := pythData[c.symbol]
+
+		switch {
+		case hasPyth && hasYahoo:
+			// Real-time Pyth tick over Yahoo daily metadata.
+			prices[i] = applyPyth(yp, pq)
+			continue
+		case hasPyth:
+			// Pyth-only: surface the live tick, no daily baseline.
+			prices[i] = applyPyth(models.Price{Symbol: c.symbol, Name: c.name}, pq)
+			continue
+		case hasYahoo:
 			prices[i] = yp
 			continue
 		}
@@ -234,8 +252,10 @@ const predictionDisclaimer = "Statistical forecast for informational purposes on
 func (s *MarketDataService) GetPredictions() []models.Prediction {
 	prices := s.GetPrices()
 	pm := make(map[string]float64)
+	sources := make(map[string]string)
 	for _, p := range prices {
 		pm[p.Symbol] = p.Price
+		sources[p.Symbol] = p.Source
 	}
 
 	out := make([]models.Prediction, 0, len(predictionSymbols))
@@ -264,6 +284,10 @@ func (s *MarketDataService) GetPredictions() []models.Prediction {
 			continue
 		}
 
+		predSource := sources[ps.symbol]
+		if predSource == "" {
+			predSource = "yahoo"
+		}
 		out = append(out, models.Prediction{
 			Symbol:        ps.symbol,
 			Name:          ps.name,
@@ -276,7 +300,7 @@ func (s *MarketDataService) GetPredictions() []models.Prediction {
 			Direction:     f.Direction,
 			Analysis:      buildAnalysis(ps.name, f),
 			Model:         "holt-linear+rsi/macd",
-			Source:        "yahoo",
+			Source:        predSource,
 			Disclaimer:    predictionDisclaimer,
 		})
 	}
@@ -354,6 +378,86 @@ func buildAnalysis(name string, f ForecastResult) string {
 		trendArticle, f.Trend,
 		f.Confidence*100,
 	)
+}
+
+// GetPythCandles surfaces the streaming 1-minute candle buffer for a single
+// symbol so the homepage hero chart can render true real-time bars. Returns
+// nil if Pyth is unavailable or hasn't accumulated any ticks yet.
+func (s *MarketDataService) GetPythCandles(symbol string, max int) []models.PythCandle {
+	if s.pyth == nil {
+		return nil
+	}
+	return s.pyth.GetCandles(symbol, max)
+}
+
+// pythLiveWindow defines how recent the latest Pyth tick must be for us to
+// treat the feed as actively streaming. Outside this window the underlying
+// market is paused (weekend/holiday/maintenance) and we should fall back to
+// Yahoo's intraday series for a meaningful chart.
+//
+// 5 minutes was chosen because Pyth's WTI publishers can briefly go quiet
+// during low-activity periods even when markets are technically open
+// (e.g. Sunday evening reopen). 5 min absorbs those pauses without
+// flipping the chart over and back.
+const pythLiveWindow = 5 * time.Minute
+
+// GetHeroChart returns the current best-available chart for the homepage
+// hero. When Pyth is publishing fresh ticks we serve the 1-minute streaming
+// candle buffer; otherwise we fall back to the prior session's intraday
+// Yahoo bars so the chart has something to render on weekends/holidays.
+//
+// `maxLiveBars` caps the live window (in 1-minute bars) when streaming.
+// It's ignored in fallback mode — prior-session mode always returns the
+// full session's bars (typically 80–280 5-min bars).
+func (s *MarketDataService) GetHeroChart(symbol string, maxLiveBars int) models.HeroChart {
+	out := models.HeroChart{Symbol: symbol, Bars: []models.PythCandle{}}
+
+	// 1) Try Pyth streaming candles first.
+	if s.pyth != nil {
+		if q, ok := s.pyth.GetQuote(symbol); ok && time.Since(q.PublishedAt) <= pythLiveWindow {
+			bars := s.pyth.GetCandles(symbol, maxLiveBars)
+			if len(bars) > 0 {
+				out.Mode = "live"
+				out.Interval = "1m"
+				out.Source = "pyth"
+				out.UpdatedAt = q.PublishedAt.Format(time.RFC3339)
+				out.Bars = bars
+				return out
+			}
+		}
+	}
+
+	// 2) Fall back to the prior-session intraday Yahoo series.
+	if s.yahoo != nil {
+		bars, sessionDate, interval := s.yahoo.GetPriorSessionIntraday(symbol)
+		if len(bars) > 0 {
+			out.Mode = "prior-session"
+			out.Interval = interval
+			out.Source = "yahoo"
+			out.SessionDate = sessionDate
+			last := bars[len(bars)-1]
+			out.UpdatedAt = time.Unix(last.Time, 0).UTC().Format(time.RFC3339)
+			// Reshape OHLCV (which carries volume we don't need here) into
+			// the same PythCandle shape the live mode uses, so the frontend
+			// has a single bar type to render.
+			out.Bars = make([]models.PythCandle, len(bars))
+			for i, b := range bars {
+				out.Bars[i] = models.PythCandle{
+					Time:  b.Time,
+					Open:  b.Open,
+					High:  b.High,
+					Low:   b.Low,
+					Close: b.Close,
+				}
+			}
+			return out
+		}
+	}
+
+	// 3) Nothing available — empty payload, frontend renders the cold-start
+	// "warming up the live feed" placeholder.
+	out.Mode = "warming-up"
+	return out
 }
 
 func (s *MarketDataService) GetAnalysis() models.MarketAnalysis {

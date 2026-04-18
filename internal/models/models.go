@@ -23,6 +23,34 @@ type OHLCV struct {
 	Volume int64   `json:"volume"`
 }
 
+// PythCandle is a 1-minute OHLC bar derived from streaming Pyth Network
+// ticks. It deliberately omits volume — Pyth aggregates publishers, not
+// trades, so a "volume" number wouldn't be meaningful.
+type PythCandle struct {
+	Time  int64   `json:"time"`  // unix seconds at the start of the bucket
+	Open  float64 `json:"open"`
+	High  float64 `json:"high"`
+	Low   float64 `json:"low"`
+	Close float64 `json:"close"`
+	Ticks int     `json:"ticks"` // number of Pyth publishes folded into this bar
+}
+
+// HeroChart is the response payload for the homepage hero chart endpoint.
+// It abstracts away the live-vs-historical decision: during market hours
+// the server returns a streaming 1-minute Pyth series; off-hours it falls
+// back to the prior session's intraday Yahoo bars. The frontend just
+// renders whatever .bars contains and shows the right header text based
+// on .mode.
+type HeroChart struct {
+	Symbol      string       `json:"symbol"`
+	Mode        string       `json:"mode"`                  // "live" | "prior-session"
+	Interval    string       `json:"interval"`              // "1m" | "5m" | ...
+	SessionDate string       `json:"sessionDate,omitempty"` // YYYY-MM-DD ET, set when mode="prior-session"
+	UpdatedAt   string       `json:"updatedAt,omitempty"`   // RFC3339, last bar's wall-clock time
+	Source      string       `json:"source"`                // "pyth" | "yahoo"
+	Bars        []PythCandle `json:"bars"`
+}
+
 type ChartData struct {
 	Symbol   string  `json:"symbol"`
 	Name     string  `json:"name"`

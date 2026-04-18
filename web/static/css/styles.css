@@ -431,9 +431,15 @@ a.ticker-item:hover .ticker-symbol {
   position: relative;
   display: flex;
   align-items: center;
-  padding-top: calc(var(--nav-height) + var(--ticker-height) + 48px);
-  padding-bottom: 48px;
+  padding-top: calc(var(--nav-height) + var(--ticker-height) + 32px);
+  padding-bottom: 56px;
   overflow: hidden;
+}
+
+.hero.hero-chart-mode {
+  padding-top: calc(var(--nav-height) + var(--ticker-height) + 24px);
+  padding-bottom: 40px;
+  min-height: auto;
 }
 
 .hero-bg {
@@ -3018,3 +3024,524 @@ a.ticker-item:hover .ticker-symbol {
 .price-card:nth-child(4) { animation-delay: 0.2s; }
 .price-card:nth-child(5) { animation-delay: 0.25s; }
 .price-card:nth-child(6) { animation-delay: 0.3s; }
+
+/* ============================================
+   Data source indicators (Pyth real-time / Yahoo delayed)
+   ============================================ */
+
+/* Hero source label colour-coding. The base .hero-price-source declaration
+   above provides shared styling; these modifiers tint the pill based on the
+   source field returned by the API. */
+.hero-price-source.source-pyth {
+  color: #4ade80;
+  background: rgba(74, 222, 128, 0.12);
+  border: 1px solid rgba(74, 222, 128, 0.25);
+}
+.hero-price-source.source-pyth-paused {
+  color: #fbbf24;
+  background: rgba(251, 191, 36, 0.10);
+  border: 1px solid rgba(251, 191, 36, 0.22);
+}
+.hero-price-source.source-yahoo {
+  color: var(--text-muted);
+  background: rgba(255, 255, 255, 0.04);
+}
+.hero-price-source.source-estimate {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+/* Inline pill displayed next to the contract column in the markets table. */
+.source-pill {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 7px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  border-radius: 999px;
+  text-transform: uppercase;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+.source-pill-realtime {
+  color: #4ade80;
+  background: rgba(74, 222, 128, 0.12);
+  border: 1px solid rgba(74, 222, 128, 0.3);
+  position: relative;
+  padding-left: 16px;
+}
+.source-pill-realtime::before {
+  content: "";
+  position: absolute;
+  left: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #4ade80;
+  box-shadow: 0 0 6px #4ade80;
+  animation: pyth-pulse 1.6s ease-in-out infinite;
+}
+.source-pill-paused {
+  color: #fbbf24;
+  background: rgba(251, 191, 36, 0.10);
+  border: 1px solid rgba(251, 191, 36, 0.25);
+}
+.source-pill-delayed {
+  color: var(--text-muted);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+.source-pill-estimate {
+  color: var(--text-muted);
+  background: transparent;
+  border: 1px dashed rgba(255, 255, 255, 0.15);
+  font-style: italic;
+}
+
+@keyframes pyth-pulse {
+  0%, 100% { opacity: 1; transform: translateY(-50%) scale(1); }
+  50% { opacity: 0.5; transform: translateY(-50%) scale(0.85); }
+}
+
+/* Footer attribution: "Powered by Pyth Network". */
+.footer-attribution {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.footer-attribution-label {
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 11px;
+  color: var(--text-muted);
+  opacity: 0.75;
+}
+.footer-attribution-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-secondary);
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+a.footer-attribution-link:hover {
+  color: #4ade80;
+}
+.footer-attribution-link strong {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+.footer-attribution-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+.footer-attribution-dot.live {
+  background: #4ade80;
+  box-shadow: 0 0 6px rgba(74, 222, 128, 0.6);
+}
+.footer-attribution-dot.delayed {
+  background: var(--text-muted);
+  opacity: 0.55;
+}
+.footer-attribution-sep {
+  opacity: 0.4;
+}
+
+/* ============================================
+   Hero Chart (replaces the giant title hero)
+   ============================================ */
+
+.hero-eyebrow {
+  text-align: center;
+  margin-bottom: 18px;
+}
+
+.hero-eyebrow .hero-badge {
+  margin-bottom: 14px;
+}
+
+.hero-tagline {
+  font-size: clamp(13px, 1.4vw, 15px);
+  color: var(--text-secondary);
+  letter-spacing: 0.01em;
+  margin: 0;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.hero-tagline-accent {
+  color: var(--text-muted);
+  font-weight: 500;
+  transition: color 0.2s ease;
+}
+
+/* Tagline accent variants mirror the live-pill states for consistency.
+   The live variant takes the same green as the streaming pill; paused
+   stays muted so the page reads as "honest about being closed" rather
+   than misleading users into thinking they're seeing real-time data. */
+.hero-tagline-accent.hero-tagline-accent-live {
+  color: #34d399;
+}
+
+.hero-tagline-accent.hero-tagline-accent-paused {
+  color: var(--text-muted);
+}
+
+.hero-tagline-accent.hero-tagline-accent-warming {
+  color: #fbbf24;
+}
+
+.hero-chart-card {
+  position: relative;
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.65) 0%, rgba(11, 17, 32, 0.4) 100%);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 24px 24px 18px;
+  margin: 0 auto 28px;
+  max-width: 1080px;
+  box-shadow:
+    0 24px 60px -20px rgba(0, 0, 0, 0.55),
+    0 0 0 1px rgba(59, 130, 246, 0.04) inset;
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+.hero-chart-header {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 24px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 14px;
+}
+
+.hero-chart-title-block {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.hero-chart-symbol {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* LIVE pill — sits next to the chart title and visibly pulses each time we
+   receive a new tick from the Pyth poll loop. The green dot is the real
+   "is the data flowing?" cue for casual visitors. */
+.hero-live-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgba(16, 185, 129, 0.12);
+  color: #10b981;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  text-transform: uppercase;
+  font-family: var(--font-mono);
+  white-space: nowrap;
+}
+
+.hero-live-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #10b981;
+  box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+  animation: hero-live-pulse 2s infinite;
+}
+
+/* Paused state — markets closed (weekend/holiday) or upstream feed silent.
+   We keep the pill visible for honesty: "MARKET CLOSED" rather than hiding
+   it makes the page's data freshness explicit instead of pretending. */
+.hero-live-pill.hero-live-pill-paused {
+  background: rgba(148, 163, 184, 0.12);
+  color: var(--text-muted);
+  border-color: rgba(148, 163, 184, 0.25);
+}
+
+.hero-live-dot.hero-live-dot-paused {
+  background: #94a3b8;
+  box-shadow: none;
+  animation: none;
+}
+
+/* Warming-up state — server has the route wired but no bars yet (cold
+   start). Use amber instead of green/grey so it reads as "starting up"
+   rather than "live" or "closed". */
+.hero-live-pill.hero-live-pill-warming {
+  background: rgba(245, 158, 11, 0.12);
+  color: #fbbf24;
+  border-color: rgba(245, 158, 11, 0.25);
+}
+
+.hero-live-dot.hero-live-dot-warming {
+  background: #f59e0b;
+  box-shadow: none;
+  animation: hero-live-pulse-amber 2s infinite;
+}
+
+@keyframes hero-live-pulse-amber {
+  0%   { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.6); }
+  70%  { box-shadow: 0 0 0 6px rgba(245, 158, 11, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0); }
+}
+
+/* When a fresh tick arrives JS toggles `pulse-flash` for one frame to
+   restart this short flash, layered on top of the steady pulse. */
+.hero-live-dot.pulse-flash {
+  animation: hero-live-flash 0.6s ease-out, hero-live-pulse 2s infinite 0.6s;
+}
+
+@keyframes hero-live-pulse {
+  0%   { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.6); }
+  70%  { box-shadow: 0 0 0 6px rgba(16, 185, 129, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+}
+
+@keyframes hero-live-flash {
+  0%   { transform: scale(1);   background: #34d399; box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.9); }
+  50%  { transform: scale(1.6); background: #6ee7b7; box-shadow: 0 0 0 10px rgba(52, 211, 153, 0); }
+  100% { transform: scale(1);   background: #10b981; box-shadow: 0 0 0 0 rgba(52, 211, 153, 0); }
+}
+
+/* Empty state shown when the candle buffer hasn't accumulated any bars yet
+   (e.g. immediately after a server restart). Centred over the chart area. */
+.hero-chart-container {
+  position: relative;
+}
+
+.hero-chart-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  text-align: center;
+  padding: 24px;
+  pointer-events: none;
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.4), rgba(15, 23, 42, 0.6));
+  border-radius: 8px;
+  z-index: 2;
+}
+
+.hero-chart-empty-icon {
+  color: var(--accent);
+  opacity: 0.8;
+}
+
+.hero-chart-empty-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-heading);
+}
+
+.hero-chart-empty-text {
+  font-size: 12px;
+  color: var(--text-muted);
+  max-width: 320px;
+  line-height: 1.45;
+}
+
+.hero-chart-contract {
+  font-size: 12px;
+  color: var(--accent);
+  letter-spacing: 0.02em;
+}
+
+.hero-chart-price-block {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+
+.hero-chart-price {
+  font-family: var(--font-mono);
+  font-size: clamp(32px, 4.6vw, 44px);
+  font-weight: 800;
+  color: var(--text-heading);
+  line-height: 1;
+  letter-spacing: -0.02em;
+}
+
+.hero-chart-change {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+.hero-chart-change.positive { color: var(--green); }
+.hero-chart-change.negative { color: var(--red); }
+
+.hero-chart-source-block {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.hero-chart-source {
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 3px 9px;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 4px;
+  font-size: 10px;
+}
+
+.hero-chart-source.source-pyth {
+  color: #4ade80;
+  background: rgba(74, 222, 128, 0.12);
+  border: 1px solid rgba(74, 222, 128, 0.25);
+}
+
+.hero-chart-source.source-pyth-paused {
+  color: #fbbf24;
+  background: rgba(251, 191, 36, 0.10);
+  border: 1px solid rgba(251, 191, 36, 0.22);
+}
+
+.hero-chart-source.source-yahoo {
+  color: var(--text-muted);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.hero-chart-source.source-estimate {
+  color: #c084fc;
+  background: rgba(192, 132, 252, 0.10);
+  border: 1px solid rgba(192, 132, 252, 0.22);
+}
+
+.hero-chart-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 12px;
+  padding: 4px;
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  width: fit-content;
+}
+
+.hero-tf-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  padding: 6px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.hero-tf-btn:hover {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.hero-tf-btn:disabled,
+.hero-tf-btn.disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.hero-tf-btn.active {
+  color: var(--accent);
+  background: rgba(59, 130, 246, 0.12);
+  box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.25) inset;
+}
+
+.hero-chart-container {
+  width: 100%;
+  height: 360px;
+  position: relative;
+}
+
+.hero-chart-footer {
+  margin-top: 12px;
+  font-size: 12px;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.hero-chart-footer-link a {
+  color: var(--text-muted);
+  text-decoration: none;
+  transition: color 0.15s;
+}
+
+.hero-chart-footer-link a:hover {
+  color: var(--accent);
+}
+
+.hero-chart-footer-sep {
+  opacity: 0.4;
+}
+
+@media (max-width: 768px) {
+  .hero-chart-card {
+    padding: 18px 14px 14px;
+    border-radius: var(--radius);
+  }
+
+  .hero-chart-header {
+    grid-template-columns: 1fr;
+    gap: 12px;
+    padding-bottom: 14px;
+    margin-bottom: 12px;
+  }
+
+  .hero-chart-price-block,
+  .hero-chart-source-block {
+    align-items: flex-start;
+  }
+
+  .hero-chart-container {
+    height: 260px;
+  }
+
+  .hero-tf-btn {
+    padding: 6px 10px;
+    font-size: 11px;
+  }
+}
