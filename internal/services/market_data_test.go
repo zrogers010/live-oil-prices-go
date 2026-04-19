@@ -109,7 +109,7 @@ func TestGetChartDataUnknownSymbolFallsBack(t *testing.T) {
 
 func TestGenerateDailySkipsWeekends(t *testing.T) {
 	svc := newDeterministicMarketDataService()
-	data := svc.generateDaily(100, 30)
+	data := svc.generateDaily(rand.New(rand.NewSource(42)), 100, 30)
 
 	if len(data) == 0 || len(data) > 30 {
 		t.Fatalf("expected 1..30 daily points, got %d", len(data))
@@ -119,6 +119,32 @@ func TestGenerateDailySkipsWeekends(t *testing.T) {
 		wd := time.Unix(candle.Time, 0).Weekday()
 		if wd == time.Saturday || wd == time.Sunday {
 			t.Fatalf("did not expect weekend candle at %v", wd)
+		}
+	}
+}
+
+// TestGetChartDataIsStableAcrossCalls is a regression guard for the bug
+// where flipping back and forth between commodity tabs returned a freshly
+// randomised series each time. With the deterministic seed (or real Yahoo
+// data), two consecutive identical requests must return identical bars.
+func TestGetChartDataIsStableAcrossCalls(t *testing.T) {
+	svc := newDeterministicMarketDataService()
+
+	first := svc.GetChartData("OPEC", 30, "")
+	second := svc.GetChartData("OPEC", 30, "")
+	third := svc.GetChartData("OPEC", 30, "")
+
+	if len(first.Data) == 0 {
+		t.Fatalf("expected non-empty chart data")
+	}
+	if len(first.Data) != len(second.Data) || len(second.Data) != len(third.Data) {
+		t.Fatalf("inconsistent bar counts across calls: %d / %d / %d",
+			len(first.Data), len(second.Data), len(third.Data))
+	}
+	for i := range first.Data {
+		if first.Data[i] != second.Data[i] || second.Data[i] != third.Data[i] {
+			t.Fatalf("bar %d differs across calls: first=%+v second=%+v third=%+v",
+				i, first.Data[i], second.Data[i], third.Data[i])
 		}
 	}
 }

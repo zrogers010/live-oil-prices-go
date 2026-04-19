@@ -2,6 +2,8 @@ package services
 
 import (
 	"fmt"
+	"hash/fnv"
+	"io"
 	"live-oil-prices-go/internal/models"
 	"math"
 	"math/rand"
@@ -143,20 +145,55 @@ func (s *MarketDataService) GetChartData(symbol string, days int, interval strin
 		}
 	}
 
+	// Prefer REAL cached Yahoo OHLCV daily history when available. This
+	// is what the user sees on /charts and we want it to be actual market
+	// history, not a randomly regenerated series. If the cache hasn't
+	// loaded yet (cold start) or this symbol isn't tracked by Yahoo
+	// (estimates: OPEC, DUBAI, etc.), we fall through to the synthetic
+	// generator below.
+	if interval == "1d" && s.yahoo != nil {
+		if bars := s.yahoo.GetDailyHistory(symbol, days); len(bars) > 0 {
+			return models.ChartData{Symbol: symbol, Name: name, Interval: interval, Data: bars}
+		}
+	}
+
+	// Synthetic fallback. We seed a per-call RNG with a hash of
+	// (symbol, days, today's UTC date) so flipping back and forth between
+	// tabs returns the SAME chart instead of a freshly randomised series.
+	// The series naturally rolls over once a day when the seed changes.
+	rng := rand.New(rand.NewSource(syntheticChartSeed(symbol, days, interval)))
+
 	var data []models.OHLCV
 	switch interval {
 	case "2h":
-		data = s.generateIntraday(base, days, 2)
+		data = s.generateIntraday(rng, base, days, 2)
 	case "4h":
-		data = s.generateIntraday(base, days, 4)
+		data = s.generateIntraday(rng, base, days, 4)
 	default:
-		data = s.generateDaily(base, days)
+		data = s.generateDaily(rng, base, days)
 	}
 
 	return models.ChartData{Symbol: symbol, Name: name, Interval: interval, Data: data}
 }
 
-func (s *MarketDataService) generateDaily(base float64, days int) []models.OHLCV {
+// syntheticChartSeed produces a stable per-day seed for the synthetic
+// chart generator. Two requests for the same (symbol, days, interval) on
+// the same UTC calendar day return the same RNG sequence and therefore
+// the same chart. Across days the seed shifts so the chart "ages
+// forward" naturally.
+func syntheticChartSeed(symbol string, days int, interval string) int64 {
+	h := fnv.New64a()
+	io.WriteString(h, symbol)
+	io.WriteString(h, "|")
+	io.WriteString(h, interval)
+	io.WriteString(h, "|")
+	fmt.Fprintf(h, "%d|", days)
+	io.WriteString(h, time.Now().UTC().Format("2006-01-02"))
+	// fnv64 is unsigned; cast preserves all bits for use as an int64 seed.
+	return int64(h.Sum64())
+}
+
+func (s *MarketDataService) generateDaily(rng *rand.Rand, base float64, days int) []models.OHLCV {
 	allData := make([]models.OHLCV, 0, days+50)
 	price := base - (base * 0.05)
 	calendarDays := int(float64(days)*1.5) + 20
@@ -172,13 +209,13 @@ func (s *MarketDataService) generateDaily(base float64, days int) []models.OHLCV
 			break
 		}
 		vol := price * 0.015
-		change := (s.rng.Float64() - 0.47) * vol
+		change := (rng.Float64() - 0.47) * vol
 		price += change
 		open := price
-		cl := open + (s.rng.Float64()-0.5)*vol
-		high := math.Max(open, cl) + s.rng.Float64()*vol*0.5
-		low := math.Min(open, cl) - s.rng.Float64()*vol*0.5
-		v := int64(800000 + s.rng.Intn(1500000))
+		cl := open + (rng.Float64()-0.5)*vol
+		high := math.Max(open, cl) + rng.Float64()*vol*0.5
+		low := math.Min(open, cl) - rng.Float64()*vol*0.5
+		v := int64(800000 + rng.Intn(1500000))
 		allData = append(allData, models.OHLCV{
 			Time: t.Unix(), Open: r2(open), High: r2(high), Low: r2(low), Close: r2(cl), Volume: v,
 		})
@@ -190,7 +227,7 @@ func (s *MarketDataService) generateDaily(base float64, days int) []models.OHLCV
 	return allData
 }
 
-func (s *MarketDataService) generateIntraday(base float64, days int, hoursPerCandle int) []models.OHLCV {
+func (s *MarketDataService) generateIntraday(rng *rand.Rand, base float64, days int, hoursPerCandle int) []models.OHLCV {
 	candlesPerDay := 24 / hoursPerCandle
 	data := make([]models.OHLCV, 0, days*candlesPerDay)
 	price := base - (base * 0.03)
@@ -211,13 +248,13 @@ func (s *MarketDataService) generateIntraday(base float64, days int, hoursPerCan
 				break
 			}
 			vol := price * 0.004
-			change := (s.rng.Float64() - 0.48) * vol
+			change := (rng.Float64() - 0.48) * vol
 			price += change
 			open := price
-			cl := open + (s.rng.Float64()-0.5)*vol
-			high := math.Max(open, cl) + s.rng.Float64()*vol*0.3
-			low := math.Min(open, cl) - s.rng.Float64()*vol*0.3
-			v := int64(50000 + s.rng.Intn(200000))
+			cl := open + (rng.Float64()-0.5)*vol
+			high := math.Max(open, cl) + rng.Float64()*vol*0.3
+			low := math.Min(open, cl) - rng.Float64()*vol*0.3
+			v := int64(50000 + rng.Intn(200000))
 			data = append(data, models.OHLCV{
 				Time: t.Unix(), Open: r2(open), High: r2(high), Low: r2(low), Close: r2(cl), Volume: v,
 			})

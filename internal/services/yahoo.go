@@ -66,19 +66,21 @@ type intradayBars struct {
 }
 
 type YahooFinanceService struct {
-	client   *http.Client
-	mu       sync.RWMutex
-	prices   map[string]models.Price
-	history  map[string][]float64
-	intraday map[string]intradayBars
+	client     *http.Client
+	mu         sync.RWMutex
+	prices     map[string]models.Price
+	history    map[string][]float64    // 2y of daily closes (legacy, kept for prediction models)
+	historyOHLC map[string][]models.OHLCV // 2y of daily OHLCV bars used for the main chart
+	intraday   map[string]intradayBars
 }
 
 func NewYahooFinanceService() *YahooFinanceService {
 	svc := &YahooFinanceService{
-		client:   &http.Client{Timeout: 15 * time.Second},
-		prices:   make(map[string]models.Price),
-		history:  make(map[string][]float64),
-		intraday: make(map[string]intradayBars),
+		client:      &http.Client{Timeout: 15 * time.Second},
+		prices:      make(map[string]models.Price),
+		history:     make(map[string][]float64),
+		historyOHLC: make(map[string][]models.OHLCV),
+		intraday:    make(map[string]intradayBars),
 	}
 	svc.refresh()
 	svc.refreshHistory()
@@ -293,11 +295,14 @@ func (s *YahooFinanceService) GetHistory(symbol string) []float64 {
 	return out
 }
 
-// refreshHistory fetches ~2 years of daily closes for every Yahoo-tracked
-// symbol in parallel and updates the cache.
+// refreshHistory fetches ~2 years of daily OHLCV bars for every Yahoo-tracked
+// symbol in parallel and updates the cache. Both the OHLCV history (used by
+// the main chart) and a closes-only projection (used by the prediction
+// models) are derived from the same network call.
 func (s *YahooFinanceService) refreshHistory() {
 	type result struct {
 		symbol string
+		bars   []models.OHLCV
 		closes []float64
 	}
 	var wg sync.WaitGroup
@@ -307,12 +312,16 @@ func (s *YahooFinanceService) refreshHistory() {
 		wg.Add(1)
 		go func(ys yahooSymbol) {
 			defer wg.Done()
-			closes, err := s.fetchHistory(ys)
+			bars, err := s.fetchHistory(ys)
 			if err != nil {
 				log.Printf("yahoo: failed to fetch history for %s (%s): %v", ys.internal, ys.yahoo, err)
 				return
 			}
-			results <- result{symbol: ys.internal, closes: closes}
+			closes := make([]float64, 0, len(bars))
+			for _, b := range bars {
+				closes = append(closes, b.Close)
+			}
+			results <- result{symbol: ys.internal, bars: bars, closes: closes}
 		}(sym)
 	}
 
@@ -322,12 +331,16 @@ func (s *YahooFinanceService) refreshHistory() {
 	s.mu.Lock()
 	for r := range results {
 		s.history[r.symbol] = r.closes
+		s.historyOHLC[r.symbol] = r.bars
 	}
 	s.mu.Unlock()
 }
 
-// fetchHistory pulls 2y of daily closes for a Yahoo symbol.
-func (s *YahooFinanceService) fetchHistory(sym yahooSymbol) ([]float64, error) {
+// fetchHistory pulls 2y of daily OHLCV bars for a Yahoo symbol. We keep
+// every bar that has a valid (positive, non-NaN) close; bars with null
+// individual O/H/L are repaired by falling back to the close so the chart
+// renders without gaps.
+func (s *YahooFinanceService) fetchHistory(sym yahooSymbol) ([]models.OHLCV, error) {
 	url := fmt.Sprintf(
 		"https://query1.finance.yahoo.com/v8/finance/chart/%s?range=2y&interval=1d&includePrePost=false",
 		sym.yahoo,
@@ -366,25 +379,79 @@ func (s *YahooFinanceService) fetchHistory(sym yahooSymbol) ([]float64, error) {
 	if len(chart.Chart.Result) == 0 {
 		return nil, fmt.Errorf("no results")
 	}
+	timestamps := chart.Chart.Result[0].Timestamp
 	quotes := chart.Chart.Result[0].Indicators.Quote
 	if len(quotes) == 0 {
 		return nil, fmt.Errorf("no quote indicators")
 	}
-	rawCloses := quotes[0].Close
-	closes := make([]float64, 0, len(rawCloses))
+	q := quotes[0]
+	bars := make([]models.OHLCV, 0, len(timestamps))
 	// Yahoo can return null entries for non-trading days that weren't filtered;
-	// we drop those and keep only valid closes so the math doesn't see zeros.
-	for _, c := range rawCloses {
-		v, err := c.Float64()
-		if err != nil || v <= 0 || math.IsNaN(v) {
+	// we drop bars whose close is missing/invalid. For bars with null O/H/L
+	// individually (rare but happens around contract rolls), we repair with
+	// the close so the chart still draws a candle instead of leaving a hole.
+	for i, ts := range timestamps {
+		if i >= len(q.Close) {
+			break
+		}
+		cl, err := q.Close[i].Float64()
+		if err != nil || cl <= 0 || math.IsNaN(cl) {
 			continue
 		}
-		closes = append(closes, v)
+		open := cl
+		if i < len(q.Open) {
+			if v, err := q.Open[i].Float64(); err == nil && v > 0 && !math.IsNaN(v) {
+				open = v
+			}
+		}
+		high := math.Max(open, cl)
+		if i < len(q.High) {
+			if v, err := q.High[i].Float64(); err == nil && v > 0 && !math.IsNaN(v) {
+				high = v
+			}
+		}
+		low := math.Min(open, cl)
+		if i < len(q.Low) {
+			if v, err := q.Low[i].Float64(); err == nil && v > 0 && !math.IsNaN(v) {
+				low = v
+			}
+		}
+		var vol int64
+		if i < len(q.Volume) {
+			if v, err := q.Volume[i].Int64(); err == nil && v >= 0 {
+				vol = v
+			}
+		}
+		bars = append(bars, models.OHLCV{
+			Time: ts, Open: round2(open), High: round2(high), Low: round2(low), Close: round2(cl), Volume: vol,
+		})
 	}
-	if len(closes) < 30 {
-		return nil, fmt.Errorf("insufficient close data: %d points", len(closes))
+	if len(bars) < 30 {
+		return nil, fmt.Errorf("insufficient daily history: %d bars", len(bars))
 	}
-	return closes, nil
+	return bars, nil
+}
+
+// GetDailyHistory returns up to `days` of the most recent cached daily
+// OHLCV bars for `symbol`, oldest-first. Returns nil if nothing is cached
+// yet for that symbol (e.g. cold start, or a non-Yahoo symbol). The
+// `days` cap is taken in *bar* count, not calendar days, so weekends and
+// holidays are naturally excluded from the count.
+func (s *YahooFinanceService) GetDailyHistory(symbol string, days int) []models.OHLCV {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	src, ok := s.historyOHLC[symbol]
+	if !ok || len(src) == 0 {
+		return nil
+	}
+	if days <= 0 || days >= len(src) {
+		out := make([]models.OHLCV, len(src))
+		copy(out, src)
+		return out
+	}
+	out := make([]models.OHLCV, days)
+	copy(out, src[len(src)-days:])
+	return out
 }
 
 // intradayHotSymbols are the symbols we proactively keep an intraday series
