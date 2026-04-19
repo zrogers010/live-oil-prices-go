@@ -499,7 +499,14 @@ function renderMarketTable(prices: Price[]): void {
 
 // ─── Chart ──────────────────────────────────────────────
 
+// chartLoadSeq guards against a stale response overwriting a newer one when
+// the user clicks tabs faster than the network responds. Each loadChart()
+// call bumps the counter and saves a local copy; if the in-flight fetch
+// returns and the counter has moved on, we throw the result away.
+let chartLoadSeq = 0;
+
 async function loadChart(symbol: string, days: number): Promise<void> {
+  const seq = ++chartLoadSeq;
   try {
     const container = document.getElementById('chartContainer')!;
     if (!(window as any)['chartInit']) {
@@ -516,12 +523,40 @@ async function loadChart(symbol: string, days: number): Promise<void> {
     });
 
     const data = await getChartData(symbol, days);
+    if (seq !== chartLoadSeq) return; // a newer click superseded us
     updateChartData(data.data);
     renderChartStats(data);
+    primeChartOhlcDisplay(data);
   } catch (err) {
     console.error('Failed to load chart:', err);
     setError('Failed to load chart data. Please try again later.');
   }
+}
+
+// primeChartOhlcDisplay fills the Open/High/Low/Close/Volume row above the
+// chart with the LATEST bar's values whenever a new dataset loads. Without
+// this, the row keeps showing the last hovered candle from the previously
+// selected commodity/timeframe — which makes it look to the user like the
+// chart didn't actually update because the visible numbers are unchanged.
+function primeChartOhlcDisplay(chartData: ChartData): void {
+  const data = chartData.data;
+  if (!data || data.length === 0) {
+    ['chartOpen', 'chartHigh', 'chartLow', 'chartClose', 'chartVolume'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = '—';
+    });
+    return;
+  }
+  const last = data[data.length - 1]!;
+  const setIf = (id: string, txt: string) => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = txt;
+  };
+  setIf('chartOpen', `$${last.open.toFixed(2)}`);
+  setIf('chartHigh', `$${last.high.toFixed(2)}`);
+  setIf('chartLow', `$${last.low.toFixed(2)}`);
+  setIf('chartClose', `$${last.close.toFixed(2)}`);
+  setIf('chartVolume', formatVolume(last.volume));
 }
 
 function renderChartStats(chartData: ChartData): void {
@@ -841,18 +876,22 @@ function setupClickHandlers(): void {
   document.getElementById('chartSymbols')?.addEventListener('click', (e) => {
     const btn = (e.target as HTMLElement).closest('.chart-symbol-btn') as HTMLElement;
     if (!btn) return;
+    const next = btn.dataset.symbol || 'WTI';
+    if (next === currentSymbol) return; // no-op; avoids spamming the API and resetting OHLC
     document.querySelectorAll('.chart-symbol-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
-    currentSymbol = btn.dataset.symbol || 'WTI';
+    currentSymbol = next;
     loadChart(currentSymbol, currentDays);
   });
 
   document.getElementById('chartTimeframes')?.addEventListener('click', (e) => {
     const btn = (e.target as HTMLElement).closest('.chart-tf-btn') as HTMLElement;
     if (!btn) return;
+    const next = parseInt(btn.dataset.days || '90', 10);
+    if (next === currentDays) return; // no-op; avoids spamming the API and resetting OHLC
     document.querySelectorAll('.chart-tf-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
-    currentDays = parseInt(btn.dataset.days || '90', 10);
+    currentDays = next;
     loadChart(currentSymbol, currentDays);
   });
 

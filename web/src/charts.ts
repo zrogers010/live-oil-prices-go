@@ -5,6 +5,14 @@ let chart: IChartApi | null = null;
 let candleSeries: ISeriesApi<'Candlestick'> | null = null;
 let volumeSeries: ISeriesApi<'Histogram'> | null = null;
 let resizeObserver: ResizeObserver | null = null;
+// crosshairCallback is the single live consumer of the main chart's
+// crosshair-move events. We subscribe to lightweight-charts ONCE inside
+// initChart() and dispatch to whatever callback is currently registered;
+// callers swap their callback in via subscribeCrosshair() instead of
+// stacking another lightweight-charts subscription on top, which would
+// pile up one extra handler per chart-tab click.
+type CrosshairCallback = (o: number, h: number, l: number, c: number, v: number) => void;
+let crosshairCallback: CrosshairCallback | null = null;
 
 /** Handle returned by createAreaChart so multiple area-chart instances can
  *  coexist (the page has both a hero chart and the main candlestick chart). */
@@ -111,6 +119,17 @@ export function initChart(container: HTMLElement): void {
     }
   });
   resizeObserver.observe(container);
+
+  // Subscribe ONCE to crosshair moves and dispatch to whatever callback
+  // is currently active. Re-subscribing on every chart switch would leak
+  // handlers and fire the same DOM update N times per mouse move.
+  chart.subscribeCrosshairMove(param => {
+    if (!param.time || !candleSeries || !crosshairCallback) return;
+    const data = param.seriesData.get(candleSeries) as any;
+    if (data) {
+      crosshairCallback(data.open, data.high, data.low, data.close, data.value ?? 0);
+    }
+  });
 }
 
 export function updateChartData(data: OHLCV[]): void {
@@ -137,20 +156,10 @@ export function updateChartData(data: OHLCV[]): void {
   chart?.timeScale().fitContent();
 }
 
-export function subscribeCrosshair(
-  callback: (o: number, h: number, l: number, c: number, v: number) => void
-): void {
-  if (!chart || !candleSeries) return;
-
-  chart.subscribeCrosshairMove(param => {
-    if (!param.time || !candleSeries) {
-      return;
-    }
-    const data = param.seriesData.get(candleSeries) as any;
-    if (data) {
-      callback(data.open, data.high, data.low, data.close, data.value ?? 0);
-    }
-  });
+export function subscribeCrosshair(callback: CrosshairCallback): void {
+  // Single-slot replace, NOT additive — the lightweight-charts subscription
+  // itself is set up once in initChart().
+  crosshairCallback = callback;
 }
 
 /**
