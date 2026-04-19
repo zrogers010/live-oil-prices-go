@@ -1,6 +1,6 @@
-import { getPrices, getChartData, getNews, getPredictions, getHeroChart } from './api';
+import { getPrices, getChartData, getNews, getPredictions, getHeroChart, getConsensus } from './api';
 import { initChart, updateChartData, subscribeCrosshair, createCandleChart, type CandleChartHandle } from './charts';
-import type { Price, ChartData, NewsArticle, OHLCV, Prediction, HeroChart } from './types';
+import type { Price, ChartData, NewsArticle, OHLCV, Prediction, HeroChart, ConsensusForecast } from './types';
 
 let currentSymbol = 'WTI';
 let currentDays = 90;
@@ -47,6 +47,7 @@ async function loadAllData(): Promise<void> {
       loadHeroChart(heroChartMinutes),
       loadChart(currentSymbol, currentDays),
       loadForecasts(),
+      loadConsensus(),
       loadNews(),
     ]);
   } catch (e) {
@@ -508,7 +509,8 @@ let chartLoadSeq = 0;
 async function loadChart(symbol: string, days: number): Promise<void> {
   const seq = ++chartLoadSeq;
   try {
-    const container = document.getElementById('chartContainer')!;
+    const container = document.getElementById('chartContainer');
+    if (!container) return; // page doesn't have the main chart panel
     if (!(window as any)['chartInit']) {
       initChart(container);
       (window as any)['chartInit'] = true;
@@ -647,6 +649,10 @@ function forecastCardHtml(p: Prediction): string {
     p.direction === 'bullish' ? '↑' :
     p.direction === 'bearish' ? '↓' :
     '→';
+  const dirLabel =
+    p.direction === 'bullish' ? 'Bullish bias' :
+    p.direction === 'bearish' ? 'Bearish bias' :
+    'Mixed signals';
 
   const confidencePct = Math.round((p.confidence || 0) * 100);
   const confidenceLabel =
@@ -655,12 +661,18 @@ function forecastCardHtml(p: Prediction): string {
     confidencePct > 0 ? 'Low' :
     'Unavailable';
 
-  const low = p.predictedLow ?? p.predicted;
-  const high = p.predictedHigh ?? p.predicted;
-  const rangeBar = renderRangeBar(p.current, low, p.predicted, high);
-
   const sourceLabelText = forecastSourceLabel(p.source);
   const modelLabel = p.model || 'statistical';
+
+  const signalChips = buildSignalChipsFromPrediction(p)
+    .map(c => `
+      <li class="signal-chip signal-${c.tone}">
+        <span class="signal-chip-label">${c.label}</span>
+        <span class="signal-chip-value">${c.value}</span>
+      </li>`)
+    .join('');
+
+  const backtestBlock = renderBacktestBlock(p);
 
   return `
     <article class="forecast-card forecast-${dirClass}" data-symbol="${p.symbol}" role="listitem">
@@ -669,37 +681,42 @@ function forecastCardHtml(p: Prediction): string {
           <div class="forecast-card-symbol">${p.symbol}</div>
           <div class="forecast-card-name">${p.name}</div>
         </div>
-        <span class="forecast-direction-badge ${dirClass}" aria-label="Forecast direction: ${p.direction}">
-          <span class="forecast-arrow">${arrow}</span>${p.direction}
+        <span class="forecast-direction-badge ${dirClass}" aria-label="Outlook: ${dirLabel}">
+          <span class="forecast-arrow">${arrow}</span>${dirLabel}
         </span>
       </header>
 
-      <div class="forecast-prices">
-        <div class="forecast-price-block">
-          <span class="forecast-price-label">Now</span>
-          <span class="forecast-price-value">$${p.current.toFixed(2)}</span>
-        </div>
-        <div class="forecast-arrow-divider" aria-hidden="true">
-          <svg width="20" height="14" viewBox="0 0 20 14" fill="none"><path d="M1 7h18m0 0L13 1m6 6l-6 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        </div>
-        <div class="forecast-price-block">
-          <span class="forecast-price-label">${p.timeframe}</span>
-          <span class="forecast-price-value forecast-${dirClass}-text">$${p.predicted.toFixed(2)}</span>
-          <span class="forecast-price-delta ${dirClass}">${sign}${delta.toFixed(2)} (${sign}${pct.toFixed(2)}%)</span>
-        </div>
+      <div class="forecast-spot">
+        <div class="forecast-spot-label">Spot</div>
+        <div class="forecast-spot-value">$${p.current.toFixed(2)}</div>
       </div>
 
-      ${rangeBar}
+      <ul class="signal-stack" aria-label="Technical signal stack">${signalChips}</ul>
 
-      <div class="forecast-confidence">
-        <div class="forecast-confidence-row">
-          <span class="forecast-meta-label">Confidence</span>
-          <span class="forecast-confidence-value">${confidenceLabel} · ${confidencePct}%</span>
+      <details class="forecast-projection">
+        <summary class="forecast-projection-summary">
+          <span>Model projection · ${p.timeframe}</span>
+          <span class="forecast-projection-headline forecast-${dirClass}-text">$${p.predicted.toFixed(2)} (${sign}${pct.toFixed(2)}%)</span>
+        </summary>
+        <div class="forecast-projection-body">
+          <p class="forecast-projection-note">
+            Damped-Holt point forecast ${p.timeframe} ahead, anchored to the live spot price.
+            The signal stack above carries the bulk of the directional information; treat the
+            dollar value as one input among many.
+          </p>
+          <div class="forecast-confidence">
+            <div class="forecast-confidence-row">
+              <span class="forecast-meta-label">Model confidence</span>
+              <span class="forecast-confidence-value">${confidenceLabel} · ${confidencePct}%</span>
+            </div>
+            <div class="forecast-confidence-bar" role="progressbar" aria-valuenow="${confidencePct}" aria-valuemin="0" aria-valuemax="100">
+              <div class="forecast-confidence-fill ${dirClass}" style="width: ${confidencePct}%"></div>
+            </div>
+          </div>
         </div>
-        <div class="forecast-confidence-bar" role="progressbar" aria-valuenow="${confidencePct}" aria-valuemin="0" aria-valuemax="100">
-          <div class="forecast-confidence-fill ${dirClass}" style="width: ${confidencePct}%"></div>
-        </div>
-      </div>
+      </details>
+
+      ${backtestBlock}
 
       <p class="forecast-analysis">${p.analysis}</p>
 
@@ -711,36 +728,159 @@ function forecastCardHtml(p: Prediction): string {
   `;
 }
 
-// renderRangeBar visualises low-mid-high prediction interval relative to the
-// current price. The current price marker shows where we sit inside the band.
-function renderRangeBar(current: number, low: number, predicted: number, high: number): string {
-  if (!high || high <= low) {
-    return '';
-  }
-  const span = high - low;
-  const pos = (val: number) =>
-    Math.max(0, Math.min(100, ((val - low) / span) * 100));
+interface SignalChipView { label: string; value: string; tone: 'bullish' | 'bearish' | 'neutral'; }
 
-  const currentPos = pos(current);
-  const predictedPos = pos(predicted);
+function buildSignalChipsFromPrediction(p: Prediction): SignalChipView[] {
+  const chips: SignalChipView[] = [];
+
+  // Trend chip.
+  let trendTone: 'bullish' | 'bearish' | 'neutral' = 'neutral';
+  let trendValue = 'Sideways';
+  if (p.trendLabel === 'uptrend') { trendTone = 'bullish'; trendValue = 'Uptrend'; }
+  else if (p.trendLabel === 'downtrend') { trendTone = 'bearish'; trendValue = 'Downtrend'; }
+  chips.push({ label: 'Trend', value: trendValue, tone: trendTone });
+
+  // RSI / momentum chip.
+  let rsiTone: 'bullish' | 'bearish' | 'neutral' = 'neutral';
+  const rsiNum = Math.round(p.rsi14 ?? 50);
+  let rsiValue = `RSI ${rsiNum}`;
+  switch (p.rsiLabel) {
+    case 'bullish': rsiTone = 'bullish'; rsiValue = 'Bullish'; break;
+    case 'overbought': rsiTone = 'bearish'; rsiValue = 'Overbought'; break;
+    case 'bearish': rsiTone = 'bearish'; rsiValue = 'Bearish'; break;
+    case 'oversold': rsiTone = 'bullish'; rsiValue = 'Oversold'; break;
+  }
+  chips.push({ label: 'Momentum', value: rsiValue, tone: rsiTone });
+
+  // MACD chip.
+  let macdTone: 'bullish' | 'bearish' | 'neutral' = 'neutral';
+  let macdValue = 'Flat';
+  if (p.macdLabel === 'above signal (bullish)') { macdTone = 'bullish'; macdValue = 'Above signal'; }
+  else if (p.macdLabel === 'below signal (bearish)') { macdTone = 'bearish'; macdValue = 'Below signal'; }
+  chips.push({ label: 'MACD', value: macdValue, tone: macdTone });
+
+  // MA configuration chip.
+  let maTone: 'bullish' | 'bearish' | 'neutral' = 'neutral';
+  let maValue = 'Range-bound';
+  const cfg = p.maConfig || '';
+  if (cfg.includes('golden-cross')) { maTone = 'bullish'; maValue = 'Golden cross'; }
+  else if (cfg.includes('above 200DMA')) { maTone = 'bullish'; maValue = '50DMA > 200DMA'; }
+  else if (cfg.includes('death-cross')) { maTone = 'bearish'; maValue = 'Death cross'; }
+  else if (cfg.includes('below 200DMA')) { maTone = 'bearish'; maValue = '50DMA < 200DMA'; }
+  chips.push({ label: 'Regime', value: maValue, tone: maTone });
+
+  return chips;
+}
+
+function renderBacktestBlock(p: Prediction): string {
+  const steps = p.backtestSteps || 0;
+  const mape = p.mape || 0;
+  if (steps <= 0 || mape <= 0) return '';
+
+  const mapePct = mape * 100;
+  const naivePct = (p.naiveMape || 0) * 100;
+  const skillPct = (p.skill || 0) * 100;
+
+  let verdict = 'Roughly matches naive baseline';
+  if (skillPct >= 10) verdict = `Beats naive baseline by ${skillPct.toFixed(0)}%`;
+  else if (skillPct <= -5) verdict = `Underperforms naive baseline by ${(-skillPct).toFixed(0)}%`;
+
+  const sentence = `Out-of-sample backtest over the last ${steps} trading sessions: ${mapePct.toFixed(1)}% MAPE on ${p.timeframe} forecasts vs ${naivePct.toFixed(1)}% MAPE for a naive 'no change' baseline.`;
+  const skillSign = skillPct >= 0 ? '+' : '';
 
   return `
-    <div class="forecast-range" aria-label="80% prediction interval">
-      <div class="forecast-range-row">
-        <span class="forecast-range-label">80% range</span>
-        <span class="forecast-range-values">$${low.toFixed(2)} – $${high.toFixed(2)}</span>
+    <div class="backtest-credibility" aria-label="Backtest credibility">
+      <div class="backtest-verdict">
+        <span class="backtest-verdict-icon" aria-hidden="true">📊</span>
+        <span class="backtest-verdict-text">${verdict}</span>
       </div>
-      <div class="forecast-range-bar">
-        <div class="forecast-range-track"></div>
-        <div class="forecast-range-marker forecast-range-current" style="left: ${currentPos}%" title="Current $${current.toFixed(2)}"></div>
-        <div class="forecast-range-marker forecast-range-predicted" style="left: ${predictedPos}%" title="Predicted $${predicted.toFixed(2)}"></div>
-      </div>
-      <div class="forecast-range-legend">
-        <span class="forecast-legend-item"><span class="forecast-legend-dot current"></span>Now</span>
-        <span class="forecast-legend-item"><span class="forecast-legend-dot predicted"></span>Forecast</span>
-      </div>
+      <dl class="backtest-stats">
+        <div class="backtest-stat"><dt>Model MAPE</dt><dd>${mapePct.toFixed(1)}%</dd></div>
+        <div class="backtest-stat"><dt>Naive MAPE</dt><dd>${naivePct.toFixed(1)}%</dd></div>
+        <div class="backtest-stat"><dt>Skill</dt><dd>${skillSign}${skillPct.toFixed(0)}%</dd></div>
+        <div class="backtest-stat"><dt>Sessions</dt><dd>${steps}</dd></div>
+      </dl>
+      <p class="backtest-sentence">${sentence}</p>
     </div>
   `;
+}
+
+// ─── Institutional outlook (EIA STEO) ───────────────────
+
+async function loadConsensus(): Promise<void> {
+  const grid = document.getElementById('consensusGrid');
+  if (!grid) return;
+  try {
+    const data = await getConsensus();
+    renderConsensus(data || []);
+  } catch (err) {
+    console.error('Failed to load consensus outlook:', err);
+    grid.innerHTML = `<p class="consensus-empty">Institutional outlook unavailable right now.</p>`;
+  }
+}
+
+function renderConsensus(items: ConsensusForecast[]): void {
+  const grid = document.getElementById('consensusGrid');
+  if (!grid) return;
+
+  if (!items.length) {
+    grid.innerHTML = `<p class="consensus-empty">EIA Short-Term Energy Outlook will appear here when available.</p>`;
+    return;
+  }
+
+  grid.innerHTML = items.map(consensusCardHtml).join('');
+}
+
+const CONSENSUS_NAMES: Record<string, string> = {
+  WTI: 'WTI Crude Oil',
+  BRENT: 'Brent Crude Oil',
+  NATGAS: 'Henry Hub Natural Gas',
+  HEATING: 'Heating Oil',
+};
+
+function consensusCardHtml(c: ConsensusForecast): string {
+  const name = CONSENSUS_NAMES[c.symbol] || c.symbol;
+  const months = (c.months || []).slice(0, 6);
+  const release = formatConsensusDate(c.releaseDate);
+  const rows = months.map(m => `
+    <tr>
+      <td>${formatConsensusPeriod(m.period)}</td>
+      <td class="consensus-value">$${m.value.toFixed(2)}</td>
+    </tr>`).join('');
+
+  return `
+    <article class="consensus-card" data-symbol="${c.symbol}">
+      <header class="consensus-card-header">
+        <div>
+          <div class="consensus-card-symbol">${c.symbol}</div>
+          <div class="consensus-card-name">${name}</div>
+        </div>
+        <span class="consensus-release">${release}</span>
+      </header>
+      <table class="consensus-table">
+        <thead>
+          <tr><th>Month</th><th style="text-align:right">Forecast (${c.unit || ''})</th></tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </article>
+  `;
+}
+
+function formatConsensusPeriod(period: string): string {
+  // "2026-05" -> "May 2026"
+  const [y, m] = period.split('-');
+  const idx = parseInt(m, 10) - 1;
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  if (idx < 0 || idx > 11 || !y) return period;
+  return `${months[idx]} ${y}`;
+}
+
+function formatConsensusDate(iso: string): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return iso;
+  return `Released ${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
 }
 
 // ─── News ───────────────────────────────────────────────

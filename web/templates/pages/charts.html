@@ -1,0 +1,130 @@
+{{define "content"}}
+<section class="page-hero">
+    <div class="container">
+        <nav class="page-breadcrumb" aria-label="Breadcrumb">
+            <a href="/" class="breadcrumb-link">Home</a>
+            <span class="breadcrumb-sep">/</span>
+            <span class="breadcrumb-current">Oil Charts</span>
+        </nav>
+        <h1 class="page-title">Live Oil Price Charts — WTI, Brent, Natural Gas &amp; More</h1>
+        <p class="page-subtitle">Interactive candlestick charts for the world's most-traded energy benchmarks. Switch between WTI crude, Brent crude, natural gas, heating oil, RBOB gasoline, and the OPEC basket — and zoom in from 1 week up to 1 year of daily history.</p>
+    </div>
+</section>
+
+<section class="section" id="charts" aria-labelledby="charts-heading">
+    <div class="container">
+        <div class="chart-panel">
+            <div class="chart-controls">
+                <div class="chart-symbols" id="chartSymbols" role="tablist" aria-label="Select commodity">
+                    <button class="chart-symbol-btn active" data-symbol="WTI" role="tab" aria-selected="true">WTI Crude</button>
+                    <button class="chart-symbol-btn" data-symbol="BRENT" role="tab" aria-selected="false">Brent Crude</button>
+                    <button class="chart-symbol-btn" data-symbol="NATGAS" role="tab" aria-selected="false">Natural Gas</button>
+                    <button class="chart-symbol-btn" data-symbol="HEATING" role="tab" aria-selected="false">Heating Oil</button>
+                    <button class="chart-symbol-btn" data-symbol="RBOB" role="tab" aria-selected="false">RBOB Gasoline</button>
+                    <button class="chart-symbol-btn" data-symbol="OPEC" role="tab" aria-selected="false">OPEC Basket</button>
+                </div>
+                <div class="chart-timeframes" id="chartTimeframes" role="tablist" aria-label="Select timeframe">
+                    <button class="chart-tf-btn" data-days="7" role="tab">1W</button>
+                    <button class="chart-tf-btn" data-days="30" role="tab">1M</button>
+                    <button class="chart-tf-btn active" data-days="90" role="tab" aria-selected="true">3M</button>
+                    <button class="chart-tf-btn" data-days="180" role="tab">6M</button>
+                    <button class="chart-tf-btn" data-days="365" role="tab">1Y</button>
+                </div>
+            </div>
+            <div class="chart-stats" id="chartStats"></div>
+            <div class="chart-container" id="chartContainer" role="img" aria-label="Oil price candlestick chart"></div>
+            <div class="chart-info" id="chartInfo">
+                <div class="chart-info-item"><span class="chart-info-label">Open</span><span class="chart-info-value" id="chartOpen">—</span></div>
+                <div class="chart-info-item"><span class="chart-info-label">High</span><span class="chart-info-value" id="chartHigh">—</span></div>
+                <div class="chart-info-item"><span class="chart-info-label">Low</span><span class="chart-info-value" id="chartLow">—</span></div>
+                <div class="chart-info-item"><span class="chart-info-label">Close</span><span class="chart-info-value" id="chartClose">—</span></div>
+                <div class="chart-info-item"><span class="chart-info-label">Volume</span><span class="chart-info-value" id="chartVolume">—</span></div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section class="section section-dark" aria-labelledby="snapshot-heading">
+    <div class="container">
+        <header class="section-header">
+            <h2 class="section-title" id="snapshot-heading">Today's Energy Market Snapshot</h2>
+            <p class="section-desc">Current spot prices for the commodities you can chart above.</p>
+        </header>
+        {{template "price_grid" .CardPrices}}
+    </div>
+</section>
+
+<section class="section" aria-labelledby="how-to-heading">
+    <div class="container">
+        <div class="content-prose">
+            <h2 id="how-to-heading">How to Read an Oil Price Chart</h2>
+            <p>Each candlestick on these charts represents one trading day. The body shows the open and close prices, while the wicks (the thin lines above and below) mark the day's high and low. <strong>Green candles</strong> mean the price closed higher than it opened (bullish), <strong>red candles</strong> mean it closed lower (bearish). The volume bars at the bottom show how many contracts changed hands — heavy volume on a green or red candle is usually a stronger directional signal than light volume.</p>
+
+            <h3>Why these benchmarks matter</h3>
+            <ul>
+                <li><strong>WTI crude oil</strong> is the U.S. benchmark, traded on the NYMEX and physically delivered at Cushing, Oklahoma. It's the price most commonly referenced in U.S. news.</li>
+                <li><strong>Brent crude oil</strong> is the international benchmark, used to price roughly two-thirds of the world's crude. Brent typically trades at a small premium to WTI.</li>
+                <li><strong>Natural gas (Henry Hub)</strong> is the U.S. natural gas benchmark, priced in dollars per million British thermal units (MMBtu).</li>
+                <li><strong>Heating oil &amp; RBOB gasoline</strong> are refined products — their charts are leading indicators for what consumers will pay at the pump and to heat their homes.</li>
+                <li><strong>The OPEC Reference Basket</strong> is a weighted average of crude streams from OPEC member nations and tracks the cartel's collective pricing power.</li>
+            </ul>
+
+            <h3>Tips for using these charts</h3>
+            <ul>
+                <li>Switch timeframes (1W → 1Y) to spot short-term momentum vs. the longer-term trend.</li>
+                <li>Compare WTI vs. Brent — a widening spread often signals U.S. supply gluts or international supply tightness.</li>
+                <li>Watch the natural gas chart in winter (heating demand) and summer (cooling demand) for seasonal volatility.</li>
+                <li>Pair the chart with our <a href="/forecast">7-day price forecasts</a> and the <a href="/news">latest energy news</a> to understand what's driving the move.</li>
+            </ul>
+        </div>
+    </div>
+</section>
+
+<section class="section section-dark" aria-labelledby="faq-heading">
+    <div class="container">
+        <header class="section-header">
+            <h2 class="section-title" id="faq-heading">Oil Chart FAQ</h2>
+        </header>
+        <div class="faq-list">
+            <details class="faq-item">
+                <summary>How often are these oil price charts updated?</summary>
+                <p>Spot prices in the cards above refresh every 15 seconds. The candlestick charts use end-of-day data from Yahoo Finance and refresh hourly. The streaming WTI hero chart on the <a href="/">homepage</a> uses real-time Pyth Network ticks aggregated into 1-minute candles.</p>
+            </details>
+            <details class="faq-item">
+                <summary>What's the difference between WTI and Brent crude?</summary>
+                <p>WTI (West Texas Intermediate) is lighter and sweeter than Brent and is delivered at Cushing, Oklahoma, while Brent is sourced from the North Sea and is the global benchmark. The Brent–WTI spread reflects relative supply and demand between U.S. and international markets and is closely watched by traders.</p>
+            </details>
+            <details class="faq-item">
+                <summary>Why does the chart sometimes show no data on weekends?</summary>
+                <p>Energy futures trade Sunday evening through Friday afternoon (U.S. Eastern Time). When markets are closed, charts display the last completed session and the homepage hero chart automatically falls back to the most recent intraday session.</p>
+            </details>
+            <details class="faq-item">
+                <summary>Can I get a chart for a specific contract month?</summary>
+                <p>The charts above show the front-month contract for each commodity, which is the most actively traded. For deeper details on each benchmark — including individual contract specs and historical context — visit the dedicated commodity pages such as <a href="/commodity/WTI">WTI Crude Oil</a> or <a href="/commodity/BRENT">Brent Crude Oil</a>.</p>
+            </details>
+        </div>
+    </div>
+</section>
+
+<section class="section" aria-labelledby="related-heading">
+    <div class="container">
+        <header class="section-header">
+            <h2 class="section-title" id="related-heading">Explore More</h2>
+        </header>
+        <div class="cross-link-grid">
+            <a href="/forecast" class="cross-link-card">
+                <h3>7-Day Price Forecasts →</h3>
+                <p>Statistical forecasts for WTI, Brent, natural gas and more, with confidence ranges and direction signals.</p>
+            </a>
+            <a href="/news" class="cross-link-card">
+                <h3>Energy Market News →</h3>
+                <p>The latest oil, gas, OPEC and refining headlines from 50+ sources.</p>
+            </a>
+            <a href="/" class="cross-link-card">
+                <h3>Live Prices Dashboard →</h3>
+                <p>The full live price dashboard with the streaming WTI 1-minute candle chart.</p>
+            </a>
+        </div>
+    </div>
+</section>
+{{end}}

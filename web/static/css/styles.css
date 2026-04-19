@@ -3545,3 +3545,458 @@ a.footer-attribution-link:hover {
     font-size: 11px;
   }
 }
+
+/* ────────────────────────────────────────────────────────────────────────
+   SEO Pages — shared chrome for /charts, /forecast, /news
+   ──────────────────────────────────────────────────────────────────────── */
+
+.page-hero {
+  padding: calc(var(--nav-height) + var(--ticker-height) + 32px) 0 32px;
+  background: linear-gradient(180deg, rgba(59, 130, 246, 0.06) 0%, transparent 100%);
+  border-bottom: 1px solid var(--border);
+}
+
+.page-breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-bottom: 14px;
+}
+.page-breadcrumb .breadcrumb-link {
+  color: var(--text-muted);
+  text-decoration: none;
+  transition: color 0.15s;
+}
+.page-breadcrumb .breadcrumb-link:hover { color: var(--accent); }
+.page-breadcrumb .breadcrumb-sep { opacity: 0.5; }
+.page-breadcrumb .breadcrumb-current { color: var(--text); font-weight: 500; }
+
+.page-title {
+  font-size: clamp(28px, 4vw, 40px);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+  margin: 0 0 14px;
+  color: var(--text);
+}
+.page-subtitle {
+  font-size: 16px;
+  line-height: 1.6;
+  color: var(--text-muted);
+  max-width: 760px;
+  margin: 0;
+}
+
+.nav-link-active {
+  color: var(--accent) !important;
+}
+
+.section-cta-line {
+  margin: 28px 0 0;
+  text-align: center;
+  font-size: 14px;
+}
+.section-cta-link {
+  color: var(--accent);
+  text-decoration: none;
+  font-weight: 600;
+  transition: opacity 0.15s;
+}
+.section-cta-link:hover { opacity: 0.8; }
+
+/* Long-form prose for educational copy / methodology / category descriptions */
+.content-prose {
+  max-width: 760px;
+  margin: 0 auto;
+  font-size: 16px;
+  line-height: 1.75;
+  color: var(--text-secondary, var(--text));
+}
+.content-prose h2 {
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  margin: 0 0 18px;
+  color: var(--text);
+}
+.content-prose h3 {
+  font-size: 19px;
+  font-weight: 600;
+  margin: 28px 0 10px;
+  color: var(--text);
+}
+.content-prose p { margin: 0 0 14px; }
+.content-prose ul {
+  margin: 0 0 18px;
+  padding-left: 22px;
+}
+.content-prose li { margin-bottom: 8px; }
+.content-prose strong { color: var(--text); font-weight: 600; }
+.content-prose a {
+  color: var(--accent);
+  text-decoration: none;
+  border-bottom: 1px solid rgba(59, 130, 246, 0.3);
+  transition: border-color 0.15s;
+}
+.content-prose a:hover { border-color: var(--accent); }
+
+/* FAQ accordion */
+.faq-list {
+  max-width: 800px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.faq-item {
+  background: var(--bg-elevated, rgba(255, 255, 255, 0.02));
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px 18px;
+  transition: border-color 0.15s;
+}
+.faq-item:hover { border-color: rgba(59, 130, 246, 0.4); }
+.faq-item summary {
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 15px;
+  color: var(--text);
+  list-style: none;
+  position: relative;
+  padding-right: 28px;
+}
+.faq-item summary::-webkit-details-marker { display: none; }
+.faq-item summary::after {
+  content: '+';
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 22px;
+  color: var(--text-muted);
+  transition: transform 0.2s;
+  line-height: 1;
+}
+.faq-item[open] summary::after {
+  content: '−';
+}
+.faq-item p {
+  margin: 12px 0 0;
+  font-size: 14px;
+  line-height: 1.65;
+  color: var(--text-muted);
+}
+.faq-item p a {
+  color: var(--accent);
+  text-decoration: none;
+  border-bottom: 1px solid rgba(59, 130, 246, 0.3);
+}
+.faq-item p a:hover { border-color: var(--accent); }
+
+/* Cross-link cards (between SEO pages) */
+.cross-link-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 18px;
+}
+.cross-link-card {
+  display: block;
+  padding: 22px;
+  background: var(--bg-elevated, rgba(255, 255, 255, 0.02));
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  text-decoration: none;
+  color: var(--text);
+  transition: border-color 0.15s, transform 0.15s, background 0.15s;
+}
+.cross-link-card:hover {
+  border-color: rgba(59, 130, 246, 0.5);
+  transform: translateY(-2px);
+  background: rgba(59, 130, 246, 0.04);
+}
+.cross-link-card h3 {
+  margin: 0 0 8px;
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--accent);
+}
+.cross-link-card p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+@media (max-width: 768px) {
+  .page-hero { padding: 36px 0 24px; }
+  .page-title { font-size: 26px; }
+  .page-subtitle { font-size: 15px; }
+  .content-prose h2 { font-size: 22px; }
+  .content-prose h3 { font-size: 17px; }
+}
+
+/* ─── Outlook & Signals: card layout ──────────────────────────────────── */
+
+.forecast-spot {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin: 14px 0 12px;
+}
+.forecast-spot-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+.forecast-spot-value {
+  font-size: 26px;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Signal stack — the four-chip glance row that leads each card. */
+.signal-stack {
+  list-style: none;
+  margin: 0 0 16px;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+@media (min-width: 480px) {
+  .signal-stack { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+.signal-chip {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg-secondary);
+  min-width: 0;
+}
+.signal-chip-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+.signal-chip-value {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.signal-chip.signal-bullish {
+  border-color: rgba(34, 197, 94, 0.35);
+  background: rgba(34, 197, 94, 0.10);
+}
+.signal-chip.signal-bullish .signal-chip-value { color: #16a34a; }
+.signal-chip.signal-bearish {
+  border-color: rgba(239, 68, 68, 0.35);
+  background: rgba(239, 68, 68, 0.10);
+}
+.signal-chip.signal-bearish .signal-chip-value { color: #dc2626; }
+.signal-chip.signal-neutral {
+  border-color: var(--border);
+  background: var(--bg-secondary);
+}
+
+/* Demoted "Model projection" disclosure — the dollar forecast lives here,
+ * intentionally collapsed by default so the eye lands on the signal stack. */
+.forecast-projection {
+  margin: 0 0 16px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-secondary);
+  overflow: hidden;
+}
+.forecast-projection-summary {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+.forecast-projection-summary::-webkit-details-marker { display: none; }
+.forecast-projection-summary::after {
+  content: "+";
+  font-size: 18px;
+  color: var(--text-tertiary);
+  margin-left: auto;
+}
+.forecast-projection[open] .forecast-projection-summary::after { content: "−"; }
+.forecast-projection-headline {
+  font-size: 14px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.forecast-projection-body {
+  padding: 0 14px 14px;
+  border-top: 1px solid var(--border);
+}
+.forecast-projection-note {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.55;
+  margin: 12px 0 14px;
+}
+
+/* Backtest credibility callout — the empirical track record. */
+.backtest-credibility {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px;
+  margin: 0 0 16px;
+  background: linear-gradient(180deg, rgba(59, 130, 246, 0.06) 0%, transparent 100%);
+}
+.backtest-verdict {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 10px;
+}
+.backtest-verdict-icon { font-size: 16px; }
+.backtest-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0 0 10px;
+  padding: 0;
+}
+.backtest-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: var(--bg-secondary);
+  text-align: center;
+}
+.backtest-stat dt {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  margin: 0;
+}
+.backtest-stat dd {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+.backtest-sentence {
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.55;
+  margin: 0;
+}
+
+/* ─── EIA STEO institutional outlook ──────────────────────────────────── */
+
+.consensus-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+}
+@media (min-width: 768px) {
+  .consensus-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (min-width: 1100px) {
+  .consensus-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+.consensus-empty {
+  grid-column: 1 / -1;
+  text-align: center;
+  color: var(--text-tertiary);
+  font-size: 14px;
+  padding: 28px 16px;
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+}
+.consensus-card {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 18px;
+  background: var(--bg-card, var(--bg-primary));
+}
+.consensus-card-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.consensus-card-symbol {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: 0.02em;
+}
+.consensus-card-name {
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+.consensus-release {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.consensus-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+.consensus-table th,
+.consensus-table td {
+  text-align: left;
+  padding: 6px 4px;
+  font-size: 13px;
+  border-bottom: 1px solid var(--border);
+}
+.consensus-table th {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-tertiary);
+  font-weight: 700;
+}
+.consensus-table td.consensus-value {
+  text-align: right;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.consensus-citation {
+  margin-top: 18px;
+  font-size: 12px;
+  color: var(--text-tertiary);
+  text-align: center;
+}
+.consensus-citation a {
+  color: var(--accent, #3b82f6);
+  text-decoration: none;
+}
+.consensus-citation a:hover { text-decoration: underline; }

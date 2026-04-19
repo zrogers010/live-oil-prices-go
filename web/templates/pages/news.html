@@ -1,0 +1,106 @@
+{{define "content"}}
+<section class="page-hero">
+    <div class="container">
+        <nav class="page-breadcrumb" aria-label="Breadcrumb">
+            <a href="/" class="breadcrumb-link">Home</a>
+            <span class="breadcrumb-sep">/</span>
+            <span class="breadcrumb-current">News</span>
+        </nav>
+        <h1 class="page-title">Energy Market News — Oil, Gas, OPEC &amp; Refining Headlines</h1>
+        <p class="page-subtitle">Breaking news and analysis from Reuters, Bloomberg, CNBC, the EIA and 50+ sources covering crude oil, natural gas, refining, OPEC+ decisions and global energy markets. Filter by category to focus on what matters to you.</p>
+    </div>
+</section>
+
+<section class="section" id="news" aria-labelledby="news-heading">
+    <div class="container">
+        <header class="section-header">
+            <div class="section-label">Latest Headlines</div>
+            <h2 class="section-title" id="news-heading">Today's Energy Market News</h2>
+            <p class="section-desc">Continuously updated with the most recent oil, gas and energy headlines.</p>
+        </header>
+        <nav class="news-filters" id="newsFilters" aria-label="Filter news by category">
+            <button class="news-filter-btn active" data-category="all">All</button>
+            <button class="news-filter-btn" data-category="Oil Markets">Oil</button>
+            <button class="news-filter-btn" data-category="OPEC">OPEC</button>
+            <button class="news-filter-btn" data-category="Natural Gas">Nat Gas</button>
+            <button class="news-filter-btn" data-category="Refining">Refining</button>
+            <button class="news-filter-btn" data-category="Extraction">Extraction</button>
+            <button class="news-filter-btn" data-category="International">International</button>
+            <button class="news-filter-btn" data-category="Technology">Technology</button>
+        </nav>
+        <div class="news-featured" id="newsFeatured"></div>
+        <div class="news-grid" id="newsGrid" role="feed" aria-label="Energy news articles"></div>
+    </div>
+</section>
+
+<section class="section section-dark" aria-labelledby="snapshot-heading">
+    <div class="container">
+        <header class="section-header">
+            <h2 class="section-title" id="snapshot-heading">How the Headlines Are Moving Prices</h2>
+            <p class="section-desc">The current spot levels for the major energy benchmarks. Compare today's news to today's prices.</p>
+        </header>
+        {{template "price_grid" .CardPrices}}
+    </div>
+</section>
+
+<section class="section" aria-labelledby="categories-heading">
+    <div class="container">
+        <div class="content-prose">
+            <h2 id="categories-heading">What's in Each News Category</h2>
+            <ul>
+                <li><strong>Oil Markets</strong> — daily price action, inventory reports (EIA, API), and supply/demand commentary across crude oil benchmarks.</li>
+                <li><strong>OPEC</strong> — OPEC+ ministerial meetings, quota decisions, compliance updates, and statements from Saudi Arabia, the UAE, Russia and other key producers.</li>
+                <li><strong>Natural Gas</strong> — Henry Hub and global LNG pricing, EIA storage reports, and weather-driven demand stories.</li>
+                <li><strong>Refining</strong> — refinery utilization, planned and unplanned outages, crack spreads, and downstream margin pressure.</li>
+                <li><strong>Extraction</strong> — upstream production news from U.S. shale, Brazilian pre-salt, Guyana, Permian Basin and global producers.</li>
+                <li><strong>International</strong> — geopolitical risk, sanctions, tanker disruptions, and global trade flow shifts.</li>
+                <li><strong>Technology</strong> — energy transition, EVs, renewables, hydrogen, carbon capture and other long-term demand stories.</li>
+            </ul>
+        </div>
+    </div>
+</section>
+
+<section class="section section-dark" aria-labelledby="faq-heading">
+    <div class="container">
+        <header class="section-header">
+            <h2 class="section-title" id="faq-heading">Energy News FAQ</h2>
+        </header>
+        <div class="faq-list">
+            <details class="faq-item">
+                <summary>Where do these articles come from?</summary>
+                <p>Articles are aggregated from major financial wire services (Reuters, Bloomberg, AP), specialist energy publications, the U.S. Energy Information Administration (EIA), OPEC press releases and a curated list of global energy outlets. Each card shows the source attribution and links back to the original article.</p>
+            </details>
+            <details class="faq-item">
+                <summary>How often is the news feed refreshed?</summary>
+                <p>The feed is refreshed continuously throughout the trading day. New stories typically appear within a few minutes of publication.</p>
+            </details>
+            <details class="faq-item">
+                <summary>Can I get news for a specific commodity?</summary>
+                <p>For commodity-specific news, visit each benchmark's dedicated page — for example, <a href="/commodity/WTI">WTI Crude Oil</a>, <a href="/commodity/BRENT">Brent Crude Oil</a> or <a href="/commodity/NATGAS">Natural Gas</a>. Each page filters the news feed to that commodity.</p>
+            </details>
+        </div>
+    </div>
+</section>
+
+<section class="section" aria-labelledby="related-heading">
+    <div class="container">
+        <header class="section-header">
+            <h2 class="section-title" id="related-heading">Explore More</h2>
+        </header>
+        <div class="cross-link-grid">
+            <a href="/charts" class="cross-link-card">
+                <h3>Interactive Oil Charts →</h3>
+                <p>See how the news is playing out on multi-timeframe candlestick charts.</p>
+            </a>
+            <a href="/forecast" class="cross-link-card">
+                <h3>7-Day Price Forecasts →</h3>
+                <p>Statistical forecasts for WTI, Brent, natural gas and more.</p>
+            </a>
+            <a href="/" class="cross-link-card">
+                <h3>Live Prices Dashboard →</h3>
+                <p>The full dashboard with the streaming WTI 1-minute candle chart.</p>
+            </a>
+        </div>
+    </div>
+</section>
+{{end}}

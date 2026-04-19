@@ -1,4 +1,4 @@
-import type { Price, ChartData, NewsArticle, Prediction, MarketAnalysis, HeroChart } from './types';
+import type { Price, ChartData, NewsArticle, Prediction, MarketAnalysis, HeroChart, ConsensusForecast } from './types';
 
 const BASE = '';
 
@@ -62,4 +62,11 @@ export function getPredictions(): Promise<Prediction[]> {
 
 export function getAnalysis(): Promise<MarketAnalysis> {
   return fetchJSON<MarketAnalysis>('/api/analysis');
+}
+
+/** getConsensus fetches the institutional outlook (EIA STEO) for every
+ *  benchmark we publish. Empty array when EIA_API_KEY isn't configured;
+ *  the UI hides the section gracefully in that case. */
+export function getConsensus(): Promise<ConsensusForecast[]> {
+  return fetchJSON<ConsensusForecast[]>('/api/consensus');
 }

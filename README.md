@@ -59,8 +59,11 @@ make dev
 | `GET /api/prices` | Current prices for all tracked commodities |
 | `GET /api/charts/{symbol}?days=90` | OHLCV chart data |
 | `GET /api/news` | Energy market news feed |
-| `GET /api/predictions` | AI price predictions |
+| `GET /api/predictions` | Outlook + signal stack + backtest stats per benchmark |
 | `GET /api/analysis` | Market analysis with technical signals |
+| `GET /api/consensus` | EIA Short-Term Energy Outlook (institutional forecasts) |
+| `GET /api/consensus/{symbol}` | EIA STEO forecast for a single benchmark |
+| `GET /api/hero/{symbol}` | Streaming hero chart (Pyth live or Yahoo prior session) |
 | `GET /api/health` | Health check |
 
 ## Environment Variables
@@ -68,3 +71,4 @@ make dev
 | Variable | Default | Description |
 |---|---|---|
 | `PORT` | `8080` | Server port |
+| `EIA_API_KEY` | _(unset)_ | Free key from [eia.gov/opendata](https://www.eia.gov/opendata/). When set, the **Institutional Outlook** section on `/forecast` populates with the EIA's monthly Short-Term Energy Outlook (WTI, Brent, Henry Hub natural gas). When unset, the section is hidden gracefully. |

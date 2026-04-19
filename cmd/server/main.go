@@ -29,6 +29,10 @@ func main() {
 		log.Fatalf("Failed to parse commodity template: %v", err)
 	}
 
+	if err := handlers.InitPageTemplates("web/templates"); err != nil {
+		log.Fatalf("Failed to parse page templates: %v", err)
+	}
+
 	marketService := services.NewMarketDataService()
 	newsService := services.NewNewsFeedService()
 	handler := newServerHandler(marketService, newsService)
@@ -69,6 +73,12 @@ func newServerHandler(market handlers.MarketDataClient, news handlers.NewsClient
 	mux := http.NewServeMux()
 	api.RegisterRoutes(mux)
 
+	// Server-rendered HTML pages. Each route uses Go 1.22 exact-match
+	// patterns so they take precedence over the static FileServer below.
+	mux.HandleFunc("GET /{$}", api.ServeHome)
+	mux.HandleFunc("GET /charts", api.ServeCharts)
+	mux.HandleFunc("GET /forecast", api.ServeForecast)
+	mux.HandleFunc("GET /news", api.ServeNews)
 	mux.HandleFunc("GET /commodity/{symbol}", api.ServeCommodityPage)
 
 	mux.HandleFunc("GET /sitemap.xml", func(w http.ResponseWriter, r *http.Request) {
@@ -77,6 +87,9 @@ func newServerHandler(market handlers.MarketDataClient, news handlers.NewsClient
 		fmt.Fprint(w, `<?xml version="1.0" encoding="UTF-8"?>`)
 		fmt.Fprint(w, `<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">`)
 		fmt.Fprintf(w, `<url><loc>https://liveoilprices.com/</loc><lastmod>%s</lastmod><changefreq>always</changefreq><priority>1.0</priority></url>`, now)
+		fmt.Fprintf(w, `<url><loc>https://liveoilprices.com/charts</loc><lastmod>%s</lastmod><changefreq>hourly</changefreq><priority>0.9</priority></url>`, now)
+		fmt.Fprintf(w, `<url><loc>https://liveoilprices.com/forecast</loc><lastmod>%s</lastmod><changefreq>hourly</changefreq><priority>0.9</priority></url>`, now)
+		fmt.Fprintf(w, `<url><loc>https://liveoilprices.com/news</loc><lastmod>%s</lastmod><changefreq>hourly</changefreq><priority>0.9</priority></url>`, now)
 		for _, sym := range commoditySymbols {
 			fmt.Fprintf(w, `<url><loc>https://liveoilprices.com/commodity/%s</loc><lastmod>%s</lastmod><changefreq>always</changefreq><priority>0.8</priority></url>`, sym, now)
 		}
