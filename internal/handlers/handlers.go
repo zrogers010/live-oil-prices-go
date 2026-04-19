@@ -15,6 +15,8 @@ type MarketDataClient interface {
 	GetPredictions() []models.Prediction
 	GetAnalysis() models.MarketAnalysis
 	GetHeroChart(symbol string, maxLiveBars int) models.HeroChart
+	GetConsensusForecasts() []models.ConsensusForecast
+	GetConsensusForecast(symbol string) (models.ConsensusForecast, bool)
 }
 
 type NewsClient interface {
@@ -39,6 +41,8 @@ func (a *API) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/news/{id}", middleware.JSON(a.GetNewsArticle))
 	mux.HandleFunc("GET /api/predictions", middleware.JSON(a.GetPredictions))
 	mux.HandleFunc("GET /api/analysis", middleware.JSON(a.GetAnalysis))
+	mux.HandleFunc("GET /api/consensus", middleware.JSON(a.GetConsensusForecasts))
+	mux.HandleFunc("GET /api/consensus/{symbol}", middleware.JSON(a.GetConsensusForecast))
 	mux.HandleFunc("GET /api/health", middleware.JSON(a.HealthCheck))
 }
 
@@ -110,6 +114,30 @@ func (a *API) GetPredictions(w http.ResponseWriter, r *http.Request) {
 
 func (a *API) GetAnalysis(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(a.market.GetAnalysis())
+}
+
+// GetConsensusForecasts returns every cached EIA STEO outlook in a stable
+// (WTI, BRENT, NATGAS, ...) order. Returns an empty array when EIA_API_KEY
+// isn't configured. The frontend hides the institutional outlook section
+// gracefully on an empty response.
+func (a *API) GetConsensusForecasts(w http.ResponseWriter, r *http.Request) {
+	out := a.market.GetConsensusForecasts()
+	if out == nil {
+		out = []models.ConsensusForecast{}
+	}
+	json.NewEncoder(w).Encode(out)
+}
+
+// GetConsensusForecast returns a single institutional outlook by symbol.
+func (a *API) GetConsensusForecast(w http.ResponseWriter, r *http.Request) {
+	symbol := strings.ToUpper(r.PathValue("symbol"))
+	c, ok := a.market.GetConsensusForecast(symbol)
+	if !ok {
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]string{"error": "consensus forecast not available"})
+		return
+	}
+	json.NewEncoder(w).Encode(c)
 }
 
 func (a *API) HealthCheck(w http.ResponseWriter, r *http.Request) {

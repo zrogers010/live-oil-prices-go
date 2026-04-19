@@ -7,6 +7,7 @@ import (
 	"live-oil-prices-go/internal/models"
 	"math"
 	"math/rand"
+	"sync"
 	"time"
 )
 
@@ -15,7 +16,20 @@ type MarketDataService struct {
 	basePrices map[string]float64
 	yahoo      *YahooFinanceService
 	pyth       *PythService
+	eia        *EIAService
+
+	// Predictions are computed with a damped-Holt fit + 30-step rolling-origin
+	// backtest per symbol, which is heavy enough that we don't want to do it
+	// on every /api/predictions hit or every page render. Cached for predictionTTL.
+	predictionsMu     sync.RWMutex
+	cachedPredictions []models.Prediction
+	cachedPredAt      time.Time
 }
+
+// predictionTTL bounds how stale GetPredictions can be. The underlying
+// daily-history input only refreshes hourly, so 60s is plenty fresh while
+// still keeping the model off the critical request path.
+const predictionTTL = 60 * time.Second
 
 func NewMarketDataService() *MarketDataService {
 	bases := map[string]float64{
@@ -35,7 +49,26 @@ func NewMarketDataService() *MarketDataService {
 		basePrices: bases,
 		yahoo:      NewYahooFinanceService(),
 		pyth:       NewPythService(),
+		eia:        NewEIAService(),
 	}
+}
+
+// GetConsensusForecasts returns the institutional outlook (EIA STEO) for
+// every benchmark we publish. Returns an empty slice when EIA_API_KEY isn't
+// configured — the UI hides the section gracefully in that case.
+func (s *MarketDataService) GetConsensusForecasts() []models.ConsensusForecast {
+	if s.eia == nil {
+		return nil
+	}
+	return s.eia.GetAll()
+}
+
+// GetConsensusForecast returns a single institutional outlook by symbol.
+func (s *MarketDataService) GetConsensusForecast(symbol string) (models.ConsensusForecast, bool) {
+	if s.eia == nil {
+		return models.ConsensusForecast{}, false
+	}
+	return s.eia.Get(symbol)
 }
 
 var commodityNames = map[string]string{
@@ -287,6 +320,29 @@ var predictionSymbols = []struct {
 const predictionDisclaimer = "Statistical forecast for informational purposes only. Not investment advice."
 
 func (s *MarketDataService) GetPredictions() []models.Prediction {
+	// Fast path: serve the cached slice if it's fresh.
+	s.predictionsMu.RLock()
+	if time.Since(s.cachedPredAt) < predictionTTL && len(s.cachedPredictions) > 0 {
+		out := make([]models.Prediction, len(s.cachedPredictions))
+		copy(out, s.cachedPredictions)
+		s.predictionsMu.RUnlock()
+		return out
+	}
+	s.predictionsMu.RUnlock()
+
+	out := s.computePredictions()
+
+	s.predictionsMu.Lock()
+	s.cachedPredictions = out
+	s.cachedPredAt = time.Now()
+	s.predictionsMu.Unlock()
+
+	return out
+}
+
+// computePredictions runs the damped-Holt + backtest pipeline for each
+// configured symbol. Called by GetPredictions when the cache is stale.
+func (s *MarketDataService) computePredictions() []models.Prediction {
 	prices := s.GetPrices()
 	pm := make(map[string]float64)
 	sources := make(map[string]string)
@@ -336,9 +392,21 @@ func (s *MarketDataService) GetPredictions() []models.Prediction {
 			Confidence:    math.Round(f.Confidence*100) / 100,
 			Direction:     f.Direction,
 			Analysis:      buildAnalysis(ps.name, f),
-			Model:         "holt-linear+rsi/macd",
+			Model:         "holt-damped+backtest+rsi/macd",
 			Source:        predSource,
 			Disclaimer:    predictionDisclaimer,
+
+			TrendLabel: f.Trend,
+			RSI14:      math.Round(f.RSI14*10) / 10,
+			RSILabel:   LabelRSI(f.RSI14),
+			MACDHist:   math.Round(f.MACDHist*1000) / 1000,
+			MACDLabel:  LabelMACD(f.MACDHist),
+			MAConfig:   LabelMAConfig(f.MA50, f.MA200),
+
+			MAPE:          math.Round(f.MAPE*10000) / 10000,
+			NaiveMAPE:     math.Round(f.NaiveMAPE*10000) / 10000,
+			Skill:         math.Round(f.Skill*1000) / 1000,
+			BacktestSteps: f.BacktestSteps,
 		})
 	}
 	return out
@@ -402,17 +470,40 @@ func buildAnalysis(name string, f ForecastResult) string {
 		trendArticle = "an"
 	}
 
+	mapeStr := ""
+	if f.MAPE > 0 && f.BacktestSteps > 0 {
+		skillStr := ""
+		if f.NaiveMAPE > 0 {
+			switch {
+			case f.Skill > 0.10:
+				skillStr = fmt.Sprintf(" — model beats naive baseline by %.0f%%", f.Skill*100)
+			case f.Skill < -0.05:
+				skillStr = fmt.Sprintf(" — model underperforms naive baseline by %.0f%%", -f.Skill*100)
+			default:
+				skillStr = " — model essentially matches naive baseline"
+			}
+		}
+		mapeStr = fmt.Sprintf(" Recent %d-step backtest: %.1f%% MAPE on %d-day-ahead forecasts%s.",
+			f.BacktestSteps, f.MAPE*100, f.HorizonDays, skillStr)
+	}
+	dampStr := ""
+	if f.Phi > 0 && f.Phi < 1 {
+		dampStr = fmt.Sprintf(" (damping φ=%.2f)", f.Phi)
+	}
+
 	return fmt.Sprintf(
-		"%s: %d-day Holt linear forecast points to $%.2f (%+.2f%% from $%.2f), with an 80%% interval of $%.2f–$%.2f (±%.1f%%). "+
-			"RSI(14) is %.1f (%s), MACD histogram is %s, and the 50/200-day MA configuration suggests %s %s. "+
+		"%s: %d-day damped Holt forecast%s points to $%.2f (%+.2f%% from $%.2f), with an 80%% interval of $%.2f–$%.2f (±%.1f%%). "+
+			"RSI(14) is %.1f (%s), MACD histogram is %s, and the 50/200-day MA configuration suggests %s %s.%s "+
 			"Confidence: %.0f%%.",
 		name,
 		f.HorizonDays,
+		dampStr,
 		f.Predicted, pct, f.Current,
 		f.Low, f.High, bandPct,
 		f.RSI14, rsiLabel,
 		macdLabel,
 		trendArticle, f.Trend,
+		mapeStr,
 		f.Confidence*100,
 	)
 }

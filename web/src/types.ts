@@ -83,6 +83,34 @@ export interface Prediction {
   model?: string;
   source?: string;
   disclaimer?: string;
+
+  // Signal-stack fields backing the Outlook & Signals card.
+  trendLabel?: string;
+  rsi14?: number;
+  rsiLabel?: string;
+  macdHist?: number;
+  macdLabel?: string;
+  maConfig?: string;
+
+  // Backtest credibility numbers.
+  mape?: number;
+  naiveMape?: number;
+  skill?: number;
+  backtestSteps?: number;
+}
+
+export interface ConsensusMonthly {
+  period: string;
+  value: number;
+}
+
+export interface ConsensusForecast {
+  symbol: string;
+  source: string;
+  sourceUrl: string;
+  releaseDate: string;
+  unit: string;
+  months: ConsensusMonthly[];
 }
 
 export interface TechnicalSignals {

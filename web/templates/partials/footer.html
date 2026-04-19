@@ -1,0 +1,59 @@
+{{define "footer"}}
+<footer class="footer" role="contentinfo">
+    <div class="container">
+        <div class="footer-grid">
+            <div class="footer-brand">
+                <a href="/" class="nav-logo" aria-label="Live Oil Prices">
+                    <span class="logo-icon">◆</span>
+                    <span class="logo-text">LIVE<span class="logo-accent">OIL</span>PRICES</span>
+                </a>
+                <p class="footer-tagline">The most comprehensive free source for live oil prices, energy market charts, forecasts, and breaking industry news — trusted by traders, analysts, and energy professionals worldwide.</p>
+            </div>
+            <div class="footer-links-group">
+                <h4>Commodities</h4>
+                <a href="/commodity/WTI">WTI Crude Oil</a>
+                <a href="/commodity/BRENT">Brent Crude Oil</a>
+                <a href="/commodity/NATGAS">Natural Gas</a>
+                <a href="/commodity/HEATING">Heating Oil</a>
+                <a href="/commodity/RBOB">RBOB Gasoline</a>
+            </div>
+            <div class="footer-links-group">
+                <h4>More Markets</h4>
+                <a href="/commodity/OPEC">OPEC Basket</a>
+                <a href="/commodity/DUBAI">Dubai Crude</a>
+                <a href="/commodity/MURBAN">Murban Crude</a>
+                <a href="/commodity/WCS">Western Canadian Select</a>
+                <a href="/commodity/GASOIL">ICE Gasoil</a>
+            </div>
+            <div class="footer-links-group">
+                <h4>Platform</h4>
+                <a href="/">Live Prices</a>
+                <a href="/charts">Oil Charts</a>
+                <a href="/forecast">Price Forecasts</a>
+                <a href="/news">Energy News</a>
+            </div>
+        </div>
+        <div class="footer-bottom">
+            <p>&copy; 2026 Live Oil Prices. All rights reserved.</p>
+            <div class="footer-legal">
+                <a href="#">Privacy Policy</a>
+                <a href="#">Terms of Service</a>
+                <a href="#">Disclaimer</a>
+            </div>
+        </div>
+        <div class="footer-attribution">
+            <span class="footer-attribution-label">Data sources:</span>
+            <a href="https://www.pyth.network/" target="_blank" rel="noopener" class="footer-attribution-link">
+                <span class="footer-attribution-dot live"></span>
+                Real-time WTI tick powered by <strong>Pyth Network</strong>
+            </a>
+            <span class="footer-attribution-sep">&middot;</span>
+            <span class="footer-attribution-link">
+                <span class="footer-attribution-dot delayed"></span>
+                Other commodities via Yahoo Finance (15&#8209;min delayed)
+            </span>
+        </div>
+        <p class="footer-disclaimer">Market data is provided for informational purposes only and should not be considered as financial advice. Oil prices are indicative and may differ from exchange-quoted prices. Past performance does not guarantee future results. Trading commodities involves substantial risk of loss.</p>
+    </div>
+</footer>
+{{end}}

@@ -1,0 +1,162 @@
+{{define "content"}}
+<section class="hero hero-chart-mode" id="hero">
+    <div class="hero-bg"><div class="hero-grid-pattern"></div><div class="hero-glow"></div></div>
+    <div class="container hero-content">
+        <div class="hero-eyebrow">
+            <h1 class="hero-tagline" id="heroTagline">Live oil prices &amp; energy market data — <span class="hero-tagline-accent" id="heroTaglineAccent">connecting to the live feed&hellip;</span></h1>
+        </div>
+
+        <div class="hero-chart-card" id="heroWTI" data-symbol="WTI">
+            <div class="hero-chart-header">
+                <div class="hero-chart-title-block">
+                    <div class="hero-chart-symbol">
+                        WTI Crude Oil
+                        <span class="hero-live-pill" id="heroLivePill" title="Streaming 1-minute candles built from Pyth Network publishers">
+                            <span class="hero-live-dot" id="heroLiveDot"></span>
+                            LIVE · 1m
+                        </span>
+                    </div>
+                    <div class="hero-chart-contract" id="heroChartContract">Loading…</div>
+                </div>
+                <div class="hero-chart-price-block">
+                    <div class="hero-chart-price" id="heroChartPrice">{{if .HeroWTI}}${{printf "%.2f" .HeroWTI.Price}}{{else}}—{{end}}</div>
+                    <div class="hero-chart-change {{if .HeroWTI}}{{if .HeroWTI.IsPositive}}positive{{else}}negative{{end}}{{end}}" id="heroChartChange">{{if .HeroWTI}}{{.HeroWTI.Sign}}{{printf "%.2f" .HeroWTI.Change}} ({{.HeroWTI.Sign}}{{printf "%.2f" .HeroWTI.ChangePct}}%){{else}}—{{end}}</div>
+                </div>
+                <div class="hero-chart-source-block">
+                    <span class="hero-chart-source" id="heroChartSource"></span>
+                    <span class="hero-chart-updated" id="heroChartUpdated"></span>
+                </div>
+            </div>
+            <div class="hero-chart-tabs" id="heroChartTabs" role="tablist" aria-label="Hero chart lookback window">
+                <button class="hero-tf-btn" data-minutes="30" role="tab" aria-selected="false">30m</button>
+                <button class="hero-tf-btn active" data-minutes="60" role="tab" aria-selected="true">1H</button>
+                <button class="hero-tf-btn" data-minutes="120" role="tab" aria-selected="false">2H</button>
+                <button class="hero-tf-btn" data-minutes="240" role="tab" aria-selected="false">4H</button>
+                <button class="hero-tf-btn" data-minutes="360" role="tab" aria-selected="false">6H</button>
+            </div>
+            <div class="hero-chart-container" id="heroChartContainer" role="img" aria-label="WTI crude oil live 1-minute candle chart">
+                <div class="hero-chart-empty" id="heroChartEmpty" style="display:none;">
+                    <div class="hero-chart-empty-icon">
+                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+                    </div>
+                    <div class="hero-chart-empty-title">Warming up the live feed…</div>
+                    <div class="hero-chart-empty-text">First 1-minute candle is being collected from Pyth Network. The chart will populate within ~60 seconds.</div>
+                </div>
+            </div>
+            <div class="hero-chart-footer">
+                <span class="hero-chart-footer-link"><a href="/commodity/WTI">WTI details</a></span>
+                <span class="hero-chart-footer-sep">·</span>
+                <span class="hero-chart-footer-link"><a href="/commodity/BRENT">Brent</a></span>
+                <span class="hero-chart-footer-sep">·</span>
+                <span class="hero-chart-footer-link"><a href="/charts">All charts</a></span>
+            </div>
+        </div>
+
+        <div class="hero-cta">
+            <a href="#markets" class="btn btn-primary">
+                View All Markets
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M6 3l5 5-5 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </a>
+            <a href="/charts" class="btn btn-outline">Explore Charts</a>
+        </div>
+    </div>
+</section>
+
+<section class="section" id="markets" aria-labelledby="markets-heading">
+    <div class="container">
+        <header class="section-header">
+            <div class="section-label">Live Market Data</div>
+            <h2 class="section-title" id="markets-heading">Oil &amp; Energy Prices Today</h2>
+            <p class="section-desc">Real-time prices for crude oil benchmarks and energy commodities, updated every 15 seconds.</p>
+        </header>
+
+        {{template "price_grid" .CardPrices}}
+
+        <div class="market-table-wrapper">
+            <h3 class="subsection-title">All Energy Commodity Prices</h3>
+            <div class="market-table-scroll">
+                {{template "market_table" .Prices}}
+            </div>
+            <p class="section-cta-line"><a href="/charts" class="section-cta-link">See full interactive oil price charts →</a></p>
+        </div>
+    </div>
+</section>
+
+<section class="section section-dark" id="charts" aria-labelledby="charts-heading">
+    <div class="container">
+        <header class="section-header">
+            <div class="section-label">Interactive Charts</div>
+            <h2 class="section-title" id="charts-heading">Oil Price Charts</h2>
+            <p class="section-desc">Professional candlestick charts with volume analysis for WTI, Brent, natural gas, and more. Multiple timeframes from 1 week to 1 year.</p>
+        </header>
+        <div class="chart-panel">
+            <div class="chart-controls">
+                <div class="chart-symbols" id="chartSymbols" role="tablist" aria-label="Select commodity">
+                    <button class="chart-symbol-btn active" data-symbol="WTI" role="tab" aria-selected="true">WTI Crude</button>
+                    <button class="chart-symbol-btn" data-symbol="BRENT" role="tab" aria-selected="false">Brent Crude</button>
+                    <button class="chart-symbol-btn" data-symbol="NATGAS" role="tab" aria-selected="false">Natural Gas</button>
+                    <button class="chart-symbol-btn" data-symbol="HEATING" role="tab" aria-selected="false">Heating Oil</button>
+                    <button class="chart-symbol-btn" data-symbol="RBOB" role="tab" aria-selected="false">RBOB Gasoline</button>
+                    <button class="chart-symbol-btn" data-symbol="OPEC" role="tab" aria-selected="false">OPEC Basket</button>
+                </div>
+                <div class="chart-timeframes" id="chartTimeframes" role="tablist" aria-label="Select timeframe">
+                    <button class="chart-tf-btn" data-days="7" role="tab">1W</button>
+                    <button class="chart-tf-btn" data-days="30" role="tab">1M</button>
+                    <button class="chart-tf-btn active" data-days="90" role="tab" aria-selected="true">3M</button>
+                    <button class="chart-tf-btn" data-days="180" role="tab">6M</button>
+                    <button class="chart-tf-btn" data-days="365" role="tab">1Y</button>
+                </div>
+            </div>
+            <div class="chart-stats" id="chartStats"></div>
+            <div class="chart-container" id="chartContainer" role="img" aria-label="Oil price candlestick chart"></div>
+            <div class="chart-info" id="chartInfo">
+                <div class="chart-info-item"><span class="chart-info-label">Open</span><span class="chart-info-value" id="chartOpen">—</span></div>
+                <div class="chart-info-item"><span class="chart-info-label">High</span><span class="chart-info-value" id="chartHigh">—</span></div>
+                <div class="chart-info-item"><span class="chart-info-label">Low</span><span class="chart-info-value" id="chartLow">—</span></div>
+                <div class="chart-info-item"><span class="chart-info-label">Close</span><span class="chart-info-value" id="chartClose">—</span></div>
+                <div class="chart-info-item"><span class="chart-info-label">Volume</span><span class="chart-info-value" id="chartVolume">—</span></div>
+            </div>
+        </div>
+        <p class="section-cta-line"><a href="/charts" class="section-cta-link">Open the full charts page →</a></p>
+    </div>
+</section>
+
+<section class="section" id="forecast" aria-labelledby="forecast-heading">
+    <div class="container">
+        <header class="section-header">
+            <div class="section-label">Statistical Outlook</div>
+            <h2 class="section-title" id="forecast-heading">7-Day Price Forecasts</h2>
+            <p class="section-desc">Model-driven 7-day forecasts for major energy benchmarks, combining a Holt linear trend model with RSI and MACD technical signals on 2 years of daily history.</p>
+        </header>
+        <div class="forecast-disclaimer" role="note">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+            <span>Statistical forecasts for informational purposes only. Not investment advice. Past performance does not guarantee future results.</span>
+        </div>
+        {{template "forecast_grid" .Forecasts}}
+        <p class="section-cta-line"><a href="/forecast" class="section-cta-link">See full forecast methodology &amp; details →</a></p>
+    </div>
+</section>
+
+<section class="section section-dark" id="news" aria-labelledby="news-heading">
+    <div class="container">
+        <header class="section-header">
+            <div class="section-label">Market Intelligence</div>
+            <h2 class="section-title" id="news-heading">Energy Market News</h2>
+            <p class="section-desc">Breaking news and analysis from Reuters, Bloomberg, CNBC, and 50+ sources covering oil, gas, refining, and global energy markets.</p>
+        </header>
+        <nav class="news-filters" id="newsFilters" aria-label="Filter news by category">
+            <button class="news-filter-btn active" data-category="all">All</button>
+            <button class="news-filter-btn" data-category="Oil Markets">Oil</button>
+            <button class="news-filter-btn" data-category="OPEC">OPEC</button>
+            <button class="news-filter-btn" data-category="Natural Gas">Nat Gas</button>
+            <button class="news-filter-btn" data-category="Refining">Refining</button>
+            <button class="news-filter-btn" data-category="Extraction">Extraction</button>
+            <button class="news-filter-btn" data-category="International">International</button>
+            <button class="news-filter-btn" data-category="Technology">Technology</button>
+        </nav>
+        <div class="news-featured" id="newsFeatured"></div>
+        <div class="news-grid" id="newsGrid" role="feed" aria-label="Energy news articles"></div>
+        <p class="section-cta-line"><a href="/news" class="section-cta-link">All energy market news →</a></p>
+    </div>
+</section>
+{{end}}

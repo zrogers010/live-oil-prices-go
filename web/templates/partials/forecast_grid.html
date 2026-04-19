@@ -1,0 +1,89 @@
+{{define "forecast_grid"}}
+<div class="forecast-grid" id="forecastGrid" role="list" aria-label="Oil price outlooks and technical signals">
+    {{range .}}
+    <article class="forecast-card forecast-{{.DirClass}}" data-symbol="{{.Symbol}}" role="listitem">
+        <header class="forecast-card-header">
+            <div>
+                <div class="forecast-card-symbol">{{.Symbol}}</div>
+                <div class="forecast-card-name">{{.Name}}</div>
+            </div>
+            <span class="forecast-direction-badge {{.DirClass}}" aria-label="Outlook: {{.DirectionLabel}}">
+                <span class="forecast-arrow">{{.Arrow}}</span>{{.DirectionLabel}}
+            </span>
+        </header>
+
+        <div class="forecast-spot">
+            <div class="forecast-spot-label">Spot</div>
+            <div class="forecast-spot-value">${{printf "%.2f" .Current}}</div>
+        </div>
+
+        <ul class="signal-stack" aria-label="Technical signal stack">
+            {{range .Signals}}
+            <li class="signal-chip signal-{{.Tone}}">
+                <span class="signal-chip-label">{{.Label}}</span>
+                <span class="signal-chip-value">{{.Value}}</span>
+            </li>
+            {{end}}
+        </ul>
+
+        <details class="forecast-projection">
+            <summary class="forecast-projection-summary">
+                <span>Model projection · {{.Timeframe}}</span>
+                <span class="forecast-projection-headline forecast-{{.DirClass}}-text">${{printf "%.2f" .Predicted}} ({{.DeltaSign}}{{printf "%.2f" .DeltaPct}}%)</span>
+            </summary>
+            <div class="forecast-projection-body">
+                <p class="forecast-projection-note">
+                    Damped-Holt point forecast {{.Timeframe}} ahead, anchored to the live spot price.
+                    The signal stack above carries the bulk of the directional information; treat the
+                    dollar value as one input among many.
+                </p>
+                <div class="forecast-confidence">
+                    <div class="forecast-confidence-row">
+                        <span class="forecast-meta-label">Model confidence</span>
+                        <span class="forecast-confidence-value">{{.ConfidenceLabel}} · {{.ConfidencePct}}%</span>
+                    </div>
+                    <div class="forecast-confidence-bar" role="progressbar" aria-valuenow="{{.ConfidencePct}}" aria-valuemin="0" aria-valuemax="100">
+                        <div class="forecast-confidence-fill {{.DirClass}}" style="width: {{.ConfidencePct}}%"></div>
+                    </div>
+                </div>
+            </div>
+        </details>
+
+        {{if .HasBacktest}}
+        <div class="backtest-credibility" aria-label="Backtest credibility">
+            <div class="backtest-verdict">
+                <span class="backtest-verdict-icon" aria-hidden="true">📊</span>
+                <span class="backtest-verdict-text">{{.BacktestVerdict}}</span>
+            </div>
+            <dl class="backtest-stats">
+                <div class="backtest-stat">
+                    <dt>Model MAPE</dt>
+                    <dd>{{printf "%.1f" .MAPEPct}}%</dd>
+                </div>
+                <div class="backtest-stat">
+                    <dt>Naive MAPE</dt>
+                    <dd>{{printf "%.1f" .NaiveMAPEPct}}%</dd>
+                </div>
+                <div class="backtest-stat">
+                    <dt>Skill</dt>
+                    <dd>{{if ge .SkillPct 0.0}}+{{end}}{{printf "%.0f" .SkillPct}}%</dd>
+                </div>
+                <div class="backtest-stat">
+                    <dt>Sessions</dt>
+                    <dd>{{.BacktestSteps}}</dd>
+                </div>
+            </dl>
+            <p class="backtest-sentence">{{.BacktestSentence}}</p>
+        </div>
+        {{end}}
+
+        <p class="forecast-analysis">{{.Analysis}}</p>
+
+        <footer class="forecast-card-footer">
+            <span class="forecast-footnote">Model: <code>{{.Model}}</code></span>
+            <span class="forecast-footnote">Source: {{.SourceLabel}}</span>
+        </footer>
+    </article>
+    {{end}}
+</div>
+{{end}}

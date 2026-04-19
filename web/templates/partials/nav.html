@@ -1,0 +1,19 @@
+{{define "nav"}}
+<nav class="navbar" id="navbar" aria-label="Main navigation">
+    <div class="nav-container">
+        <a href="/" class="nav-logo" aria-label="Live Oil Prices — Home">
+            <span class="logo-icon">◆</span>
+            <span class="logo-text">LIVE<span class="logo-accent">OIL</span>PRICES</span>
+        </a>
+        <button class="mobile-menu-btn" id="mobileMenuBtn" aria-label="Toggle navigation menu" aria-expanded="false">
+            <span></span><span></span><span></span>
+        </button>
+    </div>
+</nav>
+<div class="nav-links" id="navLinks">
+    <a href="/{{if ne .ActivePage "home"}}{{end}}#markets" class="nav-link{{if eq .ActivePage "home"}} nav-link-active{{end}}">Markets</a>
+    <a href="/charts" class="nav-link{{if eq .ActivePage "charts"}} nav-link-active{{end}}">Charts</a>
+    <a href="/forecast" class="nav-link{{if eq .ActivePage "forecast"}} nav-link-active{{end}}">Forecast</a>
+    <a href="/news" class="nav-link{{if eq .ActivePage "news"}} nav-link-active{{end}}">News</a>
+</div>
+{{end}}

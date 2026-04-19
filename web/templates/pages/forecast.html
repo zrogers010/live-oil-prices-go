@@ -1,0 +1,162 @@
+{{define "content"}}
+<section class="page-hero">
+    <div class="container">
+        <nav class="page-breadcrumb" aria-label="Breadcrumb">
+            <a href="/" class="breadcrumb-link">Home</a>
+            <span class="breadcrumb-sep">/</span>
+            <span class="breadcrumb-current">Outlook</span>
+        </nav>
+        <h1 class="page-title">Oil Price Outlook &amp; Technical Signals</h1>
+        <p class="page-subtitle">A multi-signal view of WTI, Brent, natural gas and heating oil. Each card stacks four independent technical signals — trend, momentum, MACD and the 50/200-day moving-average regime — alongside a damped-Holt 7-day model forecast and the institutional EIA Short-Term Energy Outlook reference.</p>
+    </div>
+</section>
+
+<section class="section" id="forecast" aria-labelledby="outlook-heading">
+    <div class="container">
+        <header class="section-header">
+            <div class="section-label">Signal Stack</div>
+            <h2 class="section-title" id="outlook-heading">Current Energy Market Outlook</h2>
+            <p class="section-desc">Each card leads with the four-signal stack so you can see whether the indicators agree before you read the model's dollar forecast. The backtest credibility block underneath shows the model's actual recent track record vs. a naive baseline.</p>
+        </header>
+        <div class="forecast-disclaimer" role="note">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+            <span>Technical signals and statistical forecasts for informational purposes only. Not investment advice. Past performance does not guarantee future results.</span>
+        </div>
+        {{template "forecast_grid" .Forecasts}}
+    </div>
+</section>
+
+<section class="section section-dark" id="institutional" aria-labelledby="institutional-heading">
+    <div class="container">
+        <header class="section-header">
+            <div class="section-label">Institutional Outlook</div>
+            <h2 class="section-title" id="institutional-heading">EIA Short-Term Energy Outlook</h2>
+            <p class="section-desc">The U.S. Energy Information Administration publishes a monthly forward outlook for WTI, Brent and Henry Hub natural gas. We surface the most recent release here as a third-party reference against the on-site model.</p>
+        </header>
+        <div class="consensus-grid" id="consensusGrid" aria-live="polite">
+            {{if .Consensus}}
+                {{range .Consensus}}
+                <article class="consensus-card" data-symbol="{{.Symbol}}">
+                    <header class="consensus-card-header">
+                        <div>
+                            <div class="consensus-card-symbol">{{.Symbol}}</div>
+                            <div class="consensus-card-name">{{.Name}}</div>
+                        </div>
+                        <span class="consensus-release">{{.ReleasedAt}}</span>
+                    </header>
+                    <table class="consensus-table">
+                        <thead>
+                            <tr><th>Month</th><th style="text-align:right">Forecast ({{.Unit}})</th></tr>
+                        </thead>
+                        <tbody>
+                            {{range .Months}}
+                            <tr>
+                                <td>{{.Period}}</td>
+                                <td class="consensus-value">{{.Value}}</td>
+                            </tr>
+                            {{end}}
+                        </tbody>
+                    </table>
+                </article>
+                {{end}}
+            {{else}}
+                <p class="consensus-empty">EIA Short-Term Energy Outlook will appear here when available.</p>
+            {{end}}
+        </div>
+        <p class="consensus-citation">
+            Source:
+            <a href="https://www.eia.gov/outlooks/steo/" target="_blank" rel="noopener">EIA Short-Term Energy Outlook</a>.
+            Forecast values are produced by the EIA and republished here unaltered.
+        </p>
+    </div>
+</section>
+
+<section class="section" aria-labelledby="method-heading">
+    <div class="container">
+        <div class="content-prose">
+            <h2 id="method-heading">How These Signals Work</h2>
+            <p>Each outlook card combines five independent inputs. We deliberately lead with the four technical signals — not the dollar forecast — because multi-day point forecasts on commodity prices are noisy by their nature, while the underlying signals are far more interpretable.</p>
+
+            <h3>1. Trend regime (50DMA vs 200DMA)</h3>
+            <p>The relationship between the 50-day and 200-day simple moving averages is the textbook way to label a market's long-term regime. A 50DMA above the 200DMA is a <em>golden-cross</em> regime (bullish bias); a 50DMA well below the 200DMA is a <em>death-cross</em> regime (bearish bias). Range-bound markets show the two averages crossing back and forth.</p>
+
+            <h3>2. Momentum (RSI 14)</h3>
+            <p>The 14-day Relative Strength Index gives a fast read on whether buyers or sellers are in control. Readings above 70 are overbought (often a contrarian sell signal), below 30 are oversold (often a contrarian buy signal), and the 45–55 range is genuinely neutral.</p>
+
+            <h3>3. MACD cross (12/26/9)</h3>
+            <p>The MACD histogram (MACD line minus signal line) is the most-watched short-term cross signal in technical analysis. We chip it as <em>above signal</em>, <em>below signal</em>, or <em>flat</em> — a positive histogram is consistent with bullish momentum, a negative histogram with bearish momentum.</p>
+
+            <h3>4. Statistical model (damped Holt)</h3>
+            <p>The dollar forecast comes from a damped-trend Holt exponential smoother (Gardner &amp; McKenzie 1985), with the smoothing parameters (α, β, φ) chosen by grid search. The damped trend is well-known to outperform classic Holt on multi-step horizons because it prevents the trend from extrapolating indefinitely. We back-adjust the underlying futures series for contract rolls before fitting so the model is not penalised for unforecastable contract-roll discontinuities.</p>
+
+            <h3>5. Out-of-sample backtest</h3>
+            <p>The "backtest credibility" block under each card is the most important number on the page. We replay the same model across the most recent 30 trading sessions, scoring 7-day-ahead forecasts against the actual prices that printed, and report the mean absolute percentage error (MAPE). We compare it to a naive "no change" baseline — if the model can't beat that baseline, the card honestly says so.</p>
+
+            <h3>Why we surface this instead of a single point forecast</h3>
+            <p>Predicting energy prices a week out is genuinely hard. Anyone publishing a confident-sounding price target is either selling something or hasn't backtested. We'd rather give you a transparent dashboard of independent signals plus an honest accuracy number, and let you decide how much weight the dollar forecast deserves. The signal stack is also independently useful: when trend, RSI, MACD and the 50/200 DMA regime <em>all</em> agree, the directional setup is materially stronger than when they disagree, regardless of any model output.</p>
+        </div>
+    </div>
+</section>
+
+<section class="section section-dark" aria-labelledby="snapshot-heading">
+    <div class="container">
+        <header class="section-header">
+            <h2 class="section-title" id="snapshot-heading">Live Spot Prices</h2>
+            <p class="section-desc">The current market levels the outlooks above are anchored to.</p>
+        </header>
+        {{template "price_grid" .CardPrices}}
+    </div>
+</section>
+
+<section class="section" aria-labelledby="faq-heading">
+    <div class="container">
+        <header class="section-header">
+            <h2 class="section-title" id="faq-heading">Outlook &amp; Signals FAQ</h2>
+        </header>
+        <div class="faq-list">
+            <details class="faq-item">
+                <summary>How is this different from a traditional price forecast?</summary>
+                <p>Most price-forecast pages publish a single dollar target with a confidence number you have to take on faith. We instead lead with four independent technical signals — trend, momentum, MACD and regime — so you can immediately see whether the indicators agree. The damped-Holt model output is shown as one input among many, with its actual recent backtest accuracy attached.</p>
+            </details>
+            <details class="faq-item">
+                <summary>How accurate are the model forecasts?</summary>
+                <p>Each card shows the model's actual rolling out-of-sample MAPE over the last 30 trading sessions, and compares it to a naive "no change" baseline. A 4% MAPE on a 7-day oil forecast is a strong result; a model that can't beat the naive baseline is honestly flagged as such — the card switches to a neutral outlook and the directional arrow is suppressed.</p>
+            </details>
+            <details class="faq-item">
+                <summary>Where does the institutional outlook come from?</summary>
+                <p>The institutional outlook is sourced directly from the U.S. Energy Information Administration's monthly Short-Term Energy Outlook (STEO), which publishes 12+ months of forward price expectations for WTI, Brent and Henry Hub natural gas. Every figure links back to the original EIA release.</p>
+            </details>
+            <details class="faq-item">
+                <summary>Why publish low-confidence outlooks at all?</summary>
+                <p>Because honest signal is more useful than a fabricated headline. When trend, momentum and the regime disagree, that disagreement is itself information — it tells you the market hasn't picked a side, and we'd rather show you that than paper over it with a confident-looking arrow.</p>
+            </details>
+            <details class="faq-item">
+                <summary>Can I use this to trade?</summary>
+                <p>No. The signals and forecasts on this page are statistical / technical readings produced for informational purposes only. They are not personalised financial advice, do not account for your risk tolerance or account size, and should not be the basis for any trading decision. Trading commodities involves substantial risk of loss.</p>
+            </details>
+        </div>
+    </div>
+</section>
+
+<section class="section section-dark" aria-labelledby="related-heading">
+    <div class="container">
+        <header class="section-header">
+            <h2 class="section-title" id="related-heading">Explore More</h2>
+        </header>
+        <div class="cross-link-grid">
+            <a href="/charts" class="cross-link-card">
+                <h3>Interactive Oil Charts →</h3>
+                <p>Multi-timeframe candlestick charts for WTI, Brent, natural gas and more.</p>
+            </a>
+            <a href="/news" class="cross-link-card">
+                <h3>Energy Market News →</h3>
+                <p>What's actually driving the signals you see here.</p>
+            </a>
+            <a href="/" class="cross-link-card">
+                <h3>Live Prices Dashboard →</h3>
+                <p>The full dashboard with the streaming WTI 1-minute candle chart.</p>
+            </a>
+        </div>
+    </div>
+</section>
+{{end}}

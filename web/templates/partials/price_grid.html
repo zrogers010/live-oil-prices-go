@@ -1,0 +1,71 @@
+{{define "price_grid"}}
+<div class="price-grid" id="priceGrid" role="list" aria-label="Energy commodity prices">
+    {{range .}}
+    <div class="price-card" data-symbol="{{.Symbol}}">
+        <div class="price-card-header">
+            <div>
+                <div class="price-card-symbol">{{.Symbol}}</div>
+                <div class="price-card-name">{{.Name}}</div>
+                {{if .Contract}}<div class="price-card-contract">{{.Contract}}</div>{{end}}
+            </div>
+            <span class="price-card-badge {{if .IsPositive}}positive{{else}}negative{{end}}">{{if .IsPositive}}↑{{else}}↓{{end}} {{.Sign}}{{printf "%.2f" .ChangePct}}%</span>
+        </div>
+        <div class="price-card-price" data-field="price">${{printf "%.2f" .Price}}</div>
+        <div class="price-card-change {{if .IsPositive}}positive{{else}}negative{{end}}" data-field="change">{{.Sign}}{{printf "%.2f" .Change}} ({{.Sign}}{{printf "%.2f" .ChangePct}}%)</div>
+        <div class="price-card-meta">
+            <div class="price-meta-item">
+                <span class="price-meta-label">High</span>
+                <span class="price-meta-value" data-field="high">${{printf "%.2f" .High}}</span>
+            </div>
+            <div class="price-meta-item">
+                <span class="price-meta-label">Low</span>
+                <span class="price-meta-value" data-field="low">${{printf "%.2f" .Low}}</span>
+            </div>
+            <div class="price-meta-item">
+                <span class="price-meta-label">Volume</span>
+                <span class="price-meta-value" data-field="volume">{{.VolumeFormatted}}</span>
+            </div>
+        </div>
+    </div>
+    {{end}}
+</div>
+{{end}}
+
+{{define "market_table"}}
+<table class="market-table" id="marketTable" aria-label="Complete energy market price data">
+    <thead>
+        <tr>
+            <th scope="col">Commodity</th>
+            <th scope="col">Contract</th>
+            <th scope="col">Price</th>
+            <th scope="col">Change</th>
+            <th scope="col">% Change</th>
+            <th scope="col" class="hide-mobile">Day High</th>
+            <th scope="col" class="hide-mobile">Day Low</th>
+            <th scope="col" class="hide-mobile">Volume</th>
+        </tr>
+    </thead>
+    <tbody id="marketTableBody">
+        {{range .}}
+        <tr data-symbol="{{.Symbol}}">
+            <td>
+                <div class="table-commodity">
+                    <div class="table-commodity-icon">{{.SymbolPrefix}}</div>
+                    <div>
+                        <div class="table-commodity-name">{{.Name}}</div>
+                        <div class="table-commodity-symbol">{{.Symbol}}</div>
+                    </div>
+                </div>
+            </td>
+            <td><span class="table-contract{{if not .Source}} estimate{{else if eq .Source "estimate"}} estimate{{end}}">{{if .Contract}}{{.Contract}}{{else}}—{{end}}</span></td>
+            <td><span class="table-price">${{printf "%.2f" .Price}}</span></td>
+            <td><span class="table-change {{if .IsPositive}}positive{{else}}negative{{end}}">{{.Sign}}{{printf "%.2f" .Change}}</span></td>
+            <td><span class="table-change {{if .IsPositive}}positive{{else}}negative{{end}}">{{.Sign}}{{printf "%.2f" .ChangePct}}%</span></td>
+            <td class="hide-mobile">${{printf "%.2f" .High}}</td>
+            <td class="hide-mobile">${{printf "%.2f" .Low}}</td>
+            <td class="hide-mobile">{{.VolumeFormatted}}</td>
+        </tr>
+        {{end}}
+    </tbody>
+</table>
+{{end}}

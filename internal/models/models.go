@@ -83,9 +83,43 @@ type Prediction struct {
 	Confidence    float64 `json:"confidence"`
 	Direction     string  `json:"direction"`
 	Analysis      string  `json:"analysis"`
-	Model         string  `json:"model,omitempty"`  // e.g. "holt-linear" or "fallback"
+	Model         string  `json:"model,omitempty"`  // e.g. "holt-damped+rsi/macd" or "fallback"
 	Source        string  `json:"source,omitempty"` // data source: "yahoo" or "estimate"
 	Disclaimer    string  `json:"disclaimer,omitempty"`
+
+	// Signal-stack fields powering the "Outlook & Technical Signals" view.
+	// These let the UI lead with multi-indicator evidence rather than a
+	// single point forecast that's inherently noisy on multi-day horizons.
+	TrendLabel string  `json:"trendLabel,omitempty"` // "uptrend"|"downtrend"|"sideways"
+	RSI14      float64 `json:"rsi14,omitempty"`
+	RSILabel   string  `json:"rsiLabel,omitempty"`  // "overbought"|"bullish"|"neutral"|"bearish"|"oversold"
+	MACDHist   float64 `json:"macdHist,omitempty"`
+	MACDLabel  string  `json:"macdLabel,omitempty"` // "above signal (bullish)"|"below signal (bearish)"|"flat"
+	MAConfig   string  `json:"maConfig,omitempty"`  // "50DMA above 200DMA (bullish cross)" etc.
+
+	// Backtest credibility — surfaced so users can see the model's actual
+	// out-of-sample track record instead of a single confidence number.
+	MAPE          float64 `json:"mape,omitempty"`          // 0.04 = 4%
+	NaiveMAPE     float64 `json:"naiveMape,omitempty"`     // baseline "no change" MAPE
+	Skill         float64 `json:"skill,omitempty"`         // 1 - mape/naiveMape
+	BacktestSteps int     `json:"backtestSteps,omitempty"` // # of held-out forecasts averaged
+}
+
+// ConsensusForecast holds an institutional outlook (e.g. EIA Short-Term
+// Energy Outlook) for a single benchmark. Used to give users a third-party
+// reference against the on-site statistical model.
+type ConsensusForecast struct {
+	Symbol      string             `json:"symbol"`
+	Source      string             `json:"source"`      // "EIA STEO"
+	SourceURL   string             `json:"sourceUrl"`   // link to the STEO release
+	ReleaseDate string             `json:"releaseDate"` // RFC3339 date the forecast was published
+	Unit        string             `json:"unit"`        // "USD/barrel" etc.
+	Months      []ConsensusMonthly `json:"months"`      // forward 6-12 months
+}
+
+type ConsensusMonthly struct {
+	Period string  `json:"period"` // "2026-05"
+	Value  float64 `json:"value"`
 }
 
 type TechnicalSignals struct {

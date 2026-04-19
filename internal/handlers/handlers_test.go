@@ -47,6 +47,14 @@ func (f *fakeMarketDataService) GetHeroChart(symbol string, maxLiveBars int) mod
 	return models.HeroChart{Symbol: symbol, Mode: "warming-up", Bars: []models.PythCandle{}}
 }
 
+func (f *fakeMarketDataService) GetConsensusForecasts() []models.ConsensusForecast {
+	return nil
+}
+
+func (f *fakeMarketDataService) GetConsensusForecast(symbol string) (models.ConsensusForecast, bool) {
+	return models.ConsensusForecast{}, false
+}
+
 type fakeNewsFeedService struct {
 	getNewsFunc     func() []models.NewsArticle
 	getNewsByIDFunc func(id string) *models.NewsArticle

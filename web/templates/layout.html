@@ -1,0 +1,66 @@
+{{define "layout"}}<!DOCTYPE html>
+<html lang="en" itemscope itemtype="https://schema.org/{{if .SchemaType}}{{.SchemaType}}{{else}}WebPage{{end}}">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <!-- Google Analytics -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-PQVPXXWC1N"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+      gtag('config', 'G-PQVPXXWC1N');
+    </script>
+
+    <title>{{.Title}}</title>
+    <meta name="description" content="{{.Description}}">
+    <meta name="keywords" content="{{.Keywords}}">
+    <link rel="canonical" href="{{.Canonical}}">
+    <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
+    <meta name="author" content="Live Oil Prices">
+    <meta name="theme-color" content="#0B1120">
+
+    <!-- Open Graph -->
+    <meta property="og:type" content="{{if .OGType}}{{.OGType}}{{else}}website{{end}}">
+    <meta property="og:site_name" content="Live Oil Prices">
+    <meta property="og:title" content="{{.OGTitle}}">
+    <meta property="og:description" content="{{.OGDescription}}">
+    <meta property="og:url" content="{{.Canonical}}">
+    <meta property="og:locale" content="en_US">
+
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="{{.OGTitle}}">
+    <meta name="twitter:description" content="{{.OGDescription}}">
+
+    <!-- Structured Data -->
+    {{range .StructuredData}}
+    <script type="application/ld+json">{{. | safeJSON}}</script>
+    {{end}}
+
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect rx='20' width='100' height='100' fill='%230B1120'/><text x='50' y='68' text-anchor='middle' font-size='50' fill='%233B82F6'>◆</text></svg>">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/css/styles.css">
+</head>
+<body>
+    {{template "nav" .}}
+
+    {{if not .HideTicker}}
+    <div class="ticker-bar" id="tickerBar" role="marquee" aria-label="Live energy commodity prices">
+        <div class="ticker-track" id="tickerTrack"></div>
+    </div>
+    {{end}}
+
+    <main>
+        {{template "content" .}}
+    </main>
+
+    {{template "footer" .}}
+
+    <script src="/js/app.js"></script>
+</body>
+</html>
+{{end}}
