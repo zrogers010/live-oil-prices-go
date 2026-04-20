@@ -245,8 +245,7 @@ function setHeroTagline(payload: HeroChart): void {
   if (!accent) return;
   switch (payload.mode) {
     case 'live':
-      accent.textContent =
-        'streaming real-time WTI ticks via Pyth Network — markets are open';
+      accent.textContent = 'Streaming Real-time';
       accent.className = 'hero-tagline-accent hero-tagline-accent-live';
       break;
     case 'prior-session':
@@ -1090,9 +1089,9 @@ function sourceBadgeHtml(source?: string, updatedAt?: string): string {
   switch (source) {
     case 'pyth':
       if (isPythLive(source, updatedAt)) {
-        return `<span class="source-pill source-pill-realtime" title="Streamed from Pyth Network publishers (CME, Cboe, Jane Street, ...)">Real-Time</span>`;
+        return `<span class="source-pill source-pill-realtime" title="Streaming real-time exchange data">Real-Time</span>`;
       }
-      return `<span class="source-pill source-pill-paused" title="Pyth feed (markets closed — showing last published tick)">Last Tick</span>`;
+      return `<span class="source-pill source-pill-paused" title="Markets closed — showing last published tick">Last Tick</span>`;
     case 'yahoo':
       return `<span class="source-pill source-pill-delayed" title="Yahoo Finance — typically 15 minutes delayed from the exchange">15-min Delayed</span>`;
     default:
@@ -1103,7 +1102,7 @@ function sourceBadgeHtml(source?: string, updatedAt?: string): string {
 function forecastSourceLabel(source?: string): string {
   switch (source) {
     case 'pyth':
-      return 'Pyth Network (real-time) + Yahoo history';
+      return 'Real-time streaming + Yahoo history';
     case 'yahoo':
       return 'Yahoo Finance (15-min delayed)';
     default:
