@@ -17,6 +17,14 @@ SyslogIdentifier=liveoilprices
 
 Environment=PORT=8080
 
+# Optional secrets file. Contains lines like `EIA_API_KEY=xxxxx`.
+# Create it on the server with:
+#   sudo install -d -m 700 -o deploy -g deploy /etc/liveoilprices
+#   sudo tee /etc/liveoilprices/env >/dev/null <<<'EIA_API_KEY=your-key'
+#   sudo chmod 600 /etc/liveoilprices/env
+# The leading "-" means systemd won't fail if the file is absent.
+EnvironmentFile=-/etc/liveoilprices/env
+
 NoNewPrivileges=true
 ProtectHome=no
 PrivateTmp=true

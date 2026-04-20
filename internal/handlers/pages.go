@@ -524,7 +524,7 @@ func (a *API) ServeCharts(w http.ResponseWriter, r *http.Request) {
 			breadcrumbJSONLD([][2]string{{"Home", "https://liveoilprices.com/"}, {"Oil Charts", "https://liveoilprices.com/charts"}}),
 			faqJSONLD([][2]string{
 				{"How often are these oil price charts updated?",
-					"Spot prices refresh every 15 seconds. Daily candlestick charts use Yahoo Finance end-of-day data and refresh hourly. The streaming WTI hero chart on the homepage uses real-time Pyth Network ticks aggregated into 1-minute candles."},
+					"Spot prices refresh every 15 seconds. Daily candlestick charts use Yahoo Finance end-of-day data and refresh hourly. The streaming WTI hero chart on the homepage uses real-time exchange ticks aggregated into 1-minute candles."},
 				{"What's the difference between WTI and Brent crude?",
 					"WTI (West Texas Intermediate) is lighter and sweeter than Brent and is delivered at Cushing, Oklahoma. Brent is sourced from the North Sea and is the global benchmark used to price about two-thirds of the world's crude. The Brent–WTI spread reflects relative supply and demand between U.S. and international markets."},
 				{"Why does the chart sometimes show no data on weekends?",
