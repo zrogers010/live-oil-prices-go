@@ -105,8 +105,16 @@ export interface CandleChartHandle {
   setSessionBands(bands: SessionBand[]): void;
   /** Force a full fit-content re-zoom. Use after a wholesale mode change
    *  (e.g. live → prior-session) where the new data range is unrelated
-   *  to whatever zoom level the user had before. */
+   *  to whatever zoom level the user had before. Clears any active
+   *  duration filter set via setVisibleDuration(). */
   fitContent(): void;
+  /** Show only the most recent `seconds` of data (right-anchored), and
+   *  remember the choice so the right edge stays glued to the latest bar
+   *  on every subsequent setData() / update(). Pass `null` to release
+   *  and behave like fitContent(). The user can still wheel-zoom freely
+   *  inside the window — the duration is only re-applied on data
+   *  changes, not on every render. */
+  setVisibleDuration(seconds: number | null): void;
 }
 
 /** SessionMarker draws a labelled vertical line at a wall-clock time on
@@ -422,32 +430,39 @@ export function createCandleChart(container: HTMLElement): CandleChartHandle {
       borderColor: 'rgba(255, 255, 255, 0.06)',
       timeVisible: true,
       secondsVisible: false,
-      // Reserve ~4 bar-widths of empty space to the right of the most
-      // recent candle. At a 5-min resolution that's about 20 minutes
-      // of breathing room, which keeps the live bar from butting up
-      // against the price axis without wasting screen real estate.
-      rightOffset: 4,
-      // Lock the right edge to "now" so wheel-zoom or click-drag can't
-      // push the latest candle off the chart (or pan into empty future
-      // space beyond the rightOffset margin). Users can still pan LEFT
-      // freely to inspect older bars, and double-clicking the time
-      // axis snaps back to a full fit.
+      // Tiny margin so the live candle doesn't sit flush against the
+      // price scale. Kept small (1 bar-width) on purpose: at high zoom
+      // a larger offset reads as "the chart is empty on the right".
+      rightOffset: 1,
+      // Lock both edges of the data range. Users can still wheel-zoom
+      // and click-drag inside the loaded window, but they can't pan
+      // past the first or last bar into empty space — the chart always
+      // shows real data. Double-clicking the time axis resets the zoom.
       fixRightEdge: true,
-      // When a new bucket arrives via update(), slide the visible
-      // window forward by the bucket's width instead of compressing
-      // every bar to fit. This preserves whatever zoom level the user
-      // has dialled in while still keeping the live bar on-screen.
-      shiftVisibleRangeOnNewBar: true,
+      fixLeftEdge: true,
+      // We deliberately do NOT use shiftVisibleRangeOnNewBar here.
+      // Instead, when a duration filter is active we re-apply the
+      // right-anchored visible range explicitly on every new bar, which
+      // is more reliable than the built-in shifter (which interacts
+      // awkwardly with fixRightEdge + manual logical-range setters).
       tickMarkFormatter: nyTickMarkFormatter,
     },
     handleScroll: {
       vertTouchDrag: false,
+      // Wheel events are intercepted manually below so we can implement
+      // RIGHT-ANCHORED zoom (built-in wheel-zoom centers on the cursor
+      // and lets the rightmost candle drift off the right edge — bad UX
+      // for a "live" chart where "now" should always be visible).
       mouseWheel: false,
       pressedMouseMove: true,
       horzTouchDrag: true,
     },
     handleScale: {
-      mouseWheel: true,
+      // Disable native wheel-zoom for the same reason as above. Pinch
+      // (touch / trackpad) still zooms — it's less precise and the
+      // user's natural pinch gesture is symmetric, so right-edge drift
+      // is less of a problem there.
+      mouseWheel: false,
       pinch: true,
       axisPressedMouseMove: true,
       axisDoubleClickReset: true,
@@ -633,14 +648,88 @@ export function createCandleChart(container: HTMLElement): CandleChartHandle {
   });
 
   let lastBarTime = 0;
-  // Track whether we've ever placed real data into this chart instance.
-  // Auto-fit fires exactly once — on the first non-empty load — so the
-  // user starts with all 24h visible. Every subsequent setData (mode
-  // change, periodic refresh) leaves the visible range untouched, so
-  // any zoom / pan the user has applied is preserved across polls.
-  // shiftVisibleRangeOnNewBar (set in chart options) handles the live
-  // ticking case so the rightmost bar always stays in view.
+  // Cache of the most recent bar set so setVisibleDuration() can
+  // resolve "show last N seconds" → logical range without lightweight-
+  // charts giving us a way to query the bar list directly.
+  let cachedBars: { time: number; open: number; high: number; low: number; close: number }[] = [];
+
+  // ─── Right-anchored wheel zoom ───────────────────────────────────
+  //
+  // lightweight-charts' built-in wheel-zoom centers on the cursor
+  // position. For a homepage hero showing live ticks that's the wrong
+  // default — the user's intuition is "wheel up = see less history,
+  // wheel down = see more history", with NOW always pinned to the
+  // right edge.
+  //
+  // We override by listening for wheel events on the chart container
+  // and adjusting the visible logical range manually. The right edge
+  // of the range is always clamped to one bar past the last candle
+  // (matching the +1 offset used in applyVisibleDuration), so the
+  // most recent bar can never scroll off-screen.
+  const onWheel = (e: WheelEvent) => {
+    if (cachedBars.length < 2) return;
+    e.preventDefault();
+    const range = c.timeScale().getVisibleLogicalRange();
+    if (!range) return;
+    const currentWidth = range.to - range.from;
+    if (!Number.isFinite(currentWidth) || currentWidth <= 0) return;
+    // Magnitude-aware zoom factor. We use exp(k * deltaY) so that:
+    //   - one wheel-mouse detent (deltaY ≈ ±100) → ~5% zoom
+    //   - one trackpad pixel-event (deltaY ≈ ±3-10) → ~0.15-0.5% zoom
+    // A trackpad swipe fires 20-40 events that compound to ~5-15%
+    // overall, which feels gentle but responsive. Clamping deltaY to
+    // ±120 prevents a single freak browser event (e.g. on momentum
+    // scroll release) from leaping multiple zoom levels at once.
+    const clamped = Math.max(-120, Math.min(120, e.deltaY));
+    const factor = Math.exp(clamped * 0.0005);
+    let newWidth = currentWidth * factor;
+    // Clamp to sane bounds: never fewer than ~6 bars (any tighter and
+    // a single candle dominates the view) and never more than the full
+    // dataset plus a one-bar margin (matches setVisibleDuration's
+    // toLogical computation, so wheel-zoom-out lands cleanly at "all").
+    const minWidth = 6;
+    const maxWidth = cachedBars.length;
+    newWidth = Math.max(minWidth, Math.min(maxWidth, newWidth));
+    const maxTo = cachedBars.length;
+    c.timeScale().setVisibleLogicalRange({
+      from: maxTo - newWidth,
+      to: maxTo,
+    });
+  };
+  container.addEventListener('wheel', onWheel, { passive: false });
+  // Active duration filter, in seconds. When non-null, every setData()
+  // and every new-bucket update() re-anchors the visible window to the
+  // last `visibleDurationSec` seconds of data so the right edge stays
+  // glued to "now". null = no filter, free-form zoom or fit-to-content.
+  let visibleDurationSec: number | null = null;
+  // First-data-ever flag for the no-filter case: we still want to
+  // fit-content on the very first load even if nobody calls
+  // setVisibleDuration(), so the chart isn't blank on initial paint.
   let hasInitialFit = false;
+
+  function applyVisibleDuration(): void {
+    if (visibleDurationSec === null || cachedBars.length === 0) return;
+    const lastT = cachedBars[cachedBars.length - 1]!.time;
+    const fromT = lastT - visibleDurationSec;
+    // Binary search for the first bar at or after fromT — cheaper than
+    // a linear scan when we're called repeatedly during live ticks.
+    let lo = 0;
+    let hi = cachedBars.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (cachedBars[mid]!.time < fromT) lo = mid + 1;
+      else hi = mid;
+    }
+    const fromLogical = Math.max(0, lo - 0.5);
+    // The "to" includes a small +1 so the last bar isn't clipped at
+    // the right edge — combined with rightOffset:1 in chart options
+    // this gives ~2 bar-widths of breathing room on the right.
+    const toLogical = cachedBars.length - 1 + 1;
+    c.timeScale().setVisibleLogicalRange({
+      from: fromLogical,
+      to: toLogical,
+    });
+  }
 
   return {
     chart: c,
@@ -650,8 +739,24 @@ export function createCandleChart(container: HTMLElement): CandleChartHandle {
         .filter(b => Number.isFinite(b.close) && b.close > 0)
         .map(toBar);
       series.setData(filtered);
+      cachedBars = filtered.map(b => ({
+        time: Number(b.time),
+        open: b.open,
+        high: b.high,
+        low: b.low,
+        close: b.close,
+      }));
       lastBarTime = filtered.length > 0 ? Number(filtered[filtered.length - 1].time) : 0;
-      if (filtered.length > 0 && !hasInitialFit) {
+      if (filtered.length === 0) {
+        repaintOverlay();
+        return;
+      }
+      if (visibleDurationSec !== null) {
+        // Active filter wins over fit-content. Re-apply on every
+        // setData so the right edge stays anchored after mode swaps
+        // and periodic prior-session refreshes.
+        applyVisibleDuration();
+      } else if (!hasInitialFit) {
         c.timeScale().fitContent();
         hasInitialFit = true;
       }
@@ -663,19 +768,47 @@ export function createCandleChart(container: HTMLElement): CandleChartHandle {
       series.update(toBar(bar));
       if (isNewBucket) {
         lastBarTime = bar.time;
-        // shiftVisibleRangeOnNewBar (set in timeScale options) slides
-        // the visible window forward by exactly one bar, so the new
-        // candle becomes visible without compressing every other bar
-        // to fit. The user's zoom level is preserved.
+        // Mirror the new bar into our cache so applyVisibleDuration()
+        // sees the extended range.
+        cachedBars.push({
+          time: bar.time,
+          open: bar.open,
+          high: bar.high,
+          low: bar.low,
+          close: bar.close,
+        });
+        if (visibleDurationSec !== null) {
+          // Re-anchor the right edge to the new bar. Without this the
+          // visible window would stay frozen on the previous range and
+          // the new bar would appear off-screen on the right.
+          applyVisibleDuration();
+        }
+      } else if (cachedBars.length > 0) {
+        // In-place update of the trailing bar — no range change needed,
+        // but mirror the OHLC into our cache so we don't drift.
+        const last = cachedBars[cachedBars.length - 1]!;
+        last.open = bar.open;
+        last.high = bar.high;
+        last.low = bar.low;
+        last.close = bar.close;
       }
     },
     fitContent() {
-      // Public escape hatch for callers that explicitly want a full
-      // re-fit (e.g. after a wholesale mode change). Re-arms the
-      // initial-fit guard too so a subsequent setData with brand-new
-      // data won't try to fit again.
+      // Caller explicitly wants the whole dataset visible. Clears any
+      // active duration filter so it doesn't immediately undo this.
+      visibleDurationSec = null;
       c.timeScale().fitContent();
       hasInitialFit = true;
+    },
+    setVisibleDuration(seconds: number | null) {
+      visibleDurationSec = seconds;
+      if (seconds === null) {
+        c.timeScale().fitContent();
+        hasInitialFit = true;
+      } else {
+        applyVisibleDuration();
+        hasInitialFit = true;
+      }
     },
     setSessionMarkers(markers: SessionMarker[]) {
       sessionMarkers = markers.slice().sort((a, b) => a.time - b.time);
@@ -687,6 +820,7 @@ export function createCandleChart(container: HTMLElement): CandleChartHandle {
     },
     destroy() {
       ro.disconnect();
+      container.removeEventListener('wheel', onWheel);
       overlay.remove();
       c.remove();
     },
