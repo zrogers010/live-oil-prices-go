@@ -36,16 +36,24 @@ type PythCandle struct {
 }
 
 // HeroChart is the response payload for the homepage hero chart endpoint.
-// It abstracts away the live-vs-historical decision: during market hours
-// the server returns a streaming 1-minute Pyth series; off-hours it falls
-// back to the prior session's intraday Yahoo bars. The frontend just
-// renders whatever .bars contains and shows the right header text based
-// on .mode.
+// It always covers the current NY trading day at 5-minute resolution
+// (Yahoo intraday backfill + a live Pyth-driven in-progress bar when the
+// futures market is publishing). The frontend just renders .bars and
+// switches its header label / pulse animation based on .mode.
+//
+// Modes:
+//   - "live"           : today's bars + Pyth feeding the rightmost bar
+//   - "today-paused"   : today's bars but Pyth has gone quiet (daily
+//                        5–6 PM ET maintenance break, brief outage, etc.)
+//   - "prior-session"  : no bars for today yet (pre-Sunday-reopen,
+//                        weekends) — we serve the most recent prior
+//                        session as a stand-in. SessionDate is set.
+//   - "warming-up"     : cold start, no data anywhere yet.
 type HeroChart struct {
 	Symbol      string       `json:"symbol"`
-	Mode        string       `json:"mode"`                  // "live" | "prior-session"
-	Interval    string       `json:"interval"`              // "1m" | "5m" | ...
-	SessionDate string       `json:"sessionDate,omitempty"` // YYYY-MM-DD ET, set when mode="prior-session"
+	Mode        string       `json:"mode"`
+	Interval    string       `json:"interval"`              // typically "5m"
+	SessionDate string       `json:"sessionDate,omitempty"` // YYYY-MM-DD ET — set for "live", "today-paused", "prior-session"
 	UpdatedAt   string       `json:"updatedAt,omitempty"`   // RFC3339, last bar's wall-clock time
 	Source      string       `json:"source"`                // "pyth" | "yahoo"
 	Bars        []PythCandle `json:"bars"`

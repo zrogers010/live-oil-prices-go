@@ -8,6 +8,7 @@ import (
 	"log"
 	"math"
 	"net/http"
+	"sort"
 	"sync"
 	"time"
 )
@@ -54,15 +55,16 @@ type yahooChartResponse struct {
 	} `json:"chart"`
 }
 
-// intradayBars holds a cached intraday series for one symbol along with the
-// exchange-local trading day it represents. We keep the date alongside the
-// bars so the API response can label the chart "Last session: YYYY-MM-DD"
-// when markets are paused.
+// intradayBars holds the FULL ~5-day cached intraday series for one symbol.
+// We keep every bar Yahoo returns (typically ~5 trading sessions worth of
+// 5-min bars) and let callers filter on demand — `GetRolling24hIntraday`
+// slices out the last 24 hours for the homepage hero, and
+// `GetPriorSessionIntraday` walks back to the most recent complete session
+// for the weekend / cold-start fallback.
 type intradayBars struct {
-	bars        []models.OHLCV
-	sessionDate string // YYYY-MM-DD in NYMEX exchange-local time
-	fetchedAt   time.Time
-	interval    string // e.g. "5m"
+	bars      []models.OHLCV // oldest-first, NY-local mixed days
+	fetchedAt time.Time
+	interval  string // e.g. "5m"
 }
 
 type YahooFinanceService struct {
@@ -481,16 +483,15 @@ func (s *YahooFinanceService) refreshIntraday() {
 		wg.Add(1)
 		go func(ys yahooSymbol) {
 			defer wg.Done()
-			bars, sessionDate, err := s.fetchIntraday(ys, "5m", "5d")
+			bars, err := s.fetchIntraday(ys, "5m", "5d")
 			if err != nil {
 				log.Printf("yahoo: intraday fetch failed for %s (%s): %v", ys.internal, ys.yahoo, err)
 				return
 			}
 			results <- result{symbol: ys.internal, bars: intradayBars{
-				bars:        bars,
-				sessionDate: sessionDate,
-				fetchedAt:   time.Now().UTC(),
-				interval:    "5m",
+				bars:      bars,
+				fetchedAt: time.Now().UTC(),
+				interval:  "5m",
 			}}
 		}(sym)
 	}
@@ -504,38 +505,98 @@ func (s *YahooFinanceService) refreshIntraday() {
 	s.mu.Unlock()
 }
 
-// GetPriorSessionIntraday returns the cached intraday bars for the most
-// recent COMPLETE exchange-local trading day, along with that day's date
-// (YYYY-MM-DD in NYMEX local time) and the bar interval (e.g. "5m"). If
-// nothing is cached yet, returns nil bars and an empty date.
+// nyToday returns the current NY-local calendar date as YYYY-MM-DD.
+// This is the canonical "today" for the homepage hero chart, since all
+// the futures we surface are dated by NYMEX/ICE exchange-local time.
+func nyToday() string {
+	return time.Now().In(nyTZ).Format("2006-01-02")
+}
+
+// GetRolling24hIntraday returns the cached 5-min intraday bars from the
+// last 24 hours, oldest-first, along with the bar interval. Used as the
+// homepage hero's primary data source: it always renders a full chart
+// (ignoring brief 1-hour CME breaks which appear as visible gaps),
+// regardless of the time of day, so the UX doesn't degrade right after
+// midnight ET.
 //
-// "Most recent complete trading day" is defined as the latest exchange-day
-// whose bars don't overlap with the current exchange-day. During market
-// hours this is yesterday's session; on weekends/holidays it's whichever
-// trading day was most recently completed (typically Friday).
+// Returns nil bars when nothing is cached yet (cold start) — callers
+// should fall back to GetPriorSessionIntraday for the weekend stand-in.
+func (s *YahooFinanceService) GetRolling24hIntraday(symbol string) (bars []models.OHLCV, interval string) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	cached, ok := s.intraday[symbol]
+	if !ok || len(cached.bars) == 0 {
+		return nil, ""
+	}
+	cutoff := time.Now().UTC().Add(-24 * time.Hour).Unix()
+	// Bars are stored oldest-first, so binary-search the cutoff for cheap
+	// slicing instead of scanning the whole 5-day buffer on every poll.
+	idx := sort.Search(len(cached.bars), func(i int) bool {
+		return cached.bars[i].Time >= cutoff
+	})
+	if idx >= len(cached.bars) {
+		return nil, ""
+	}
+	out := make([]models.OHLCV, len(cached.bars)-idx)
+	copy(out, cached.bars[idx:])
+	return out, cached.interval
+}
+
+// GetPriorSessionIntraday returns intraday bars for the most recent
+// COMPLETE exchange-local trading day STRICTLY BEFORE today, along with
+// that day's date and the bar interval. Used as the weekend / cold-start
+// fallback for the hero chart when no recent bars are available.
+//
+// "Most recent complete day" = latest NY-local date < today that has
+// >= minBarsPerSession bars (filters out stale post-close residue and
+// weekend-straggler ticks Yahoo sometimes emits).
 func (s *YahooFinanceService) GetPriorSessionIntraday(symbol string) (bars []models.OHLCV, sessionDate, interval string) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	cached, ok := s.intraday[symbol]
-	if !ok {
+	if !ok || len(cached.bars) == 0 {
 		return nil, "", ""
 	}
-	out := make([]models.OHLCV, len(cached.bars))
-	copy(out, cached.bars)
-	return out, cached.sessionDate, cached.interval
+	const minBarsPerSession = 10
+	today := nyToday()
+
+	// First pass — count bars per NY-local day for days strictly before today.
+	dayCounts := make(map[string]int)
+	for _, b := range cached.bars {
+		d := exchangeDay(b.Time)
+		if d < today {
+			dayCounts[d]++
+		}
+	}
+	// Pick the latest day that meets the bar-count threshold.
+	pick := ""
+	for d, count := range dayCounts {
+		if count >= minBarsPerSession && d > pick {
+			pick = d
+		}
+	}
+	if pick == "" {
+		return nil, "", ""
+	}
+
+	out := make([]models.OHLCV, 0, dayCounts[pick])
+	for _, b := range cached.bars {
+		if exchangeDay(b.Time) == pick {
+			out = append(out, b)
+		}
+	}
+	return out, pick, cached.interval
 }
 
 // fetchIntraday hits Yahoo's chart endpoint for an intraday series and
-// returns ONLY the bars belonging to the most recent complete exchange-day.
-// We deliberately filter to a single session because:
-//   - It's what the user asked for ("1 day chart of the prior open day").
-//   - It keeps the bar count small (~80–280 bars) for snappy chart renders.
-//   - It avoids visually splicing two sessions into one continuous line,
-//     which can imply a price gap that doesn't exist (the gap *is* the
-//     overnight settle pause).
+// returns EVERY usable bar in the response, oldest-first. Filtering by
+// time-window is done by callers via GetRolling24hIntraday /
+// GetPriorSessionIntraday so the same cache entry can serve both the
+// "show last 24h" and "show prior session" code paths.
 //
-// Returns (bars, sessionDateYYYYMMDD, error). bars are oldest-first.
-func (s *YahooFinanceService) fetchIntraday(sym yahooSymbol, interval, rangeParam string) ([]models.OHLCV, string, error) {
+// Bars whose close is null/NaN/<=0 are dropped; missing individual O/H/L
+// fields are repaired from the close so we never emit half-formed candles.
+func (s *YahooFinanceService) fetchIntraday(sym yahooSymbol, interval, rangeParam string) ([]models.OHLCV, error) {
 	url := fmt.Sprintf(
 		"https://query1.finance.yahoo.com/v8/finance/chart/%s?range=%s&interval=%s&includePrePost=false",
 		sym.yahoo, rangeParam, interval,
@@ -543,88 +604,75 @@ func (s *YahooFinanceService) fetchIntraday(sym yahooSymbol, interval, rangePara
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		return nil, "", err
+		return nil, err
 	}
 	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
 	req.Header.Set("Accept", "application/json")
 
 	resp, err := s.client.Do(req)
 	if err != nil {
-		return nil, "", fmt.Errorf("request failed: %w", err)
+		return nil, fmt.Errorf("request failed: %w", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-		return nil, "", fmt.Errorf("status %d: %s", resp.StatusCode, string(body))
+		return nil, fmt.Errorf("status %d: %s", resp.StatusCode, string(body))
 	}
 
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
 	if err != nil {
-		return nil, "", fmt.Errorf("read body: %w", err)
+		return nil, fmt.Errorf("read body: %w", err)
 	}
 
 	var chart yahooChartResponse
 	if err := json.Unmarshal(body, &chart); err != nil {
-		return nil, "", fmt.Errorf("parse json: %w", err)
+		return nil, fmt.Errorf("parse json: %w", err)
 	}
 	if chart.Chart.Error != nil {
-		return nil, "", fmt.Errorf("api error: %s - %s", chart.Chart.Error.Code, chart.Chart.Error.Description)
+		return nil, fmt.Errorf("api error: %s - %s", chart.Chart.Error.Code, chart.Chart.Error.Description)
 	}
 	if len(chart.Chart.Result) == 0 {
-		return nil, "", fmt.Errorf("no results")
+		return nil, fmt.Errorf("no results")
 	}
 	timestamps := chart.Chart.Result[0].Timestamp
 	quotes := chart.Chart.Result[0].Indicators.Quote
 	if len(quotes) == 0 || len(timestamps) == 0 {
-		return nil, "", fmt.Errorf("empty intraday series")
+		return nil, fmt.Errorf("empty intraday series")
 	}
 	q := quotes[0]
 
-	// Pick the most recent complete exchange-day. Walk backwards from the
-	// last timestamp; the first bar's exchange-day defines our anchor, but
-	// if that day matches "today" in NYMEX local time AND the underlying
-	// market is closed (weekend/holiday), Yahoo may still serve a couple of
-	// stale post-close bars dated today — we still want the *previous*
-	// fully-formed session in that case.
-	//
-	// Strategy: find the most recent NYMEX day that has at least N bars in
-	// the series. N=10 weeds out partial post-close residue and weekend
-	// straggler ticks. Among remaining days, pick the latest.
-	const minBarsPerSession = 10
-	dayCounts := make(map[string]int)
-	for _, ts := range timestamps {
-		dayCounts[exchangeDay(ts)]++
-	}
-	// Sort days descending, keep the first one with >= minBarsPerSession.
-	var candidateDays []string
-	for d, count := range dayCounts {
-		if count >= minBarsPerSession {
-			candidateDays = append(candidateDays, d)
-		}
-	}
-	if len(candidateDays) == 0 {
-		return nil, "", fmt.Errorf("no session has enough intraday bars (max=%d)", maxIntInMap(dayCounts))
-	}
-	// candidateDays are YYYY-MM-DD strings; lex sort is calendar sort.
-	sessionDate := candidateDays[0]
-	for _, d := range candidateDays[1:] {
-		if d > sessionDate {
-			sessionDate = d
-		}
-	}
-
-	bars := make([]models.OHLCV, 0, dayCounts[sessionDate])
+	bars := make([]models.OHLCV, 0, len(timestamps))
 	for i, ts := range timestamps {
-		if exchangeDay(ts) != sessionDate {
+		if i >= len(q.Close) {
+			break
+		}
+		cl, err := q.Close[i].Float64()
+		if err != nil || cl <= 0 || math.IsNaN(cl) {
 			continue
 		}
-		open, _ := q.Open[i].Float64()
-		high, _ := q.High[i].Float64()
-		low, _ := q.Low[i].Float64()
-		cl, _ := q.Close[i].Float64()
-		vol, _ := q.Volume[i].Int64()
-		if cl <= 0 || math.IsNaN(cl) {
-			continue
+		open := cl
+		if i < len(q.Open) {
+			if v, err := q.Open[i].Float64(); err == nil && v > 0 && !math.IsNaN(v) {
+				open = v
+			}
+		}
+		high := math.Max(open, cl)
+		if i < len(q.High) {
+			if v, err := q.High[i].Float64(); err == nil && v > 0 && !math.IsNaN(v) {
+				high = v
+			}
+		}
+		low := math.Min(open, cl)
+		if i < len(q.Low) {
+			if v, err := q.Low[i].Float64(); err == nil && v > 0 && !math.IsNaN(v) {
+				low = v
+			}
+		}
+		var vol int64
+		if i < len(q.Volume) {
+			if v, err := q.Volume[i].Int64(); err == nil && v >= 0 {
+				vol = v
+			}
 		}
 		bars = append(bars, models.OHLCV{
 			Time: ts, Open: round2(open), High: round2(high),
@@ -632,20 +680,9 @@ func (s *YahooFinanceService) fetchIntraday(sym yahooSymbol, interval, rangePara
 		})
 	}
 	if len(bars) == 0 {
-		return nil, "", fmt.Errorf("session %s had bars in metadata but all rows were null", sessionDate)
+		return nil, fmt.Errorf("intraday series had no usable bars")
 	}
-	return bars, sessionDate, nil
-}
-
-// maxIntInMap is a tiny helper for diagnostic error messages.
-func maxIntInMap(m map[string]int) int {
-	max := 0
-	for _, v := range m {
-		if v > max {
-			max = v
-		}
-	}
-	return max
+	return bars, nil
 }
 
 var monthNames = []string{

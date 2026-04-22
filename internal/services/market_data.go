@@ -520,42 +520,103 @@ func (s *MarketDataService) GetPythCandles(symbol string, max int) []models.Pyth
 
 // pythLiveWindow defines how recent the latest Pyth tick must be for us to
 // treat the feed as actively streaming. Outside this window the underlying
-// market is paused (weekend/holiday/maintenance) and we should fall back to
-// Yahoo's intraday series for a meaningful chart.
+// market is paused (weekend/holiday/maintenance/CME daily break) and we
+// should fall back to Yahoo's intraday series so the user doesn't see a
+// stale "LIVE" pill on a chart that hasn't moved.
 //
-// 5 minutes was chosen because Pyth's WTI publishers can briefly go quiet
-// during low-activity periods even when markets are technically open
-// (e.g. Sunday evening reopen). 5 min absorbs those pauses without
-// flipping the chart over and back.
-const pythLiveWindow = 5 * time.Minute
+// 90 seconds is the sweet spot: Pyth's WTI publishers normally print every
+// ~400ms during market hours, so even a several-cycle hiccup stays inside
+// the window, but the daily CME maintenance break (5–6 PM ET) and the
+// weekend pause flip us to Yahoo within ~1.5 minutes instead of dragging
+// a fake "LIVE" indicator along for 5 minutes.
+const pythLiveWindow = 90 * time.Second
 
-// GetHeroChart returns the current best-available chart for the homepage
-// hero. When Pyth is publishing fresh ticks we serve the 1-minute streaming
-// candle buffer; otherwise we fall back to the prior session's intraday
-// Yahoo bars so the chart has something to render on weekends/holidays.
+// heroBucketSec is the resolution of the hero chart's bars. We render the
+// homepage hero at 5-minute granularity because (a) it matches Yahoo's
+// intraday endpoint that backfills the rest of the trading day, and
+// (b) at 5m a full ~23-hour NY session fits in ~280 bars — readable
+// without scrolling at typical screen widths.
+const heroBucketSec int64 = 300
+
+// GetHeroChart returns the homepage hero chart payload covering the
+// rolling last 24 hours. The shape of the response is one of:
 //
-// `maxLiveBars` caps the live window (in 1-minute bars) when streaming.
-// It's ignored in fallback mode — prior-session mode always returns the
-// full session's bars (typically 80–280 5-min bars).
-func (s *MarketDataService) GetHeroChart(symbol string, maxLiveBars int) models.HeroChart {
+//   - mode="live": Yahoo's 5-min intraday bars from 24h ago through the
+//     most recent completed bucket, with an additional in-progress bar
+//     appended (or the latest bucket overwritten) using Pyth's streaming
+//     ticks. Steady state while the futures market is open and Pyth is
+//     publishing.
+//
+//   - mode="today-paused": Same rolling 24h Yahoo bars as live mode, but
+//     Pyth has gone quiet (typically the daily 5–6 PM ET CME maintenance
+//     break, or a brief publisher hiccup). The chart still shows the
+//     same data window; we just don't pulse the LIVE indicator. The
+//     CME break shows up naturally as a 1-hour gap in the bars.
+//
+//   - mode="prior-session": Yahoo has no recent bars (full weekend, cold
+//     start before first refresh) so we serve the most recent complete
+//     prior session as a stand-in. SessionDate labels which day.
+//
+//   - mode="warming-up": Cold start — neither Yahoo nor Pyth have any
+//     data yet. Frontend renders a placeholder.
+//
+// We use rolling-24h rather than "today's calendar day" so the chart is
+// always populated regardless of viewing time — at 00:13 ET there'd be
+// only 3 bars under a strict-today rule, which is a poor UX. The
+// vertical session-boundary markers the frontend overlays make the
+// trading-hours structure obvious anyway.
+//
+// `maxLiveBars` is accepted for backwards compatibility with the API
+// signature and ignored — the hero always returns the full 24h window.
+func (s *MarketDataService) GetHeroChart(symbol string, _ int) models.HeroChart {
 	out := models.HeroChart{Symbol: symbol, Bars: []models.PythCandle{}}
 
-	// 1) Try Pyth streaming candles first.
+	pythLive := false
+	var pythPublishedAt time.Time
 	if s.pyth != nil {
 		if q, ok := s.pyth.GetQuote(symbol); ok && time.Since(q.PublishedAt) <= pythLiveWindow {
-			bars := s.pyth.GetCandles(symbol, maxLiveBars)
-			if len(bars) > 0 {
-				out.Mode = "live"
-				out.Interval = "1m"
-				out.Source = "pyth"
-				out.UpdatedAt = q.PublishedAt.Format(time.RFC3339)
-				out.Bars = bars
-				return out
-			}
+			pythLive = true
+			pythPublishedAt = q.PublishedAt
 		}
 	}
 
-	// 2) Fall back to the prior-session intraday Yahoo series.
+	// 1) Rolling 24h of Yahoo intraday — the primary hero data source.
+	if s.yahoo != nil {
+		bars, interval := s.yahoo.GetRolling24hIntraday(symbol)
+		if len(bars) > 0 {
+			out.Source = "yahoo"
+			out.Interval = interval
+			// SessionDate carries today's NY-local date so the frontend
+			// can compute the session-boundary markers (17:00 / 18:00 ET
+			// transitions) without having to repeat the timezone math.
+			out.SessionDate = nyTodayDate()
+			out.Bars = ohlcvToCandles(bars)
+
+			// Splice in a live in-progress 5-minute bar from Pyth ticks
+			// when the feed is fresh — Yahoo only refreshes every ~5 min
+			// server-side, so without this overlay the rightmost bar
+			// would visibly lag the spot price by up to 5 minutes.
+			if pythLive && s.pyth != nil {
+				bucketStart := pythPublishedAt.Truncate(time.Duration(heroBucketSec) * time.Second).Unix()
+				if bar, ok := s.pyth.GetBucketBar(symbol, bucketStart, heroBucketSec); ok {
+					out.Bars = mergeLiveBucket(out.Bars, bar)
+				}
+			}
+
+			if pythLive {
+				out.Mode = "live"
+				out.UpdatedAt = pythPublishedAt.Format(time.RFC3339)
+			} else {
+				out.Mode = "today-paused"
+				last := out.Bars[len(out.Bars)-1]
+				out.UpdatedAt = time.Unix(last.Time, 0).UTC().Format(time.RFC3339)
+			}
+			return out
+		}
+	}
+
+	// 2) No recent Yahoo bars (weekend, cold-start before first refresh).
+	// Fall back to the most recent complete prior session.
 	if s.yahoo != nil {
 		bars, sessionDate, interval := s.yahoo.GetPriorSessionIntraday(symbol)
 		if len(bars) > 0 {
@@ -563,29 +624,92 @@ func (s *MarketDataService) GetHeroChart(symbol string, maxLiveBars int) models.
 			out.Interval = interval
 			out.Source = "yahoo"
 			out.SessionDate = sessionDate
+			out.Bars = ohlcvToCandles(bars)
 			last := bars[len(bars)-1]
 			out.UpdatedAt = time.Unix(last.Time, 0).UTC().Format(time.RFC3339)
-			// Reshape OHLCV (which carries volume we don't need here) into
-			// the same PythCandle shape the live mode uses, so the frontend
-			// has a single bar type to render.
-			out.Bars = make([]models.PythCandle, len(bars))
-			for i, b := range bars {
-				out.Bars[i] = models.PythCandle{
-					Time:  b.Time,
-					Open:  b.Open,
-					High:  b.High,
-					Low:   b.Low,
-					Close: b.Close,
-				}
+			return out
+		}
+	}
+
+	// 3) Last resort — show whatever Pyth has accumulated since boot,
+	// even if Yahoo is completely cold. Common right after server
+	// startup before the first Yahoo intraday refresh has landed.
+	if s.pyth != nil {
+		bars := s.pyth.GetCandles(symbol, 0)
+		if len(bars) > 0 {
+			out.Source = "pyth"
+			out.Interval = "1m"
+			out.Bars = bars
+			out.SessionDate = nyTodayDate()
+			if pythLive {
+				out.Mode = "live"
+				out.UpdatedAt = pythPublishedAt.Format(time.RFC3339)
+			} else {
+				out.Mode = "today-paused"
+				out.UpdatedAt = time.Unix(bars[len(bars)-1].Time, 0).UTC().Format(time.RFC3339)
 			}
 			return out
 		}
 	}
 
-	// 3) Nothing available — empty payload, frontend renders the cold-start
-	// "warming up the live feed" placeholder.
+	// 4) Nothing — frontend renders the cold-start placeholder.
 	out.Mode = "warming-up"
 	return out
+}
+
+// nyTodayDate returns today's NY-local date as YYYY-MM-DD. Mirrors the
+// helper in yahoo.go but lives here too so market_data.go has no cross-
+// service-internal dependency.
+func nyTodayDate() string {
+	loc, err := time.LoadLocation("America/New_York")
+	if err != nil {
+		return time.Now().UTC().Format("2006-01-02")
+	}
+	return time.Now().In(loc).Format("2006-01-02")
+}
+
+// ohlcvToCandles reshapes Yahoo's OHLCV bars (which carry a volume field
+// the hero chart doesn't need) into the lighter PythCandle shape so the
+// frontend has a single bar type to render across all hero modes.
+func ohlcvToCandles(in []models.OHLCV) []models.PythCandle {
+	out := make([]models.PythCandle, len(in))
+	for i, b := range in {
+		out[i] = models.PythCandle{
+			Time:  b.Time,
+			Open:  b.Open,
+			High:  b.High,
+			Low:   b.Low,
+			Close: b.Close,
+		}
+	}
+	return out
+}
+
+// mergeLiveBucket folds a freshly-built Pyth in-progress bar into the
+// session series. If the latest series bar already covers the same bucket
+// (Yahoo refreshed midway through a 5-min window), we overwrite it so the
+// chart shows the more recent Pyth-derived close. Otherwise we append the
+// new bucket to the right of the series.
+//
+// We deliberately don't try to "merge" overlapping ranges from both
+// sources — Pyth's tick range is the more current truth inside the live
+// bucket, and Yahoo will replace it on its next intraday refresh anyway.
+func mergeLiveBucket(series []models.PythCandle, live models.PythCandle) []models.PythCandle {
+	if len(series) == 0 {
+		return []models.PythCandle{live}
+	}
+	last := series[len(series)-1]
+	if last.Time == live.Time {
+		series[len(series)-1] = live
+		return series
+	}
+	if live.Time > last.Time {
+		return append(series, live)
+	}
+	// Live bucket is older than the last Yahoo bar — Yahoo is ahead of
+	// Pyth (rare, only happens right after a Yahoo refresh lands a future
+	// timestamp). Trust Yahoo, drop the stale Pyth bucket.
+	return series
 }
 
 func (s *MarketDataService) GetAnalysis() models.MarketAnalysis {
