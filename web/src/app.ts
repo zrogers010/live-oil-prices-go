@@ -31,6 +31,14 @@ const HERO_LIVE_POLL_MS = 2000;
 // poll much less aggressively because the data only changes when markets
 // reopen — at which point we want to catch the transition within a minute.
 const HERO_PAUSED_POLL_MS = 60_000;
+// HERO_DEFAULT_RANGE_SEC controls which lookback window the chart opens
+// with. 24h matches the rolling-24h dataset the server delivers — the
+// user can collapse to 12h or 6h via the filter tabs above the chart.
+const HERO_DEFAULT_RANGE_SEC = 86_400;
+// heroVisibleDurationSec mirrors the active filter button so we re-apply
+// it after every mode swap (the chart instance also tracks it internally,
+// but stashing it here lets us survive a chart re-creation if needed).
+let heroVisibleDurationSec: number | null = HERO_DEFAULT_RANGE_SEC;
 
 // ─── Bootstrap ──────────────────────────────────────────
 
@@ -160,6 +168,10 @@ async function loadHeroChart(): Promise<void> {
 
   if (!heroChart) {
     heroChart = createCandleChart(container);
+    // Apply the default lookback window before the first paint so the
+    // chart opens with 24H visible, right edge anchored to "now".
+    heroChart.setVisibleDuration(heroVisibleDurationSec);
+    setupHeroRangeTabs();
   }
 
   try {
@@ -168,6 +180,32 @@ async function loadHeroChart(): Promise<void> {
   } catch (err) {
     console.error('Failed to load hero chart:', err);
   }
+}
+
+// setupHeroRangeTabs wires the 6H / 12H / 24H buttons under the chart.
+// Each button carries `data-hero-range` (in seconds) — we read it on
+// click, push it into the chart, and toggle the visual `is-active`
+// state. Idempotent: safe to call once per page load.
+function setupHeroRangeTabs(): void {
+  const tabs = document.getElementById('heroChartTabs');
+  if (!tabs) return;
+  tabs.addEventListener('click', e => {
+    const target = e.target as HTMLElement | null;
+    const btn = target?.closest('button.hero-chart-tab') as HTMLButtonElement | null;
+    if (!btn) return;
+    const raw = btn.dataset.heroRange;
+    if (!raw) return;
+    const seconds = parseInt(raw, 10);
+    if (!Number.isFinite(seconds) || seconds <= 0) return;
+    heroVisibleDurationSec = seconds;
+    if (heroChart) heroChart.setVisibleDuration(seconds);
+    // Toggle active state across all sibling tabs.
+    tabs.querySelectorAll<HTMLButtonElement>('button.hero-chart-tab').forEach(t => {
+      const isActive = t === btn;
+      t.classList.toggle('is-active', isActive);
+      t.setAttribute('aria-selected', isActive ? 'true' : 'false');
+    });
+  });
 }
 
 // applyHeroChartPayload is the single point that paints the chart and the
@@ -194,11 +232,13 @@ function applyHeroChartPayload(payload: HeroChart): void {
   if (payload.mode !== heroMode) {
     // Mode change — wholesale replace the data so the chart redraws
     // with whatever interval / session the new mode brings. Also clears
-    // any half-formed candle from the previous mode. Force a re-fit
-    // because the new bar range is unrelated to whatever zoom level
-    // the user had on the previous mode's data.
+    // any half-formed candle from the previous mode. The chart's own
+    // setData() will re-anchor to the active duration filter (e.g.
+    // "last 24H"), so the right edge stays glued to the most recent bar.
     heroChart.setData(payload.bars);
-    heroChart.fitContent();
+    if (heroVisibleDurationSec !== null) {
+      heroChart.setVisibleDuration(heroVisibleDurationSec);
+    }
     heroMode = payload.mode;
     transitionPolling(payload.mode);
     applyHeroSessionOverlay(payload);
