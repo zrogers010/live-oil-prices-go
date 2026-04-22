@@ -40,16 +40,21 @@ export interface PythCandle {
 }
 
 /** HeroChart is the unified payload for the homepage hero chart. The server
+ *  always returns today's NY trading session at 5-minute resolution and
  *  picks `mode` based on data freshness:
- *   - "live": streaming 1-minute Pyth candles (markets open).
- *   - "prior-session": intraday Yahoo bars from the most recent complete
- *     trading day (weekend / holiday / feed paused).
- *   - "warming-up": no data yet — render the cold-start placeholder. */
+ *   - "live"          : today's bars + Pyth feeding the rightmost bar in real time.
+ *   - "today-paused"  : today's bars but Pyth is quiet (CME daily 5–6 PM ET
+ *                       break, brief publisher hiccup, etc.) — chart still
+ *                       spans today, just no live pulse.
+ *   - "prior-session" : today has no bars yet (pre-Sunday-reopen, full
+ *                       weekend day) so we serve the most recent prior
+ *                       trading day. `sessionDate` labels which day.
+ *   - "warming-up"    : cold start, no data anywhere — render placeholder. */
 export interface HeroChart {
   symbol: string;
-  mode: "live" | "prior-session" | "warming-up";
-  interval: string; // e.g. "1m" or "5m"
-  sessionDate?: string; // YYYY-MM-DD in NYMEX local time, set when mode === "prior-session"
+  mode: "live" | "today-paused" | "prior-session" | "warming-up";
+  interval: string; // typically "5m"
+  sessionDate?: string; // YYYY-MM-DD in NY-local time
   updatedAt?: string; // RFC3339 of latest bar
   source: "pyth" | "yahoo" | "";
   bars: PythCandle[];

@@ -1,5 +1,5 @@
 import { getPrices, getChartData, getNews, getPredictions, getHeroChart, getConsensus } from './api';
-import { initChart, updateChartData, subscribeCrosshair, createCandleChart, type CandleChartHandle } from './charts';
+import { initChart, updateChartData, subscribeCrosshair, createCandleChart, type CandleChartHandle, type SessionMarker, type SessionBand } from './charts';
 import type { Price, ChartData, NewsArticle, OHLCV, Prediction, HeroChart, ConsensusForecast } from './types';
 
 let currentSymbol = 'WTI';
@@ -7,17 +7,20 @@ let currentDays = 90;
 let allNews: NewsArticle[] = [];
 let currentCategory = 'all';
 
-// Hero chart is a candlestick instance shared between two modes (live Pyth
-// 1-min vs prior-session Yahoo intraday). Independent of the larger chart
-// in the #charts section so the two lightweight-charts instances don't
+// Hero chart is a candlestick instance that always paints today's NY
+// trading session at 5-min resolution (Yahoo intraday backfill + a live
+// Pyth-driven in-progress bar). Kept independent of the larger chart in
+// the #charts section so the two lightweight-charts instances don't
 // collide on style or DOM.
 let heroChart: CandleChartHandle | null = null;
-// heroChartMinutes is the lookback window in minutes for LIVE mode (e.g.
-// 60 = "show me the last hour of 1-min bars"). Ignored in prior-session
-// mode, which always shows the full session.
-let heroChartMinutes = 60;
+// HERO_MAX_BARS is a generous upper bound for the bar count we'll
+// accept from /api/hero. The server returns the full NY session so this
+// is purely a sanity ceiling (a 23-hour session at 5-min ≈ 276 bars).
+// Sent as the API's `max` param for backwards compat — the server now
+// ignores it and always returns the full session.
+const HERO_MAX_BARS = 600;
 let heroPollTimer: number | null = null;
-let heroMode: 'live' | 'prior-session' | 'warming-up' | null = null;
+let heroMode: 'live' | 'today-paused' | 'prior-session' | 'warming-up' | null = null;
 const HERO_SYMBOL = 'WTI';
 // HERO_LIVE_POLL_MS is how often we re-fetch the candle buffer in LIVE
 // mode. 2s lines up with the Pyth poll cadence on the server, so each
@@ -35,7 +38,6 @@ document.addEventListener('DOMContentLoaded', () => {
   setupNavigation();
   setupNewsFilters();
   setupClickHandlers();
-  setupHeroChartTabs();
   loadAllData();
   setInterval(refreshPrices, 15000);
 });
@@ -44,7 +46,7 @@ async function loadAllData(): Promise<void> {
   try {
     await Promise.all([
       loadPrices(),
-      loadHeroChart(heroChartMinutes),
+      loadHeroChart(),
       loadChart(currentSymbol, currentDays),
       loadForecasts(),
       loadConsensus(),
@@ -133,39 +135,26 @@ function renderHeroChartHeader(p: Price): void {
   }
 }
 
-// ─── Hero Chart (auto live ↔ prior-session) ──────────────
+// ─── Hero Chart (today's session, auto live/paused/prior) ──────────────
 //
-// The homepage hero chart has two modes, picked SERVER-SIDE by /api/hero:
-//   - "live": streaming 1-minute Pyth candles. Polled every 2s, only the
-//     last bar is mutated via .update() so the chart visibly ticks. This
-//     is the "yes this is real-time market data" experience.
-//   - "prior-session": intraday Yahoo bars from the most recent complete
-//     trading day, when Pyth is paused (weekend/holiday). Re-rendered with
-//     setData() and slow-polled (60s) so the page automatically swaps
-//     itself back to live mode the moment markets reopen.
+// The homepage hero chart spans today's NY trading session at 5-minute
+// resolution. The server picks `mode`:
+//   - "live": today's bars + Pyth driving the rightmost in-progress bar
+//     in real time. Polled every 2s, only the last bar is mutated via
+//     .update() so existing pan/zoom state is kept.
+//   - "today-paused": today's bars but Pyth has gone quiet (CME daily
+//     5–6 PM ET maintenance break, brief publisher hiccup). Same fast
+//     poll cadence so we resume "live" the moment ticks return.
+//   - "prior-session": no bars for today yet (pre-Sunday-reopen, full
+//     weekend day). We show the most recent prior session and slow-poll
+//     (60s) until today's bars appear.
+//   - "warming-up": cold start — placeholder + fast polling so the first
+//     real payload paints quickly.
 //
 // All mode decisions live on the server. The frontend just renders what
-// the payload says and adjusts UI chrome (pill text, tab disable state).
+// the payload says and swaps UI chrome (pill / tagline).
 
-function setupHeroChartTabs(): void {
-  document.querySelectorAll<HTMLButtonElement>('#heroChartTabs .hero-tf-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const minutes = parseInt(btn.dataset['minutes'] || '60', 10);
-      if (minutes === heroChartMinutes) return;
-      heroChartMinutes = minutes;
-      document.querySelectorAll('#heroChartTabs .hero-tf-btn').forEach(b => {
-        b.classList.toggle('active', b === btn);
-        b.setAttribute('aria-selected', b === btn ? 'true' : 'false');
-      });
-      // Tabs only meaningfully affect LIVE mode (lookback window). In
-      // prior-session mode we always show the full session — but kicking
-      // off another fetch costs nothing and keeps the code simple.
-      loadHeroChart(minutes);
-    });
-  });
-}
-
-async function loadHeroChart(minutes: number): Promise<void> {
+async function loadHeroChart(): Promise<void> {
   const container = document.getElementById('heroChartContainer');
   if (!container) return;
 
@@ -174,7 +163,7 @@ async function loadHeroChart(minutes: number): Promise<void> {
   }
 
   try {
-    const payload = await getHeroChart(HERO_SYMBOL, minutes);
+    const payload = await getHeroChart(HERO_SYMBOL, HERO_MAX_BARS);
     applyHeroChartPayload(payload);
   } catch (err) {
     console.error('Failed to load hero chart:', err);
@@ -203,22 +192,27 @@ function applyHeroChartPayload(payload: HeroChart): void {
   setHeroChartEmpty(false);
 
   if (payload.mode !== heroMode) {
-    // Mode change — wholesale replace the data so the chart redraws with
-    // the new interval (1m vs 5m bars look quite different). This also
-    // clears any half-formed candle from the previous mode.
+    // Mode change — wholesale replace the data so the chart redraws
+    // with whatever interval / session the new mode brings. Also clears
+    // any half-formed candle from the previous mode. Force a re-fit
+    // because the new bar range is unrelated to whatever zoom level
+    // the user had on the previous mode's data.
     heroChart.setData(payload.bars);
+    heroChart.fitContent();
     heroMode = payload.mode;
-    updateChartTabsAvailability(payload.mode);
     transitionPolling(payload.mode);
-  } else if (payload.mode === 'live') {
-    // Same mode and it's live — only mutate the last bar, leaving the
-    // rest of the series untouched so existing pan/zoom state is kept.
+    applyHeroSessionOverlay(payload);
+  } else if (payload.mode === 'live' || payload.mode === 'today-paused') {
+    // Same intraday mode — only mutate the last bar so existing pan/zoom
+    // state is preserved. In live mode the close ticks every 2s; in
+    // today-paused it's effectively a no-op until ticks resume.
     const last = payload.bars[payload.bars.length - 1];
     heroChart.update(last);
   } else {
-    // Same prior-session mode — full replace is fine, the bar set rarely
-    // changes (only when Yahoo backfills a late tick).
+    // Same prior-session (or warming) — full replace is fine, the bar
+    // set rarely changes (only when Yahoo backfills a late tick).
     heroChart.setData(payload.bars);
+    applyHeroSessionOverlay(payload);
   }
 
   const last = payload.bars[payload.bars.length - 1];
@@ -226,6 +220,8 @@ function applyHeroChartPayload(payload: HeroChart): void {
     setLiveState('live');
     const isNewTick = last.time !== lastSeenBarTime || last.close !== lastSeenBarClose;
     if (isNewTick) pulseLiveIndicator();
+  } else if (payload.mode === 'today-paused') {
+    setLiveState('today-paused', payload.sessionDate);
   } else if (payload.mode === 'prior-session') {
     setLiveState('paused', payload.sessionDate);
   } else {
@@ -234,6 +230,167 @@ function applyHeroChartPayload(payload: HeroChart): void {
   setHeroTagline(payload);
   lastSeenBarTime = last.time;
   lastSeenBarClose = last.close;
+}
+
+// ─── CME futures session-boundary markers ────────────────────────────
+//
+// CME Globex WTI runs Sun 18:00 ET → Fri 17:00 ET, with a daily 60-min
+// maintenance break from 17:00 to 18:00 ET Mon–Thu. The natural absence
+// of bars during that hour already shows "market closed", but a labelled
+// vertical line on each transition makes the pattern impossible to miss
+// at a glance — which is the whole point of the homepage hero.
+//
+// We compute the markers from the session date the server reports
+// (already in NY-local time) so that a viewer in Tokyo and a viewer in
+// London both see "17:00 ET — Daily close" labelled at the same candle.
+
+// nyWallClockToUnix returns the unix-second timestamp for a given NY
+// wall-clock date+time. Convergence-by-iteration handles DST transitions
+// correctly without hard-coding offsets — guess UTC, format it as NY,
+// adjust by the diff, repeat. Two passes is always enough in practice.
+function nyWallClockToUnix(yyyy: number, mm: number, dd: number, hour: number, minute: number = 0): number {
+  let guess = Date.UTC(yyyy, mm - 1, dd, hour, minute);
+  for (let i = 0; i < 3; i++) {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/New_York',
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', hour12: false,
+    }).formatToParts(new Date(guess));
+    const get = (t: string) => parseInt(parts.find(p => p.type === t)!.value, 10);
+    const aY = get('year'), aM = get('month'), aD = get('day');
+    let aH = get('hour'); if (aH === 24) aH = 0;
+    const aMin = get('minute');
+    const targetUtc = Date.UTC(yyyy, mm - 1, dd, hour, minute);
+    const actualUtc = Date.UTC(aY, aM - 1, aD, aH, aMin);
+    const diff = targetUtc - actualUtc;
+    if (diff === 0) break;
+    guess += diff;
+  }
+  return Math.floor(guess / 1000);
+}
+
+// weekdayNY returns 0=Sun..6=Sat for the given YYYY-MM-DD interpreted as
+// a NY-local date. Anchored on NY-noon to stay clear of midnight and DST
+// transition windows. Used to special-case Friday (no daily reopen) and
+// the weekend days (no daily close).
+function weekdayNY(yyyymmdd: string): number {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(yyyymmdd);
+  if (!m) return -1;
+  const noon = nyWallClockToUnix(
+    parseInt(m[1]!, 10), parseInt(m[2]!, 10), parseInt(m[3]!, 10), 12, 0,
+  );
+  const wd = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York', weekday: 'short',
+  }).format(new Date(noon * 1000));
+  return ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(wd);
+}
+
+// PIT_OPEN_HOUR / PIT_CLOSE_HOUR define the NYMEX crude-oil pit / floor
+// session — the historical "institutional trading window" when the
+// majority of price discovery still concentrates even in the modern
+// electronic era. Hard-coded because it hasn't changed in decades and
+// shouldn't be a per-request lookup.
+const PIT_OPEN_HOUR = 9;       // 09:00 ET
+const PIT_OPEN_MIN = 0;
+const PIT_CLOSE_HOUR = 14;     // 14:30 ET
+const PIT_CLOSE_MIN = 30;
+
+function applyHeroSessionOverlay(payload: HeroChart): void {
+  if (!heroChart) return;
+  // Overlays only make sense for the rolling-24h intraday view. For
+  // prior-session / warming-up modes there's no consistent anchor, so
+  // clear both layers.
+  if (payload.mode !== 'live' && payload.mode !== 'today-paused') {
+    heroChart.setSessionMarkers([]);
+    heroChart.setSessionBands([]);
+    return;
+  }
+  const dateStr = payload.sessionDate;
+  if (!dateStr) {
+    heroChart.setSessionMarkers([]);
+    heroChart.setSessionBands([]);
+    return;
+  }
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr);
+  if (!m) return;
+  const todayY = parseInt(m[1]!, 10);
+  const todayM = parseInt(m[2]!, 10);
+  const todayD = parseInt(m[3]!, 10);
+  // The chart spans the rolling last 24 hours, so both yesterday's and
+  // today's CME session boundaries can fall inside the view. Compute
+  // overlays for both NY calendar days and clip to the rendered range.
+  const yesterday = new Date(Date.UTC(todayY, todayM - 1, todayD));
+  yesterday.setUTCDate(yesterday.getUTCDate() - 1);
+  const yY = yesterday.getUTCFullYear();
+  const yM = yesterday.getUTCMonth() + 1;
+  const yD = yesterday.getUTCDate();
+
+  const markers: SessionMarker[] = [];
+  pushSessionMarkersForDay(markers, yY, yM, yD);
+  pushSessionMarkersForDay(markers, todayY, todayM, todayD);
+
+  const bands: SessionBand[] = [];
+  pushPitBandForDay(bands, yY, yM, yD);
+  pushPitBandForDay(bands, todayY, todayM, todayD);
+
+  // Clip both layers to the time range we actually rendered, so we
+  // don't paint e.g. tomorrow's pit window into empty space at the
+  // right edge of the chart.
+  const bars = payload.bars;
+  if (bars.length > 0) {
+    const minT = bars[0]!.time;
+    const maxT = bars[bars.length - 1]!.time;
+    heroChart.setSessionMarkers(
+      markers.filter(mk => mk.time >= minT && mk.time <= maxT)
+    );
+    heroChart.setSessionBands(
+      bands.filter(b => b.end >= minT && b.start <= maxT)
+    );
+  } else {
+    heroChart.setSessionMarkers(markers);
+    heroChart.setSessionBands(bands);
+  }
+}
+
+// pushSessionMarkersForDay appends the CME WTI session-boundary markers
+// for one NY-local calendar day. CME schedule reference:
+//   - Mon–Thu: 17:00 ET = daily close,   18:00 ET = daily reopen (1h break)
+//   - Friday : 17:00 ET = weekly close,  no reopen until Sunday 18:00 ET
+//   - Saturday: closed all day
+//   - Sunday  : 18:00 ET = weekly open,  no 17:00 close
+//
+// We deliberately ONLY emit the 17:00 ET "close" boundary — the matching
+// 18:00 ET reopen is implicit (the next bar after the visible 1-hour gap
+// IS the reopen) and adding a second vertical line for it just clutters
+// the chart without adding information.
+function pushSessionMarkersForDay(out: SessionMarker[], y: number, m: number, d: number): void {
+  const dow = weekdayNY(`${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`);
+  if (dow < 1 || dow > 5) return;
+  out.push({
+    time: nyWallClockToUnix(y, m, d, 17, 0),
+    label: dow === 5 ? 'Weekly Close · 17:00 ET' : 'Close · 17:00 ET',
+    kind: 'close',
+  });
+}
+
+// pushPitBandForDay highlights the NYMEX crude-oil pit-hours window
+// (09:00–14:30 ET, Mon–Fri) for one NY-local calendar day. This is the
+// "institutional trading window" — when most volume historically prints,
+// settlement reference prices form, and EIA inventory releases land
+// (Wednesdays at 10:30 ET fall right inside it). We DON'T draw a band
+// on Sat/Sun since there's no pit session at all on weekends.
+function pushPitBandForDay(out: SessionBand[], y: number, m: number, d: number): void {
+  const dow = weekdayNY(`${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`);
+  if (dow < 1 || dow > 5) return; // weekends: no pit
+  out.push({
+    start: nyWallClockToUnix(y, m, d, PIT_OPEN_HOUR, PIT_OPEN_MIN),
+    end: nyWallClockToUnix(y, m, d, PIT_CLOSE_HOUR, PIT_CLOSE_MIN),
+    label: 'NYMEX Pit · 09:00–14:30 ET',
+    // Soft amber tint — high enough contrast against the dark chart bg
+    // to be obvious, low enough alpha that the candles inside the band
+    // remain perfectly readable.
+    color: 'rgba(245, 158, 11, 0.07)',
+  });
 }
 
 // setHeroTagline rewrites the hero subtitle to reflect what the user is
@@ -247,6 +404,12 @@ function setHeroTagline(payload: HeroChart): void {
     case 'live':
       accent.textContent = 'Streaming Real-time';
       accent.className = 'hero-tagline-accent hero-tagline-accent-live';
+      break;
+    case 'today-paused':
+      // Today's bars are showing but Pyth is quiet — usually the daily
+      // 5–6 PM ET CME maintenance break.
+      accent.textContent = "today's session — feed paused (CME daily break)";
+      accent.className = 'hero-tagline-accent hero-tagline-accent-paused';
       break;
     case 'prior-session':
       accent.textContent = payload.sessionDate
@@ -262,17 +425,18 @@ function setHeroTagline(payload: HeroChart): void {
   }
 }
 
-function transitionPolling(mode: 'live' | 'prior-session' | 'warming-up'): void {
+function transitionPolling(mode: 'live' | 'today-paused' | 'prior-session' | 'warming-up'): void {
   if (heroPollTimer != null) {
     window.clearInterval(heroPollTimer);
     heroPollTimer = null;
   }
-  // 'warming-up' falls back to fast polling — we want to catch the first
-  // tick the moment Pyth wakes up.
+  // Fast-poll in every mode that's "intra-session" so we resume
+  // ticking the moment Pyth wakes up. Only true prior-session
+  // (markets fully closed) drops to slow polling.
   const interval = mode === 'prior-session' ? HERO_PAUSED_POLL_MS : HERO_LIVE_POLL_MS;
   heroPollTimer = window.setInterval(async () => {
     try {
-      const payload = await getHeroChart(HERO_SYMBOL, heroChartMinutes);
+      const payload = await getHeroChart(HERO_SYMBOL, HERO_MAX_BARS);
       applyHeroChartPayload(payload);
     } catch {
       // Transient network error — next tick will recover.
@@ -280,23 +444,11 @@ function transitionPolling(mode: 'live' | 'prior-session' | 'warming-up'): void 
   }, interval);
 }
 
-// updateChartTabsAvailability disables the lookback tabs when there's no
-// LIVE stream to look back over. The tabs make no sense in prior-session
-// mode (we always show the whole session) and would confuse the user.
-function updateChartTabsAvailability(mode: 'live' | 'prior-session' | 'warming-up'): void {
-  const tabs = document.querySelectorAll<HTMLButtonElement>('#heroChartTabs .hero-tf-btn');
-  const disabled = mode !== 'live';
-  tabs.forEach(b => {
-    b.disabled = disabled;
-    b.classList.toggle('disabled', disabled);
-  });
-}
-
-// setLiveState toggles the chart card's pill between three appearances.
-// In paused state, the optional sessionDate is shown so users know which
-// trading day's data they're looking at. CSS handles the visual treatment
-// for each state.
-function setLiveState(state: 'live' | 'paused' | 'warming', sessionDate?: string): void {
+// setLiveState toggles the chart card's pill between four appearances.
+// In paused / today-paused states the optional sessionDate is shown so
+// users know which trading day's data they're looking at. CSS handles the
+// visual treatment for each state.
+function setLiveState(state: 'live' | 'today-paused' | 'paused' | 'warming', sessionDate?: string): void {
   const pill = document.getElementById('heroLivePill');
   if (!pill) return;
   const dot = pill.firstElementChild;
@@ -305,7 +457,16 @@ function setLiveState(state: 'live' | 'paused' | 'warming', sessionDate?: string
   dot?.classList.remove('hero-live-dot-paused', 'hero-live-dot-warming');
   switch (state) {
     case 'live':
-      label.textContent = ' LIVE \u00b7 1m';
+      label.textContent = ' LIVE \u00b7 5m';
+      break;
+    case 'today-paused':
+      // Today's session is on screen but the live tick is paused —
+      // typically the daily 5–6 PM ET CME maintenance break. We use the
+      // same paused styling as full prior-session, but a more specific
+      // label so users know data is current as of a few minutes ago.
+      pill.classList.add('hero-live-pill-paused');
+      dot?.classList.add('hero-live-dot-paused');
+      label.textContent = ' FEED PAUSED \u00b7 today';
       break;
     case 'paused':
       pill.classList.add('hero-live-pill-paused');

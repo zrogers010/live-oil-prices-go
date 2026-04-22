@@ -3461,49 +3461,6 @@ a.footer-attribution-link:hover {
   border: 1px solid rgba(192, 132, 252, 0.22);
 }
 
-.hero-chart-tabs {
-  display: flex;
-  gap: 4px;
-  margin-bottom: 12px;
-  padding: 4px;
-  background: rgba(255, 255, 255, 0.025);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  width: fit-content;
-}
-
-.hero-tf-btn {
-  background: transparent;
-  border: none;
-  color: var(--text-muted);
-  font-family: var(--font-mono);
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  padding: 6px 14px;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.hero-tf-btn:hover {
-  color: var(--text-primary);
-  background: rgba(255, 255, 255, 0.04);
-}
-
-.hero-tf-btn:disabled,
-.hero-tf-btn.disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-  pointer-events: none;
-}
-
-.hero-tf-btn.active {
-  color: var(--accent);
-  background: rgba(59, 130, 246, 0.12);
-  box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.25) inset;
-}
-
 .hero-chart-container {
   width: 100%;
   height: 360px;
@@ -3534,6 +3491,16 @@ a.footer-attribution-link:hover {
   opacity: 0.4;
 }
 
+.hero-chart-footer-tz {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  opacity: 0.75;
+  cursor: help;
+}
+
 @media (max-width: 768px) {
   .hero-chart-card {
     padding: 18px 14px 14px;
@@ -3554,11 +3521,6 @@ a.footer-attribution-link:hover {
 
   .hero-chart-container {
     height: 260px;
-  }
-
-  .hero-tf-btn {
-    padding: 6px 10px;
-    font-size: 11px;
   }
 }
 

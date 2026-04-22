@@ -295,6 +295,54 @@ func (s *PythService) appendTickLocked(symbol string, price float64, ts time.Tim
 	s.candles[symbol] = bars
 }
 
+// GetBucketBar aggregates every Pyth 1-minute candle whose start falls in
+// [bucketStart, bucketStart+bucketSec) into a single OHLC bar. Used to
+// build the "live in-progress" bar that the homepage hero overlays on top
+// of Yahoo's 5-minute intraday series — Yahoo refreshes every ~5 min, so
+// without this overlay the rightmost bar would visibly lag the spot price
+// by up to 5 minutes during fast-moving markets.
+//
+// Returns (bar, true) only if the bucket has at least one Pyth tick;
+// otherwise (zero, false) so the caller knows there's nothing to show
+// for that bucket yet.
+func (s *PythService) GetBucketBar(symbol string, bucketStart, bucketSec int64) (models.PythCandle, bool) {
+	if bucketSec <= 0 {
+		return models.PythCandle{}, false
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	candles := s.candles[symbol]
+	if len(candles) == 0 {
+		return models.PythCandle{}, false
+	}
+	bucketEnd := bucketStart + bucketSec
+	out := models.PythCandle{Time: bucketStart}
+	initialized := false
+	for _, c := range candles {
+		if c.Time < bucketStart || c.Time >= bucketEnd {
+			continue
+		}
+		if !initialized {
+			out.Open = c.Open
+			out.High = c.High
+			out.Low = c.Low
+			initialized = true
+		}
+		if c.High > out.High {
+			out.High = c.High
+		}
+		if c.Low < out.Low {
+			out.Low = c.Low
+		}
+		out.Close = c.Close
+		out.Ticks += c.Ticks
+	}
+	if !initialized {
+		return models.PythCandle{}, false
+	}
+	return out, true
+}
+
 // GetCandles returns up to `max` most recent 1-minute candles for a symbol,
 // oldest-first (which is the order TradingView's lightweight-charts expects
 // for setData). Pass max <= 0 to get the full retention window.
