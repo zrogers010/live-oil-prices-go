@@ -32,9 +32,12 @@ const HERO_LIVE_POLL_MS = 2000;
 // reopen — at which point we want to catch the transition within a minute.
 const HERO_PAUSED_POLL_MS = 60_000;
 // HERO_DEFAULT_RANGE_SEC controls which lookback window the chart opens
-// with. 24h matches the rolling-24h dataset the server delivers — the
-// user can collapse to 12h or 6h via the filter tabs above the chart.
-const HERO_DEFAULT_RANGE_SEC = 86_400;
+// with. 6h focuses on the most recent action (the bit traders actually
+// care about for live decisions) while leaving 12h / 24h one click away
+// for context. Must match the data-hero-range value of the tab marked
+// `is-active` in home.html, otherwise the visual selection and the
+// actual zoom will disagree on first paint.
+const HERO_DEFAULT_RANGE_SEC = 21_600;
 // heroVisibleDurationSec mirrors the active filter button so we re-apply
 // it after every mode swap (the chart instance also tracks it internally,
 // but stashing it here lets us survive a chart re-creation if needed).
@@ -101,6 +104,20 @@ async function refreshPrices(): Promise<void> {
 }
 
 // ─── Hero (WTI chart header) ────────────────────────────
+//
+// Two endpoints feed the hero block:
+//   /api/prices    — polled every 15s, source of contract, source label,
+//                    and (critically) the previous-session settlement
+//                    that we need to compute change% on the fly
+//   /api/hero/WTI  — polled every 2s (live mode), gives us the freshest
+//                    Pyth tick on the trailing 5-min bar
+//
+// Big-price text and change% are driven by /api/hero whenever a fresh
+// chart bar arrives, so the price the user reads ALWAYS matches the
+// rightmost candle on the chart. /api/prices fills in the metadata
+// chrome (contract, source, updated-ago) and seeds the previous-close
+// reference used for change% derivation.
+let heroLastPrice: Price | null = null;
 
 function renderHeroPrices(prices: Price[]): void {
   const wti = prices.find(p => p.symbol === HERO_SYMBOL);
@@ -116,17 +133,37 @@ function renderHeroChartHeader(p: Price): void {
 
   if (!priceEl) return;
 
-  const positive = p.change >= 0;
-  const sign = positive ? '+' : '';
-  const arrow = positive ? '▲' : '▼';
+  // Stash the latest Price so syncHeroPriceFromChart() can derive
+  // previous-close (= p.price - p.change) without an extra fetch.
+  heroLastPrice = p;
 
-  priceEl.textContent = `$${p.price.toFixed(2)}`;
+  // OWNERSHIP RULE for the price + change blocks:
+  //   - in 'live' / 'today-paused' mode the CHART owns those numbers
+  //     (syncHeroPriceFromChart sets them on every 2s poll using the
+  //     exact close of the rightmost candle)
+  //   - in any other mode (prior-session, warming-up, or pre-chart-load
+  //     when heroMode is still null) /api/prices owns them
+  //
+  // Without this guard, /api/prices' 15s cadence would briefly slam the
+  // price text back to the older Pyth tick captured by /api/prices,
+  // producing a 13s-out-of-step flicker against the chart's last bar.
+  const chartOwnsPrice = heroMode === 'live' || heroMode === 'today-paused';
 
-  if (changeEl) {
-    changeEl.textContent = `${arrow} ${sign}${p.change.toFixed(2)} (${sign}${p.changePct.toFixed(2)}%)`;
-    changeEl.className = `hero-chart-change ${positive ? 'positive' : 'negative'}`;
+  if (!chartOwnsPrice) {
+    const positive = p.change >= 0;
+    const sign = positive ? '+' : '';
+    const arrow = positive ? '▲' : '▼';
+
+    priceEl.textContent = `$${p.price.toFixed(2)}`;
+
+    if (changeEl) {
+      changeEl.textContent = `${arrow} ${sign}${p.change.toFixed(2)} (${sign}${p.changePct.toFixed(2)}%)`;
+      changeEl.className = `hero-chart-change ${positive ? 'positive' : 'negative'}`;
+    }
   }
 
+  // Metadata (contract, source label, updated-ago) is always sourced
+  // from /api/prices since the chart payload doesn't carry it.
   if (contractEl) {
     contractEl.textContent = p.contract
       ? `${p.contract} — Front Month`
@@ -138,8 +175,47 @@ function renderHeroChartHeader(p: Price): void {
     sourceEl.className = `hero-chart-source source-${effectiveSource(p.source, p.updatedAt)}`;
   }
 
-  if (updatedEl) {
+  if (updatedEl && !chartOwnsPrice) {
+    // The chart's syncHeroPriceFromChart updates this badge to "now"
+    // on every tick, so only fall back to /api/prices' updatedAt when
+    // the chart isn't driving.
     updatedEl.textContent = p.updatedAt ? timeAgo(p.updatedAt) : '';
+  }
+}
+
+// syncHeroPriceFromChart re-derives the big-price block from the chart's
+// freshest bar so the number you see at the top ALWAYS matches the
+// rightmost candle. We need the previous-session settlement to recompute
+// change%; we get it from the cached /api/prices response (Price.price
+// already includes the latest change from settlement, so subtracting
+// gives us the settlement value directly). If we don't have a cached
+// price yet (page just loaded, /api/prices still inflight), we update
+// the price text only and leave change% to the next /api/prices tick.
+function syncHeroPriceFromChart(close: number, barTimeSec: number): void {
+  if (!Number.isFinite(close) || close <= 0) return;
+  const priceEl = document.getElementById('heroChartPrice');
+  const changeEl = document.getElementById('heroChartChange');
+  const updatedEl = document.getElementById('heroChartUpdated');
+  if (priceEl) priceEl.textContent = `$${close.toFixed(2)}`;
+
+  if (changeEl && heroLastPrice) {
+    const prevClose = heroLastPrice.price - heroLastPrice.change;
+    if (prevClose > 0) {
+      const change = close - prevClose;
+      const changePct = (change / prevClose) * 100;
+      const positive = change >= 0;
+      const sign = positive ? '+' : '';
+      const arrow = positive ? '▲' : '▼';
+      changeEl.textContent = `${arrow} ${sign}${change.toFixed(2)} (${sign}${changePct.toFixed(2)}%)`;
+      changeEl.className = `hero-chart-change ${positive ? 'positive' : 'negative'}`;
+    }
+  }
+
+  if (updatedEl && barTimeSec > 0) {
+    // barTimeSec is the bar's bucket-start. For a "freshness" badge the
+    // user cares about the last tick, not the bucket boundary, so we
+    // just use "now" here — the chart polls every 2s in live mode.
+    updatedEl.textContent = timeAgo(new Date().toISOString());
   }
 }
 
@@ -260,10 +336,22 @@ function applyHeroChartPayload(payload: HeroChart): void {
     setLiveState('live');
     const isNewTick = last.time !== lastSeenBarTime || last.close !== lastSeenBarClose;
     if (isNewTick) pulseLiveIndicator();
+    // Live mode: keep the big-price block glued to whatever the chart's
+    // rightmost bar shows. Both feeds source from Pyth on the server,
+    // so this just kills the up-to-13s drift between the 2s chart poll
+    // and the 15s /api/prices poll.
+    syncHeroPriceFromChart(last.close, last.time);
   } else if (payload.mode === 'today-paused') {
     setLiveState('today-paused', payload.sessionDate);
+    // today-paused = Pyth has gone quiet but the chart's last close is
+    // still the most recent real tick we have. Sync so the big price
+    // matches what the chart shows (otherwise the number would freeze
+    // 13s out-of-step with the chart's frozen bar).
+    syncHeroPriceFromChart(last.close, last.time);
   } else if (payload.mode === 'prior-session') {
     setLiveState('paused', payload.sessionDate);
+    // prior-session = chart is yesterday's data, big price is today's
+    // /api/prices quote. Different things on purpose — don't sync.
   } else {
     setLiveState('warming');
   }
