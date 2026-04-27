@@ -254,20 +254,21 @@ var commodities = map[string]CommodityMeta{
 }
 
 type commodityPageData struct {
-	Meta         CommodityMeta
-	PageTitle    string
-	OGTitle      string
-	Canonical    string
-	Price        string
-	Change       string
-	ChangePct    string
-	High         string
-	Low          string
-	Volume       string
-	Contract     string
-	IsPositive   bool
-	Sign         string
-	HasFactors   bool
+	Meta       CommodityMeta
+	PageTitle  string
+	OGTitle    string
+	Canonical  string
+	Price      string
+	Change     string
+	ChangePct  string
+	High       string
+	Low        string
+	Volume     string
+	Contract   string
+	IsPositive bool
+	Sign       string
+	HasFactors bool
+	PartnerURL string
 }
 
 var commodityTmpl *template.Template
@@ -292,6 +293,7 @@ func (a *API) ServeCommodityPage(w http.ResponseWriter, r *http.Request) {
 		OGTitle:    fmt.Sprintf("%s Price Today — Live Chart & Market Data", meta.Name),
 		Canonical:  fmt.Sprintf("https://liveoilprices.com/commodity/%s", meta.Symbol),
 		HasFactors: len(meta.PriceFactors) > 0,
+		PartnerURL: TradingViewAffiliateURL,
 	}
 
 	prices := a.market.GetPrices()

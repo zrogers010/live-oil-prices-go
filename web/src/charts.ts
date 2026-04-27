@@ -91,7 +91,7 @@ export interface AreaChartHandle {
 /** Handle returned by createCandleChart for the live streaming hero chart.
  *  setData replaces the entire series; update merges a single bar (used to
  *  push the in-progress 1-minute candle on each poll without re-rendering
- *  the whole series). setSessionMarkers paints labelled vertical lines on
+ *  the whole series). setSessionMarkers paints labeled vertical lines on
  *  top of the chart at fixed wall-clock times (CME open/close transitions);
  *  setSessionBands paints translucent shaded rectangles over time RANGES
  *  (e.g. the NYMEX pit-hours / institutional trading window). */
@@ -117,7 +117,7 @@ export interface CandleChartHandle {
   setVisibleDuration(seconds: number | null): void;
 }
 
-/** SessionMarker draws a labelled vertical line at a wall-clock time on
+/** SessionMarker draws a labeled vertical line at a wall-clock time on
  *  the hero chart. Used to mark the CME daily 5–6 PM ET maintenance break
  *  (and weekly Sunday-open / Friday-close on weekend boundaries). */
 export interface SessionMarker {
@@ -387,7 +387,7 @@ export function createAreaChart(container: HTMLElement): AreaChartHandle {
  *     the chart's rendered state) and re-fits only when the bucket
  *     count actually changes — typically once every 5 minutes — so we
  *     don't visibly breathe between intra-bucket ticks.
- *  3. `setSessionMarkers` paints labelled vertical lines on top of the
+ *  3. `setSessionMarkers` paints labeled vertical lines on top of the
  *     chart via an absolutely-positioned overlay. lightweight-charts v4
  *     has no native vertical-line primitive, so the overlay reads
  *     timeScale().timeToCoordinate(t) to position each line and
@@ -485,7 +485,7 @@ export function createCandleChart(container: HTMLElement): CandleChartHandle {
 
   // ─── Session-marker overlay ──────────────────────────────────────
   // Absolutely-positioned div sitting on top of the chart, used to draw
-  // labelled vertical lines at wall-clock event times (CME open/close).
+  // labeled vertical lines at wall-clock event times (CME open/close).
   // It receives no pointer events so the chart's crosshair / pan / scale
   // gestures keep working. Position is recomputed on every visible-range
   // change AND every container resize so the lines stay glued to the
@@ -556,7 +556,7 @@ export function createCandleChart(container: HTMLElement): CandleChartHandle {
       ].join(';');
       overlay.appendChild(band);
 
-      // Centred caption — only render if there's room. Below ~80px the
+      // Centered caption — only render if there's room. Below ~80px the
       // band is too narrow for legible text.
       if (width >= 80 && b.label) {
         const cap = document.createElement('div');

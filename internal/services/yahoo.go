@@ -222,7 +222,7 @@ func (s *YahooFinanceService) fetchQuote(sym yahooSymbol) (models.Price, error) 
 			}
 		}
 		// Resolve the most recent daily close that is STRICTLY BEFORE the
-		// regularMarketTime's NYMEX trading day. Two Yahoo behaviours we
+		// regularMarketTime's NYMEX trading day. Two Yahoo behaviors we
 		// have to handle:
 		//   - Mid-session: the last 1d bar is "yesterday's close"; today
 		//     hasn't formed yet → use n-1.

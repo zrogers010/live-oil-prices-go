@@ -202,7 +202,7 @@ func TestPythService_Refresh(t *testing.T) {
 	}
 
 	// The real `refresh` builds the URL from the constant, so we re-implement
-	// the request inline here to validate parsing + caching behaviour
+	// the request inline here to validate parsing + caching behavior
 	// deterministically against the fake server.
 	resp, err := svc.client.Get(srv.URL + "?ids[]=" + wtiID + "&parsed=true&encoding=hex")
 	if err != nil {
