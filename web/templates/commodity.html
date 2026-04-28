@@ -232,6 +232,14 @@
             </div>
         </div>
 
+        <section class="container" aria-label="Trade {{.Meta.ShortName}} on TradingView">
+            <a href="{{.PartnerURL}}" class="cross-link-card cross-link-card-partner cross-link-card-inline" target="_blank" rel="noopener sponsored">
+                <h3>Trade {{.Meta.ShortName}} on TradingView →</h3>
+                <p>Advanced {{.Meta.ShortName}} charts, 100+ indicators, real-time alerts and paper trading on the platform used by 60M+ traders worldwide.</p>
+                <span class="partner-disclosure">Affiliate partner &middot; <a href="/disclosure">how this works</a></span>
+            </a>
+        </section>
+
         <section class="container" aria-labelledby="aboutTitle">
             <div class="detail-about-section">
                 <h2 class="subsection-title" id="aboutTitle">What Is {{.Meta.Name}}?</h2>
@@ -291,9 +299,11 @@
                     <a href="#">Privacy Policy</a>
                     <a href="#">Terms of Service</a>
                     <a href="#">Disclaimer</a>
+                    <a href="/disclosure">Affiliate Disclosure</a>
                 </div>
             </div>
             <p class="footer-disclaimer">Market data is provided for informational purposes only and should not be considered as financial advice. Past performance does not guarantee future results. Trading commodities involves substantial risk of loss.</p>
+            <p class="footer-credit">Interactive charts powered by <a href="{{.PartnerURL}}" target="_blank" rel="noopener sponsored">TradingView</a> &mdash; the world's most-used charting platform. <a href="/disclosure">Affiliate partner</a>.</p>
         </div>
     </footer>
 

@@ -364,13 +364,13 @@ function applyHeroChartPayload(payload: HeroChart): void {
 //
 // CME Globex WTI runs Sun 18:00 ET → Fri 17:00 ET, with a daily 60-min
 // maintenance break from 17:00 to 18:00 ET Mon–Thu. The natural absence
-// of bars during that hour already shows "market closed", but a labelled
+// of bars during that hour already shows "market closed", but a labeled
 // vertical line on each transition makes the pattern impossible to miss
 // at a glance — which is the whole point of the homepage hero.
 //
 // We compute the markers from the session date the server reports
 // (already in NY-local time) so that a viewer in Tokyo and a viewer in
-// London both see "17:00 ET — Daily close" labelled at the same candle.
+// London both see "17:00 ET — Daily close" labeled at the same candle.
 
 // nyWallClockToUnix returns the unix-second timestamp for a given NY
 // wall-clock date+time. Convergence-by-iteration handles DST transitions
@@ -1356,7 +1356,7 @@ function effectiveSource(source?: string, updatedAt?: string): string {
 }
 
 // sourceLabel returns the short, human-readable label shown beneath the hero
-// price. The colour treatment is applied via the `source-${value}` class set
+// price. The color treatment is applied via the `source-${value}` class set
 // on the same element.
 function sourceLabel(source?: string, updatedAt?: string): string {
   switch (source) {

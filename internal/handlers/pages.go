@@ -44,6 +44,11 @@ type PageData struct {
 	HeroWTI    *priceView
 	Forecasts  []forecastView
 	Consensus  []consensusView
+
+	// Affiliate partner URL surfaced in the footer attribution and any
+	// per-page partner cards. Sourced from TradingViewAffiliateURL so
+	// there's exactly one place to change the affiliate ID.
+	PartnerURL string
 }
 
 type priceView struct {
@@ -84,7 +89,7 @@ type forecastView struct {
 	SourceLabel     string
 
 	// Signal-stack chips. Each chip has a label and a tone class
-	// ("bullish" | "bearish" | "neutral") so the template can colour them.
+	// ("bullish" | "bearish" | "neutral") so the template can color them.
 	Signals []signalChip
 
 	// Backtest credibility block.
@@ -148,7 +153,7 @@ func InitPageTemplates(dir string) error {
 		},
 	}
 
-	pages := []string{"home", "charts", "forecast", "news"}
+	pages := []string{"home", "charts", "forecast", "news", "disclosure"}
 	for _, name := range pages {
 		files := append([]string{layout, filepath.Join(dir, "pages", name+".html")}, partials...)
 		t, err := template.New("layout").Funcs(funcs).ParseFiles(files...)
@@ -168,6 +173,9 @@ func (a *API) renderPage(w http.ResponseWriter, r *http.Request, name string, da
 	}
 
 	a.populateMarketData(data)
+	if data.PartnerURL == "" {
+		data.PartnerURL = TradingViewAffiliateURL
+	}
 
 	var buf bytes.Buffer
 	if err := tmpl.ExecuteTemplate(&buf, "layout", data); err != nil {
@@ -394,7 +402,7 @@ func toForecastView(p models.Prediction) forecastView {
 // and the 50/200 DMA configuration — used by the Outlook & Signals card.
 //
 // Each chip carries a tone (bullish/bearish/neutral) so the template can
-// colour them consistently with the direction badge. We deliberately keep
+// color them consistently with the direction badge. We deliberately keep
 // the chip values short (1-2 words) so the row reads as a glance-able
 // dashboard rather than another paragraph of analysis.
 func buildSignalChips(p models.Prediction) []signalChip {
@@ -558,7 +566,7 @@ func (a *API) ServeForecast(w http.ResponseWriter, r *http.Request) {
 				{"Why do you publish low-confidence outlooks at all?",
 					"Because honest signal is more useful than a fabricated headline number. When trend, momentum and the regime disagree, that disagreement is itself the signal — it tells you the market hasn't picked a side, and we'd rather show you that than paper over it with a confident-looking arrow."},
 				{"Can I use this to trade?",
-					"No. The signals and forecasts on this page are for informational purposes only. They are not personalised financial advice and should not be the basis for any trading decision."},
+					"No. The signals and forecasts on this page are for informational purposes only. They are not personalized financial advice and should not be the basis for any trading decision."},
 			}),
 		},
 	}
@@ -587,6 +595,23 @@ func (a *API) ServeNews(w http.ResponseWriter, r *http.Request) {
 		},
 	}
 	a.renderPage(w, r, "news", data)
+}
+
+func (a *API) ServeDisclosure(w http.ResponseWriter, r *http.Request) {
+	data := &PageData{
+		ActivePage:    "disclosure",
+		HideTicker:    true,
+		Title:         "Affiliate Disclosure — Live Oil Prices",
+		Description:   "How Live Oil Prices works with affiliate partners, and what that means for you. Full transparency on outbound links and commission relationships.",
+		Keywords:      "affiliate disclosure, live oil prices disclosure, partner disclosure, transparency",
+		Canonical:     "https://liveoilprices.com/disclosure",
+		OGTitle:       "Affiliate Disclosure — Live Oil Prices",
+		OGDescription: "How Live Oil Prices works with affiliate partners, and what that means for you.",
+		StructuredData: []any{
+			breadcrumbJSONLD([][2]string{{"Home", "https://liveoilprices.com/"}, {"Affiliate Disclosure", "https://liveoilprices.com/disclosure"}}),
+		},
+	}
+	a.renderPage(w, r, "disclosure", data)
 }
 
 // ─── JSON-LD helpers ────────────────────────────────────────────────────

@@ -3045,7 +3045,7 @@ a.ticker-item:hover .ticker-symbol {
    Data source indicators (Pyth real-time / Yahoo delayed)
    ============================================ */
 
-/* Hero source label colour-coding. The base .hero-price-source declaration
+/* Hero source label color-coding. The base .hero-price-source declaration
    above provides shared styling; these modifiers tint the pill based on the
    source field returned by the API. */
 .hero-price-source.source-pyth {
@@ -3347,7 +3347,7 @@ a.footer-attribution-link:hover {
 }
 
 /* Empty state shown when the candle buffer hasn't accumulated any bars yet
-   (e.g. immediately after a server restart). Centred over the chart area. */
+   (e.g. immediately after a server restart). Centered over the chart area. */
 .hero-chart-container {
   position: relative;
 }
@@ -3746,6 +3746,53 @@ a.footer-attribution-link:hover {
   font-size: 14px;
   line-height: 1.5;
   color: var(--text-muted);
+}
+
+/* Partner / affiliate variant of the cross-link card. Uses the same shape
+   as a regular cross-link card so it reads as part of the design system,
+   not an ad. The disclosure micro-label below makes the relationship
+   explicit (FTC + Google's `rel="sponsored"` guidance). */
+.cross-link-card-partner {
+  position: relative;
+}
+.cross-link-card-partner h3::after {
+  content: "Partner";
+  display: inline-block;
+  margin-left: 10px;
+  padding: 2px 8px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  vertical-align: middle;
+}
+.cross-link-card .partner-disclosure {
+  display: block;
+  margin-top: 12px;
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1.5;
+  color: var(--text-muted);
+  opacity: 0.7;
+}
+.cross-link-card .partner-disclosure a {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-color: rgba(255, 255, 255, 0.2);
+}
+.cross-link-card .partner-disclosure a:hover {
+  opacity: 0.9;
+}
+
+/* When the partner card stands alone (e.g. on commodity detail pages,
+   outside of a cross-link-grid), give it section-level breathing room
+   without inventing a new component. */
+.cross-link-card-inline {
+  margin: 24px 0;
 }
 
 @media (max-width: 768px) {

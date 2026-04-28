@@ -79,6 +79,7 @@ func newServerHandler(market handlers.MarketDataClient, news handlers.NewsClient
 	mux.HandleFunc("GET /charts", api.ServeCharts)
 	mux.HandleFunc("GET /forecast", api.ServeForecast)
 	mux.HandleFunc("GET /news", api.ServeNews)
+	mux.HandleFunc("GET /disclosure", api.ServeDisclosure)
 	mux.HandleFunc("GET /commodity/{symbol}", api.ServeCommodityPage)
 
 	mux.HandleFunc("GET /sitemap.xml", func(w http.ResponseWriter, r *http.Request) {
@@ -90,6 +91,7 @@ func newServerHandler(market handlers.MarketDataClient, news handlers.NewsClient
 		fmt.Fprintf(w, `<url><loc>https://liveoilprices.com/charts</loc><lastmod>%s</lastmod><changefreq>hourly</changefreq><priority>0.9</priority></url>`, now)
 		fmt.Fprintf(w, `<url><loc>https://liveoilprices.com/forecast</loc><lastmod>%s</lastmod><changefreq>hourly</changefreq><priority>0.9</priority></url>`, now)
 		fmt.Fprintf(w, `<url><loc>https://liveoilprices.com/news</loc><lastmod>%s</lastmod><changefreq>hourly</changefreq><priority>0.9</priority></url>`, now)
+		fmt.Fprintf(w, `<url><loc>https://liveoilprices.com/disclosure</loc><lastmod>%s</lastmod><changefreq>yearly</changefreq><priority>0.3</priority></url>`, now)
 		for _, sym := range commoditySymbols {
 			fmt.Fprintf(w, `<url><loc>https://liveoilprices.com/commodity/%s</loc><lastmod>%s</lastmod><changefreq>always</changefreq><priority>0.8</priority></url>`, sym, now)
 		}
