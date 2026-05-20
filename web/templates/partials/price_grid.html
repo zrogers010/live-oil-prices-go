@@ -4,7 +4,10 @@
     <div class="price-card" data-symbol="{{.Symbol}}">
         <div class="price-card-header">
             <div>
-                <div class="price-card-symbol">{{.Symbol}}</div>
+                <div class="price-card-symbol">
+                    <span>{{.Symbol}}</span>
+                    {{if .IsLive}}<span class="source-pill source-pill-realtime" data-role="live-pill" title="Streaming real-time exchange data">Live</span>{{end}}
+                </div>
                 <div class="price-card-name">{{.Name}}</div>
                 {{if .Contract}}<div class="price-card-contract">{{.Contract}}</div>{{end}}
             </div>

@@ -432,7 +432,7 @@ class HeroChartController {
     dot?.classList.remove('hero-live-dot-paused', 'hero-live-dot-warming');
     switch (state) {
       case 'live':
-        label.textContent = ' LIVE \u00b7 5m';
+        label.textContent = ' LIVE';
         break;
       case 'today-paused':
         // Today's session is on screen but the live tick is paused —
@@ -713,12 +713,18 @@ function renderPriceCards(prices: Price[]): void {
     const contractHtml = p.contract
       ? `<div class="price-card-contract">${p.contract}</div>`
       : '';
+    const livePillHtml = isPythLive(p.source, p.updatedAt)
+      ? `<span class="source-pill source-pill-realtime" data-role="live-pill" title="Streaming real-time exchange data">Live</span>`
+      : '';
 
     return `
       <div class="price-card" data-symbol="${p.symbol}">
         <div class="price-card-header">
           <div>
-            <div class="price-card-symbol">${p.symbol}</div>
+            <div class="price-card-symbol">
+              <span>${p.symbol}</span>
+              ${livePillHtml}
+            </div>
             <div class="price-card-name">${p.name}</div>
             ${contractHtml}
           </div>
@@ -777,6 +783,26 @@ function updatePriceValues(prices: Price[]): void {
 
     const volEl = card.querySelector('[data-field="volume"]');
     if (volEl) volEl.textContent = formatVolume(p.volume);
+
+    // Toggle the live pill on/off in place — adding/removing avoids a
+    // full card re-render so the user's interaction state (hover, focus)
+    // and any in-flight CSS animations on the price text aren't reset
+    // on every 15s poll.
+    const symbolEl = card.querySelector('.price-card-symbol');
+    if (symbolEl) {
+      const existingPill = symbolEl.querySelector('[data-role="live-pill"]');
+      const shouldHavePill = isPythLive(p.source, p.updatedAt);
+      if (shouldHavePill && !existingPill) {
+        const pill = document.createElement('span');
+        pill.className = 'source-pill source-pill-realtime';
+        pill.setAttribute('data-role', 'live-pill');
+        pill.title = 'Streaming real-time exchange data';
+        pill.textContent = 'Live';
+        symbolEl.appendChild(pill);
+      } else if (!shouldHavePill && existingPill) {
+        existingPill.remove();
+      }
+    }
   });
 }
 
@@ -1375,10 +1401,22 @@ function setupClickHandlers(): void {
 // price as a paused last-known value rather than streaming.
 const PYTH_LIVE_WINDOW_MS = 60_000;
 
+// PYTH_LIVE_SKEW_TOLERANCE_MS allows for small client/server clock skew
+// without hiding the Live pill on a genuinely fresh tick. NTP-synced
+// machines are usually within ~100ms of each other; 5s leaves comfortable
+// margin while still rejecting clearly bogus future timestamps.
+const PYTH_LIVE_SKEW_TOLERANCE_MS = 5_000;
+
 function isPythLive(source?: string, updatedAt?: string): boolean {
   if (source !== 'pyth' || !updatedAt) return false;
-  const age = Date.now() - new Date(updatedAt).getTime();
-  return age >= 0 && age <= PYTH_LIVE_WINDOW_MS;
+  const t = Date.parse(updatedAt);
+  if (!Number.isFinite(t)) return false;
+  const age = Date.now() - t;
+  // Negative ages mean the timestamp is "in the future" relative to the
+  // browser clock — almost always a small skew rather than time travel,
+  // so we tolerate up to PYTH_LIVE_SKEW_TOLERANCE_MS before treating
+  // the row as not-live.
+  return age >= -PYTH_LIVE_SKEW_TOLERANCE_MS && age <= PYTH_LIVE_WINDOW_MS;
 }
 
 // effectiveSource collapses the (source, freshness) tuple into a single
@@ -1414,7 +1452,7 @@ function sourceBadgeHtml(source?: string, updatedAt?: string): string {
   switch (source) {
     case 'pyth':
       if (isPythLive(source, updatedAt)) {
-        return `<span class="source-pill source-pill-realtime" title="Streaming real-time exchange data">Real-Time</span>`;
+        return `<span class="source-pill source-pill-realtime" title="Streaming real-time exchange data">Live</span>`;
       }
       return `<span class="source-pill source-pill-paused" title="Markets closed — showing last published tick">Last Tick</span>`;
     case 'yahoo':
