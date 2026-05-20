@@ -588,6 +588,29 @@ func (s *YahooFinanceService) GetPriorSessionIntraday(symbol string) (bars []mod
 	return out, pick, cached.interval
 }
 
+// intervalSeconds maps a Yahoo interval string (e.g. "5m") to its bucket
+// width in seconds. Used to detect non-bucket-aligned bars Yahoo emits
+// at the tail of the intraday series.
+func intervalSeconds(interval string) int64 {
+	switch interval {
+	case "1m":
+		return 60
+	case "2m":
+		return 120
+	case "5m":
+		return 300
+	case "15m":
+		return 900
+	case "30m":
+		return 1800
+	case "60m", "1h":
+		return 3600
+	case "90m":
+		return 5400
+	}
+	return 0
+}
+
 // fetchIntraday hits Yahoo's chart endpoint for an intraday series and
 // returns EVERY usable bar in the response, oldest-first. Filtering by
 // time-window is done by callers via GetRolling24hIntraday /
@@ -596,6 +619,15 @@ func (s *YahooFinanceService) GetPriorSessionIntraday(symbol string) (bars []mod
 //
 // Bars whose close is null/NaN/<=0 are dropped; missing individual O/H/L
 // fields are repaired from the close so we never emit half-formed candles.
+//
+// Yahoo's intraday endpoint emits a synthetic trailing bar whose timestamp
+// equals meta.regularMarketTime (the live quote time) rather than a clean
+// bucket boundary — e.g. with interval=5m you'll see ...22:00, 22:05,
+// 22:10, 22:11:31. That trailing bar duplicates the still-forming current
+// 5m bucket at an off-grid timestamp, which then shows up on the chart as
+// a stray candle wedged between two real bars and breaks the merge logic
+// that aligns Pyth's in-progress bucket against Yahoo's last bar. We drop
+// it here so the cache only contains true bucket-aligned bars.
 func (s *YahooFinanceService) fetchIntraday(sym yahooSymbol, interval, rangeParam string) ([]models.OHLCV, error) {
 	url := fmt.Sprintf(
 		"https://query1.finance.yahoo.com/v8/finance/chart/%s?range=%s&interval=%s&includePrePost=false",
@@ -640,11 +672,17 @@ func (s *YahooFinanceService) fetchIntraday(sym yahooSymbol, interval, rangePara
 		return nil, fmt.Errorf("empty intraday series")
 	}
 	q := quotes[0]
+	bucketSec := intervalSeconds(interval)
 
 	bars := make([]models.OHLCV, 0, len(timestamps))
 	for i, ts := range timestamps {
 		if i >= len(q.Close) {
 			break
+		}
+		// Skip Yahoo's synthetic trailing bar at meta.regularMarketTime —
+		// it isn't aligned to the bucket grid and pollutes the chart.
+		if bucketSec > 0 && ts%bucketSec != 0 {
+			continue
 		}
 		cl, err := q.Close[i].Float64()
 		if err != nil || cl <= 0 || math.IsNaN(cl) {

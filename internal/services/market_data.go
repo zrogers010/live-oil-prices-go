@@ -44,12 +44,66 @@ func NewMarketDataService() *MarketDataService {
 		"WCS":     58.20,
 		"GASOIL":  685.50,
 	}
-	return &MarketDataService{
+	svc := &MarketDataService{
 		rng:        rand.New(rand.NewSource(time.Now().UnixNano())),
 		basePrices: bases,
 		yahoo:      NewYahooFinanceService(),
 		pyth:       NewPythService(),
 		eia:        NewEIAService(),
+	}
+	// Compute the spot/front-month basis once synchronously so the very
+	// first /api/prices call is already basis-corrected, then keep it
+	// fresh in the background.
+	svc.refreshBasis()
+	go svc.basisLoop()
+	return svc
+}
+
+// basisRefreshEvery sets how often we resync the spot/front-month basis
+// for each Pyth symbol. Yahoo's /api/prices feed refreshes every 30s on
+// the server side, and the spot/futures spread itself moves slowly
+// (typically pennies per hour outside of contract-roll days), so 30s
+// keeps display values aligned without being chatty.
+const basisRefreshEvery = 30 * time.Second
+
+// basisLoop keeps the per-symbol Pyth basis fresh by periodically
+// recomputing yahoo_front_month - pyth_raw_spot. The loop owns the
+// only goroutine that calls SetBasis so there's no contention; reads
+// elsewhere just see the most recent value applied transparently.
+func (s *MarketDataService) basisLoop() {
+	ticker := time.NewTicker(basisRefreshEvery)
+	defer ticker.Stop()
+	for range ticker.C {
+		s.refreshBasis()
+	}
+}
+
+// refreshBasis recomputes the additive offset between Yahoo's front-month
+// price and Pyth's raw spot tick for every Pyth-tracked symbol and
+// pushes it to PythService. After this returns, GetQuote/GetBucketBar
+// readers see Pyth values shifted onto the Yahoo front-month price level
+// — important for Brent in particular, where the spot/futures spread is
+// $2–$4 and the raw Pyth tick would otherwise look like a misleading
+// gap-down on the live chart.
+//
+// Symbols where either side is missing or zero are left at their last
+// known basis (or 0 if never set) so we degrade to "raw Pyth" rather
+// than silently zeroing out a previously valid correction.
+func (s *MarketDataService) refreshBasis() {
+	if s.yahoo == nil || s.pyth == nil {
+		return
+	}
+	yahoos := s.yahoo.GetPrices()
+	for _, f := range pythFeeds {
+		yp, ok := yahoos[f.symbol]
+		if !ok || yp.Price <= 0 {
+			continue
+		}
+		raw, ok := s.pyth.GetRawQuote(f.symbol)
+		if !ok || raw.Price <= 0 {
+			continue
+		}
+		s.pyth.SetBasis(f.symbol, yp.Price-raw.Price)
 	}
 }
 
@@ -691,6 +745,17 @@ func ohlcvToCandles(in []models.OHLCV) []models.PythCandle {
 // chart shows the more recent Pyth-derived close. Otherwise we append the
 // new bucket to the right of the series.
 //
+// When appending a brand-new bucket, we anchor its Open to the previous
+// bar's Close. This is the right thing to do because the in-progress
+// Pyth bucket only contains the ticks Pyth has captured *so far* in
+// that 5-minute window — typically a handful of seconds' worth, not a
+// full bucket — so its raw "open" is just the price at the moment of
+// Pyth's first poll inside the bucket, NOT the actual market open at
+// the bucket boundary. Without anchoring you get a visible discontinuity
+// between the previous bar's close and the live bar's open every time
+// the chart loads. The high/low are widened to keep the previous close
+// inside the candle's range so the wick still draws correctly.
+//
 // We deliberately don't try to "merge" overlapping ranges from both
 // sources — Pyth's tick range is the more current truth inside the live
 // bucket, and Yahoo will replace it on its next intraday refresh anyway.
@@ -704,7 +769,15 @@ func mergeLiveBucket(series []models.PythCandle, live models.PythCandle) []model
 		return series
 	}
 	if live.Time > last.Time {
-		return append(series, live)
+		anchored := live
+		anchored.Open = last.Close
+		if anchored.High < anchored.Open {
+			anchored.High = anchored.Open
+		}
+		if anchored.Low > anchored.Open || anchored.Low <= 0 {
+			anchored.Low = anchored.Open
+		}
+		return append(series, anchored)
 	}
 	// Live bucket is older than the last Yahoo bar — Yahoo is ahead of
 	// Pyth (rare, only happens right after a Yahoo refresh lands a future

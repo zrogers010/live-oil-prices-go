@@ -7,21 +7,12 @@ let currentDays = 90;
 let allNews: NewsArticle[] = [];
 let currentCategory = 'all';
 
-// Hero chart is a candlestick instance that always paints today's NY
-// trading session at 5-min resolution (Yahoo intraday backfill + a live
-// Pyth-driven in-progress bar). Kept independent of the larger chart in
-// the #charts section so the two lightweight-charts instances don't
-// collide on style or DOM.
-let heroChart: CandleChartHandle | null = null;
 // HERO_MAX_BARS is a generous upper bound for the bar count we'll
 // accept from /api/hero. The server returns the full NY session so this
 // is purely a sanity ceiling (a 23-hour session at 5-min ≈ 276 bars).
 // Sent as the API's `max` param for backwards compat — the server now
 // ignores it and always returns the full session.
 const HERO_MAX_BARS = 600;
-let heroPollTimer: number | null = null;
-let heroMode: 'live' | 'today-paused' | 'prior-session' | 'warming-up' | null = null;
-const HERO_SYMBOL = 'WTI';
 // HERO_LIVE_POLL_MS is how often we re-fetch the candle buffer in LIVE
 // mode. 2s lines up with the Pyth poll cadence on the server, so each
 // request typically picks up at least one new tick on the in-progress
@@ -38,10 +29,14 @@ const HERO_PAUSED_POLL_MS = 60_000;
 // `is-active` in home.html, otherwise the visual selection and the
 // actual zoom will disagree on first paint.
 const HERO_DEFAULT_RANGE_SEC = 21_600;
-// heroVisibleDurationSec mirrors the active filter button so we re-apply
-// it after every mode swap (the chart instance also tracks it internally,
-// but stashing it here lets us survive a chart re-creation if needed).
-let heroVisibleDurationSec: number | null = HERO_DEFAULT_RANGE_SEC;
+
+// Hero chart instances, keyed by symbol. One controller per .hero-chart-card
+// in the DOM — the homepage now stacks WTI on top of Brent. Each instance
+// owns its own chart, polling timer, mode tracking, and DOM scope so the
+// two never collide on state or selectors. The shared hero tagline is
+// driven off whichever instance is registered first (WTI by convention).
+type HeroMode = 'live' | 'today-paused' | 'prior-session' | 'warming-up';
+const heroControllers = new Map<string, HeroChartController>();
 
 // ─── Bootstrap ──────────────────────────────────────────
 
@@ -49,15 +44,29 @@ document.addEventListener('DOMContentLoaded', () => {
   setupNavigation();
   setupNewsFilters();
   setupClickHandlers();
+  initHeroControllers();
   loadAllData();
   setInterval(refreshPrices, 15000);
 });
+
+// initHeroControllers wires up one HeroChartController per .hero-chart-card
+// found in the DOM. Each card carries data-symbol so the controller knows
+// which /api/hero/<symbol> endpoint to poll and which Price record from
+// /api/prices to bind to its header. Pages without any hero cards (e.g.
+// /charts, /news) just get an empty registry and nothing else changes.
+function initHeroControllers(): void {
+  document.querySelectorAll<HTMLElement>('.hero-chart-card[data-symbol]').forEach(card => {
+    const symbol = card.dataset.symbol;
+    if (!symbol || heroControllers.has(symbol)) return;
+    heroControllers.set(symbol, new HeroChartController(symbol, card));
+  });
+}
 
 async function loadAllData(): Promise<void> {
   try {
     await Promise.all([
       loadPrices(),
-      loadHeroChart(),
+      ...Array.from(heroControllers.values()).map(c => c.load()),
       loadChart(currentSymbol, currentDays),
       loadForecasts(),
       loadConsensus(),
@@ -81,7 +90,7 @@ function setError(message: string) {
 async function loadPrices(): Promise<void> {
   try {
     const prices = await getPrices();
-    renderHeroPrices(prices);
+    fanOutPricesToHeroes(prices);
     renderTicker(prices);
     renderPriceCards(prices);
     renderMarketTable(prices);
@@ -94,7 +103,7 @@ async function loadPrices(): Promise<void> {
 async function refreshPrices(): Promise<void> {
   try {
     const prices = await getPrices();
-    renderHeroPrices(prices);
+    fanOutPricesToHeroes(prices);
     renderTicker(prices);
     updatePriceValues(prices);
     renderMarketTable(prices);
@@ -103,261 +112,364 @@ async function refreshPrices(): Promise<void> {
   }
 }
 
-// ─── Hero (WTI chart header) ────────────────────────────
-//
-// Two endpoints feed the hero block:
-//   /api/prices    — polled every 15s, source of contract, source label,
-//                    and (critically) the previous-session settlement
-//                    that we need to compute change% on the fly
-//   /api/hero/WTI  — polled every 2s (live mode), gives us the freshest
-//                    Pyth tick on the trailing 5-min bar
-//
-// Big-price text and change% are driven by /api/hero whenever a fresh
-// chart bar arrives, so the price the user reads ALWAYS matches the
-// rightmost candle on the chart. /api/prices fills in the metadata
-// chrome (contract, source, updated-ago) and seeds the previous-close
-// reference used for change% derivation.
-let heroLastPrice: Price | null = null;
-
-function renderHeroPrices(prices: Price[]): void {
-  const wti = prices.find(p => p.symbol === HERO_SYMBOL);
-  if (wti) renderHeroChartHeader(wti);
+// fanOutPricesToHeroes routes each /api/prices entry to its matching
+// hero chart controller (if any). Pages without hero cards get a no-op
+// — the controller registry is empty and Map.get returns undefined.
+function fanOutPricesToHeroes(prices: Price[]): void {
+  for (const p of prices) {
+    const ctl = heroControllers.get(p.symbol);
+    if (ctl) ctl.applyPriceRecord(p);
+  }
 }
 
-function renderHeroChartHeader(p: Price): void {
-  const priceEl = document.getElementById('heroChartPrice');
-  const changeEl = document.getElementById('heroChartChange');
-  const contractEl = document.getElementById('heroChartContract');
-  const sourceEl = document.getElementById('heroChartSource');
-  const updatedEl = document.getElementById('heroChartUpdated');
+// ─── Hero Chart Controller ──────────────────────────────
+//
+// Each .hero-chart-card on the homepage gets one HeroChartController
+// instance. The controller owns:
+//   - the chart instance and its in-flight polling timer,
+//   - the latest /api/prices snapshot for the symbol,
+//   - the current mode + last-rendered bar (for change-detection),
+//   - cached refs to its DOM elements (looked up via [data-role=...]
+//     scoped to the card, never document-wide).
+//
+// Two endpoints feed the chart card:
+//   /api/prices             — polled every 15s (shared across all heroes
+//                             and the rest of the page); source of contract,
+//                             source label, and the previous-session
+//                             settlement we need to compute change%.
+//   /api/hero/<symbol>      — polled every 2s in live mode, gives us the
+//                             freshest Pyth tick on the trailing bar.
+//
+// The big-price block is driven by the chart's rightmost bar whenever we
+// have one, so the number ALWAYS matches the candle the user is looking
+// at. /api/prices fills in chrome (contract, source label, updated-ago)
+// and seeds the previous-close reference used for change% derivation.
 
-  if (!priceEl) return;
+class HeroChartController {
+  private readonly symbol: string;
+  private readonly card: HTMLElement;
 
-  // Stash the latest Price so syncHeroPriceFromChart() can derive
-  // previous-close (= p.price - p.change) without an extra fetch.
-  heroLastPrice = p;
+  // Element refs scoped to this card. Cached in the constructor so we
+  // don't re-query the DOM on every tick.
+  private readonly containerEl: HTMLElement;
+  private readonly emptyEl: HTMLElement | null;
+  private readonly priceEl: HTMLElement | null;
+  private readonly changeEl: HTMLElement | null;
+  private readonly contractEl: HTMLElement | null;
+  private readonly sourceEl: HTMLElement | null;
+  private readonly updatedEl: HTMLElement | null;
+  private readonly tabsEl: HTMLElement | null;
+  private readonly livePillEl: HTMLElement | null;
+  private readonly liveDotEl: HTMLElement | null;
 
-  // OWNERSHIP RULE for the price + change blocks:
-  //   - in 'live' / 'today-paused' mode the CHART owns those numbers
-  //     (syncHeroPriceFromChart sets them on every 2s poll using the
-  //     exact close of the rightmost candle)
-  //   - in any other mode (prior-session, warming-up, or pre-chart-load
-  //     when heroMode is still null) /api/prices owns them
-  //
-  // Without this guard, /api/prices' 15s cadence would briefly slam the
-  // price text back to the older Pyth tick captured by /api/prices,
-  // producing a 13s-out-of-step flicker against the chart's last bar.
-  const chartOwnsPrice = heroMode === 'live' || heroMode === 'today-paused';
+  // Live state.
+  private chart: CandleChartHandle | null = null;
+  private mode: HeroMode | null = null;
+  private pollTimer: number | null = null;
+  private visibleDurationSec: number = HERO_DEFAULT_RANGE_SEC;
+  private latestPrice: Price | null = null;
+  private lastSeenBarTime = 0;
+  private lastSeenBarClose = 0;
 
-  if (!chartOwnsPrice) {
-    const positive = p.change >= 0;
-    const sign = positive ? '+' : '';
-    const arrow = positive ? '▲' : '▼';
+  constructor(symbol: string, card: HTMLElement) {
+    this.symbol = symbol;
+    this.card = card;
+    const q = <T extends HTMLElement = HTMLElement>(role: string): T | null =>
+      card.querySelector<T>(`[data-role="${role}"]`);
 
-    priceEl.textContent = `$${p.price.toFixed(2)}`;
+    // The container is required — without it we can't instantiate the
+    // chart. The other refs degrade gracefully if missing.
+    this.containerEl = q('container') ?? card;
+    this.emptyEl = q('empty');
+    this.priceEl = q('price');
+    this.changeEl = q('change');
+    this.contractEl = q('contract');
+    this.sourceEl = q('source');
+    this.updatedEl = q('updated');
+    this.tabsEl = q('tabs');
+    this.livePillEl = q('live-pill');
+    this.liveDotEl = q('live-dot');
+  }
 
-    if (changeEl) {
-      changeEl.textContent = `${arrow} ${sign}${p.change.toFixed(2)} (${sign}${p.changePct.toFixed(2)}%)`;
-      changeEl.className = `hero-chart-change ${positive ? 'positive' : 'negative'}`;
+  // load is idempotent — first call lazily creates the chart instance
+  // and wires the range tabs; subsequent calls just refetch the payload
+  // (used by the bootstrap path; live updates flow through the polling
+  // timer instead).
+  async load(): Promise<void> {
+    if (!this.chart) {
+      this.chart = createCandleChart(this.containerEl);
+      this.chart.setVisibleDuration(this.visibleDurationSec);
+      this.setupRangeTabs();
+    }
+
+    try {
+      const payload = await getHeroChart(this.symbol, HERO_MAX_BARS);
+      this.applyPayload(payload);
+    } catch (err) {
+      console.error(`Failed to load hero chart for ${this.symbol}:`, err);
     }
   }
 
-  // Metadata (contract, source label, updated-ago) is always sourced
-  // from /api/prices since the chart payload doesn't carry it.
-  if (contractEl) {
-    contractEl.textContent = p.contract
-      ? `${p.contract} — Front Month`
-      : '';
-  }
+  // applyPriceRecord absorbs a /api/prices entry for this symbol, syncing
+  // the metadata chrome and (when the chart isn't driving) the headline
+  // price/change text.
+  applyPriceRecord(p: Price): void {
+    if (!this.priceEl) return;
+    // Stash the latest Price so syncFromChart() can derive previous-close
+    // (= p.price - p.change) without an extra fetch.
+    this.latestPrice = p;
 
-  if (sourceEl) {
-    sourceEl.textContent = sourceLabel(p.source, p.updatedAt);
-    sourceEl.className = `hero-chart-source source-${effectiveSource(p.source, p.updatedAt)}`;
-  }
+    // OWNERSHIP RULE for the price + change blocks:
+    //   - in 'live' / 'today-paused' mode the CHART owns those numbers
+    //     (syncFromChart sets them on every 2s poll using the exact
+    //     close of the rightmost candle)
+    //   - in any other mode (prior-session, warming-up, or pre-chart-load
+    //     when mode is still null) /api/prices owns them
+    //
+    // Without this guard, /api/prices' 15s cadence would briefly slam the
+    // price text back to the older Pyth tick captured by /api/prices,
+    // producing a 13s-out-of-step flicker against the chart's last bar.
+    const chartOwnsPrice = this.mode === 'live' || this.mode === 'today-paused';
 
-  if (updatedEl && !chartOwnsPrice) {
-    // The chart's syncHeroPriceFromChart updates this badge to "now"
-    // on every tick, so only fall back to /api/prices' updatedAt when
-    // the chart isn't driving.
-    updatedEl.textContent = p.updatedAt ? timeAgo(p.updatedAt) : '';
-  }
-}
-
-// syncHeroPriceFromChart re-derives the big-price block from the chart's
-// freshest bar so the number you see at the top ALWAYS matches the
-// rightmost candle. We need the previous-session settlement to recompute
-// change%; we get it from the cached /api/prices response (Price.price
-// already includes the latest change from settlement, so subtracting
-// gives us the settlement value directly). If we don't have a cached
-// price yet (page just loaded, /api/prices still inflight), we update
-// the price text only and leave change% to the next /api/prices tick.
-function syncHeroPriceFromChart(close: number, barTimeSec: number): void {
-  if (!Number.isFinite(close) || close <= 0) return;
-  const priceEl = document.getElementById('heroChartPrice');
-  const changeEl = document.getElementById('heroChartChange');
-  const updatedEl = document.getElementById('heroChartUpdated');
-  if (priceEl) priceEl.textContent = `$${close.toFixed(2)}`;
-
-  if (changeEl && heroLastPrice) {
-    const prevClose = heroLastPrice.price - heroLastPrice.change;
-    if (prevClose > 0) {
-      const change = close - prevClose;
-      const changePct = (change / prevClose) * 100;
-      const positive = change >= 0;
+    if (!chartOwnsPrice) {
+      const positive = p.change >= 0;
       const sign = positive ? '+' : '';
       const arrow = positive ? '▲' : '▼';
-      changeEl.textContent = `${arrow} ${sign}${change.toFixed(2)} (${sign}${changePct.toFixed(2)}%)`;
-      changeEl.className = `hero-chart-change ${positive ? 'positive' : 'negative'}`;
+
+      this.priceEl.textContent = `$${p.price.toFixed(2)}`;
+
+      if (this.changeEl) {
+        this.changeEl.textContent = `${arrow} ${sign}${p.change.toFixed(2)} (${sign}${p.changePct.toFixed(2)}%)`;
+        this.changeEl.className = `hero-chart-change ${positive ? 'positive' : 'negative'}`;
+      }
+    }
+
+    if (this.contractEl) {
+      this.contractEl.textContent = p.contract ? `${p.contract} — Front Month` : '';
+    }
+
+    if (this.sourceEl) {
+      this.sourceEl.textContent = sourceLabel(p.source, p.updatedAt);
+      this.sourceEl.className = `hero-chart-source source-${effectiveSource(p.source, p.updatedAt)}`;
+    }
+
+    if (this.updatedEl && !chartOwnsPrice) {
+      // The chart's syncFromChart updates this badge to "now" on every
+      // tick, so only fall back to /api/prices' updatedAt when the
+      // chart isn't driving.
+      this.updatedEl.textContent = p.updatedAt ? timeAgo(p.updatedAt) : '';
     }
   }
 
-  if (updatedEl && barTimeSec > 0) {
-    // barTimeSec is the bar's bucket-start. For a "freshness" badge the
-    // user cares about the last tick, not the bucket boundary, so we
-    // just use "now" here — the chart polls every 2s in live mode.
-    updatedEl.textContent = timeAgo(new Date().toISOString());
-  }
-}
+  // syncFromChart re-derives the big-price block from the chart's
+  // freshest bar so the number you see at the top ALWAYS matches the
+  // rightmost candle. We need the previous-session settlement to recompute
+  // change%; we get it from the cached /api/prices response (Price.price
+  // already includes the latest change from settlement, so subtracting
+  // gives us the settlement value directly). If we don't have a cached
+  // price yet (page just loaded, /api/prices still inflight), we update
+  // the price text only and leave change% to the next /api/prices tick.
+  private syncFromChart(close: number, barTimeSec: number): void {
+    if (!Number.isFinite(close) || close <= 0) return;
+    if (this.priceEl) this.priceEl.textContent = `$${close.toFixed(2)}`;
 
-// ─── Hero Chart (today's session, auto live/paused/prior) ──────────────
-//
-// The homepage hero chart spans today's NY trading session at 5-minute
-// resolution. The server picks `mode`:
-//   - "live": today's bars + Pyth driving the rightmost in-progress bar
-//     in real time. Polled every 2s, only the last bar is mutated via
-//     .update() so existing pan/zoom state is kept.
-//   - "today-paused": today's bars but Pyth has gone quiet (CME daily
-//     5–6 PM ET maintenance break, brief publisher hiccup). Same fast
-//     poll cadence so we resume "live" the moment ticks return.
-//   - "prior-session": no bars for today yet (pre-Sunday-reopen, full
-//     weekend day). We show the most recent prior session and slow-poll
-//     (60s) until today's bars appear.
-//   - "warming-up": cold start — placeholder + fast polling so the first
-//     real payload paints quickly.
-//
-// All mode decisions live on the server. The frontend just renders what
-// the payload says and swaps UI chrome (pill / tagline).
+    if (this.changeEl && this.latestPrice) {
+      const prevClose = this.latestPrice.price - this.latestPrice.change;
+      if (prevClose > 0) {
+        const change = close - prevClose;
+        const changePct = (change / prevClose) * 100;
+        const positive = change >= 0;
+        const sign = positive ? '+' : '';
+        const arrow = positive ? '▲' : '▼';
+        this.changeEl.textContent = `${arrow} ${sign}${change.toFixed(2)} (${sign}${changePct.toFixed(2)}%)`;
+        this.changeEl.className = `hero-chart-change ${positive ? 'positive' : 'negative'}`;
+      }
+    }
 
-async function loadHeroChart(): Promise<void> {
-  const container = document.getElementById('heroChartContainer');
-  if (!container) return;
-
-  if (!heroChart) {
-    heroChart = createCandleChart(container);
-    // Apply the default lookback window before the first paint so the
-    // chart opens with 24H visible, right edge anchored to "now".
-    heroChart.setVisibleDuration(heroVisibleDurationSec);
-    setupHeroRangeTabs();
+    if (this.updatedEl && barTimeSec > 0) {
+      // barTimeSec is the bar's bucket-start. For a "freshness" badge the
+      // user cares about the last tick, not the bucket boundary, so we
+      // just use "now" here — the chart polls every 2s in live mode.
+      this.updatedEl.textContent = timeAgo(new Date().toISOString());
+    }
   }
 
-  try {
-    const payload = await getHeroChart(HERO_SYMBOL, HERO_MAX_BARS);
-    applyHeroChartPayload(payload);
-  } catch (err) {
-    console.error('Failed to load hero chart:', err);
-  }
-}
-
-// setupHeroRangeTabs wires the 6H / 12H / 24H buttons under the chart.
-// Each button carries `data-hero-range` (in seconds) — we read it on
-// click, push it into the chart, and toggle the visual `is-active`
-// state. Idempotent: safe to call once per page load.
-function setupHeroRangeTabs(): void {
-  const tabs = document.getElementById('heroChartTabs');
-  if (!tabs) return;
-  tabs.addEventListener('click', e => {
-    const target = e.target as HTMLElement | null;
-    const btn = target?.closest('button.hero-chart-tab') as HTMLButtonElement | null;
-    if (!btn) return;
-    const raw = btn.dataset.heroRange;
-    if (!raw) return;
-    const seconds = parseInt(raw, 10);
-    if (!Number.isFinite(seconds) || seconds <= 0) return;
-    heroVisibleDurationSec = seconds;
-    if (heroChart) heroChart.setVisibleDuration(seconds);
-    // Toggle active state across all sibling tabs.
-    tabs.querySelectorAll<HTMLButtonElement>('button.hero-chart-tab').forEach(t => {
-      const isActive = t === btn;
-      t.classList.toggle('is-active', isActive);
-      t.setAttribute('aria-selected', isActive ? 'true' : 'false');
+  // setupRangeTabs wires the 6H / 12H / 24H buttons under the chart.
+  // Each button carries `data-hero-range` (in seconds) — we read it on
+  // click, push it into the chart, and toggle the visual `is-active`
+  // state. Scoped to this controller's card so the two charts'
+  // selections stay independent.
+  private setupRangeTabs(): void {
+    const tabs = this.tabsEl;
+    if (!tabs) return;
+    tabs.addEventListener('click', e => {
+      const target = e.target as HTMLElement | null;
+      const btn = target?.closest('button.hero-chart-tab') as HTMLButtonElement | null;
+      if (!btn) return;
+      const raw = btn.dataset.heroRange;
+      if (!raw) return;
+      const seconds = parseInt(raw, 10);
+      if (!Number.isFinite(seconds) || seconds <= 0) return;
+      this.visibleDurationSec = seconds;
+      this.chart?.setVisibleDuration(seconds);
+      tabs.querySelectorAll<HTMLButtonElement>('button.hero-chart-tab').forEach(t => {
+        const isActive = t === btn;
+        t.classList.toggle('is-active', isActive);
+        t.setAttribute('aria-selected', isActive ? 'true' : 'false');
+      });
     });
-  });
-}
-
-// applyHeroChartPayload is the single point that paints the chart and the
-// surrounding UI for a fresh /api/hero response. It also handles mode
-// transitions (live ↔ prior-session) — when the mode changes we tear down
-// the old polling cadence and start the appropriate new one.
-let lastSeenBarTime = 0;
-let lastSeenBarClose = 0;
-function applyHeroChartPayload(payload: HeroChart): void {
-  if (!heroChart) return;
-
-  if (!payload.bars || payload.bars.length === 0) {
-    setHeroChartEmpty(true);
-    setLiveState('warming');
-    setHeroTagline(payload);
-    if (heroMode !== 'warming-up') {
-      heroMode = 'warming-up';
-      transitionPolling('warming-up');
-    }
-    return;
   }
-  setHeroChartEmpty(false);
 
-  if (payload.mode !== heroMode) {
-    // Mode change — wholesale replace the data so the chart redraws
-    // with whatever interval / session the new mode brings. Also clears
-    // any half-formed candle from the previous mode. The chart's own
-    // setData() will re-anchor to the active duration filter (e.g.
-    // "last 24H"), so the right edge stays glued to the most recent bar.
-    heroChart.setData(payload.bars);
-    if (heroVisibleDurationSec !== null) {
-      heroChart.setVisibleDuration(heroVisibleDurationSec);
+  // applyPayload is the single point that paints the chart and the
+  // surrounding UI for a fresh /api/hero response. It also handles mode
+  // transitions (live ↔ prior-session) — when the mode changes we tear
+  // down the old polling cadence and start the appropriate new one.
+  private applyPayload(payload: HeroChart): void {
+    if (!this.chart) return;
+
+    if (!payload.bars || payload.bars.length === 0) {
+      this.setEmpty(true);
+      this.setLiveState('warming');
+      setHeroTagline(payload);
+      if (this.mode !== 'warming-up') {
+        this.mode = 'warming-up';
+        this.transitionPolling('warming-up');
+      }
+      return;
     }
-    heroMode = payload.mode;
-    transitionPolling(payload.mode);
-    applyHeroSessionOverlay(payload);
-  } else if (payload.mode === 'live' || payload.mode === 'today-paused') {
-    // Same intraday mode — only mutate the last bar so existing pan/zoom
-    // state is preserved. In live mode the close ticks every 2s; in
-    // today-paused it's effectively a no-op until ticks resume.
+    this.setEmpty(false);
+
+    if (payload.mode !== this.mode) {
+      // Mode change — wholesale replace the data so the chart redraws
+      // with whatever interval / session the new mode brings. Also clears
+      // any half-formed candle from the previous mode. The chart's own
+      // setData() will re-anchor to the active duration filter, so the
+      // right edge stays glued to the most recent bar.
+      this.chart.setData(payload.bars);
+      this.chart.setVisibleDuration(this.visibleDurationSec);
+      this.mode = payload.mode;
+      this.transitionPolling(payload.mode);
+      this.applySessionOverlay(payload);
+    } else if (payload.mode === 'live' || payload.mode === 'today-paused') {
+      // Same intraday mode — only mutate the last bar so existing pan/zoom
+      // state is preserved. In live mode the close ticks every 2s; in
+      // today-paused it's effectively a no-op until ticks resume.
+      const last = payload.bars[payload.bars.length - 1];
+      this.chart.update(last);
+    } else {
+      // Same prior-session (or warming) — full replace is fine, the bar
+      // set rarely changes (only when Yahoo backfills a late tick).
+      this.chart.setData(payload.bars);
+      this.applySessionOverlay(payload);
+    }
+
     const last = payload.bars[payload.bars.length - 1];
-    heroChart.update(last);
-  } else {
-    // Same prior-session (or warming) — full replace is fine, the bar
-    // set rarely changes (only when Yahoo backfills a late tick).
-    heroChart.setData(payload.bars);
-    applyHeroSessionOverlay(payload);
+    if (payload.mode === 'live') {
+      this.setLiveState('live');
+      const isNewTick = last.time !== this.lastSeenBarTime || last.close !== this.lastSeenBarClose;
+      if (isNewTick) this.pulseLiveIndicator();
+      // Live mode: keep the big-price block glued to whatever the chart's
+      // rightmost bar shows. Both feeds source from Pyth on the server,
+      // so this just kills the up-to-13s drift between the 2s chart poll
+      // and the 15s /api/prices poll.
+      this.syncFromChart(last.close, last.time);
+    } else if (payload.mode === 'today-paused') {
+      this.setLiveState('today-paused', payload.sessionDate);
+      // today-paused = Pyth has gone quiet but the chart's last close is
+      // still the most recent real tick we have. Sync so the big price
+      // matches what the chart shows.
+      this.syncFromChart(last.close, last.time);
+    } else if (payload.mode === 'prior-session') {
+      this.setLiveState('paused', payload.sessionDate);
+      // prior-session = chart is yesterday's data, big price is today's
+      // /api/prices quote. Different things on purpose — don't sync.
+    } else {
+      this.setLiveState('warming');
+    }
+    // Tagline is shared across all hero cards. We only let the FIRST
+    // controller drive it so the two cards don't fight over the text.
+    if (heroControllers.values().next().value === this) {
+      setHeroTagline(payload);
+    }
+    this.lastSeenBarTime = last.time;
+    this.lastSeenBarClose = last.close;
   }
 
-  const last = payload.bars[payload.bars.length - 1];
-  if (payload.mode === 'live') {
-    setLiveState('live');
-    const isNewTick = last.time !== lastSeenBarTime || last.close !== lastSeenBarClose;
-    if (isNewTick) pulseLiveIndicator();
-    // Live mode: keep the big-price block glued to whatever the chart's
-    // rightmost bar shows. Both feeds source from Pyth on the server,
-    // so this just kills the up-to-13s drift between the 2s chart poll
-    // and the 15s /api/prices poll.
-    syncHeroPriceFromChart(last.close, last.time);
-  } else if (payload.mode === 'today-paused') {
-    setLiveState('today-paused', payload.sessionDate);
-    // today-paused = Pyth has gone quiet but the chart's last close is
-    // still the most recent real tick we have. Sync so the big price
-    // matches what the chart shows (otherwise the number would freeze
-    // 13s out-of-step with the chart's frozen bar).
-    syncHeroPriceFromChart(last.close, last.time);
-  } else if (payload.mode === 'prior-session') {
-    setLiveState('paused', payload.sessionDate);
-    // prior-session = chart is yesterday's data, big price is today's
-    // /api/prices quote. Different things on purpose — don't sync.
-  } else {
-    setLiveState('warming');
+  private applySessionOverlay(payload: HeroChart): void {
+    if (!this.chart) return;
+    applyHeroSessionOverlayOnChart(this.chart, payload);
   }
-  setHeroTagline(payload);
-  lastSeenBarTime = last.time;
-  lastSeenBarClose = last.close;
+
+  private transitionPolling(mode: HeroMode): void {
+    if (this.pollTimer != null) {
+      window.clearInterval(this.pollTimer);
+      this.pollTimer = null;
+    }
+    // Fast-poll in every mode that's "intra-session" so we resume
+    // ticking the moment Pyth wakes up. Only true prior-session
+    // (markets fully closed) drops to slow polling.
+    const interval = mode === 'prior-session' ? HERO_PAUSED_POLL_MS : HERO_LIVE_POLL_MS;
+    this.pollTimer = window.setInterval(async () => {
+      try {
+        const payload = await getHeroChart(this.symbol, HERO_MAX_BARS);
+        this.applyPayload(payload);
+      } catch {
+        // Transient network error — next tick will recover.
+      }
+    }, interval);
+  }
+
+  // setLiveState toggles this card's pill between four appearances. In
+  // paused / today-paused states the optional sessionDate is shown so
+  // users know which trading day's data they're looking at. CSS handles
+  // the visual treatment for each state.
+  private setLiveState(state: 'live' | 'today-paused' | 'paused' | 'warming', sessionDate?: string): void {
+    const pill = this.livePillEl;
+    if (!pill) return;
+    const dot = this.liveDotEl;
+    const label = pill.lastChild!;
+    pill.classList.remove('hero-live-pill-paused', 'hero-live-pill-warming');
+    dot?.classList.remove('hero-live-dot-paused', 'hero-live-dot-warming');
+    switch (state) {
+      case 'live':
+        label.textContent = ' LIVE \u00b7 5m';
+        break;
+      case 'today-paused':
+        // Today's session is on screen but the live tick is paused —
+        // typically the daily 5–6 PM ET CME maintenance break.
+        pill.classList.add('hero-live-pill-paused');
+        dot?.classList.add('hero-live-dot-paused');
+        label.textContent = ' FEED PAUSED \u00b7 today';
+        break;
+      case 'paused':
+        pill.classList.add('hero-live-pill-paused');
+        dot?.classList.add('hero-live-dot-paused');
+        label.textContent = sessionDate
+          ? ' MARKET CLOSED \u00b7 ' + formatSessionDate(sessionDate)
+          : ' MARKET CLOSED';
+        break;
+      case 'warming':
+        pill.classList.add('hero-live-pill-warming');
+        dot?.classList.add('hero-live-dot-warming');
+        label.textContent = ' WARMING UP';
+        break;
+    }
+  }
+
+  private setEmpty(isEmpty: boolean): void {
+    if (this.emptyEl) this.emptyEl.style.display = isEmpty ? 'flex' : 'none';
+  }
+
+  // pulseLiveIndicator briefly flashes the green dot in this card's pill
+  // each time we receive a fresh candle update. The CSS handles the
+  // actual pulse animation; we just toggle a class for one frame.
+  private pulseLiveIndicator(): void {
+    const dot = this.liveDotEl;
+    if (!dot) return;
+    dot.classList.remove('pulse-flash');
+    void dot.offsetWidth;
+    dot.classList.add('pulse-flash');
+  }
 }
 
 // ─── CME futures session-boundary markers ────────────────────────────
@@ -423,20 +535,19 @@ const PIT_OPEN_MIN = 0;
 const PIT_CLOSE_HOUR = 14;     // 14:30 ET
 const PIT_CLOSE_MIN = 30;
 
-function applyHeroSessionOverlay(payload: HeroChart): void {
-  if (!heroChart) return;
+function applyHeroSessionOverlayOnChart(chart: CandleChartHandle, payload: HeroChart): void {
   // Overlays only make sense for the rolling-24h intraday view. For
   // prior-session / warming-up modes there's no consistent anchor, so
   // clear both layers.
   if (payload.mode !== 'live' && payload.mode !== 'today-paused') {
-    heroChart.setSessionMarkers([]);
-    heroChart.setSessionBands([]);
+    chart.setSessionMarkers([]);
+    chart.setSessionBands([]);
     return;
   }
   const dateStr = payload.sessionDate;
   if (!dateStr) {
-    heroChart.setSessionMarkers([]);
-    heroChart.setSessionBands([]);
+    chart.setSessionMarkers([]);
+    chart.setSessionBands([]);
     return;
   }
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr);
@@ -468,15 +579,15 @@ function applyHeroSessionOverlay(payload: HeroChart): void {
   if (bars.length > 0) {
     const minT = bars[0]!.time;
     const maxT = bars[bars.length - 1]!.time;
-    heroChart.setSessionMarkers(
+    chart.setSessionMarkers(
       markers.filter(mk => mk.time >= minT && mk.time <= maxT)
     );
-    heroChart.setSessionBands(
+    chart.setSessionBands(
       bands.filter(b => b.end >= minT && b.start <= maxT)
     );
   } else {
-    heroChart.setSessionMarkers(markers);
-    heroChart.setSessionBands(bands);
+    chart.setSessionMarkers(markers);
+    chart.setSessionBands(bands);
   }
 }
 
@@ -553,64 +664,6 @@ function setHeroTagline(payload: HeroChart): void {
   }
 }
 
-function transitionPolling(mode: 'live' | 'today-paused' | 'prior-session' | 'warming-up'): void {
-  if (heroPollTimer != null) {
-    window.clearInterval(heroPollTimer);
-    heroPollTimer = null;
-  }
-  // Fast-poll in every mode that's "intra-session" so we resume
-  // ticking the moment Pyth wakes up. Only true prior-session
-  // (markets fully closed) drops to slow polling.
-  const interval = mode === 'prior-session' ? HERO_PAUSED_POLL_MS : HERO_LIVE_POLL_MS;
-  heroPollTimer = window.setInterval(async () => {
-    try {
-      const payload = await getHeroChart(HERO_SYMBOL, HERO_MAX_BARS);
-      applyHeroChartPayload(payload);
-    } catch {
-      // Transient network error — next tick will recover.
-    }
-  }, interval);
-}
-
-// setLiveState toggles the chart card's pill between four appearances.
-// In paused / today-paused states the optional sessionDate is shown so
-// users know which trading day's data they're looking at. CSS handles the
-// visual treatment for each state.
-function setLiveState(state: 'live' | 'today-paused' | 'paused' | 'warming', sessionDate?: string): void {
-  const pill = document.getElementById('heroLivePill');
-  if (!pill) return;
-  const dot = pill.firstElementChild;
-  const label = pill.lastChild!;
-  pill.classList.remove('hero-live-pill-paused', 'hero-live-pill-warming');
-  dot?.classList.remove('hero-live-dot-paused', 'hero-live-dot-warming');
-  switch (state) {
-    case 'live':
-      label.textContent = ' LIVE \u00b7 5m';
-      break;
-    case 'today-paused':
-      // Today's session is on screen but the live tick is paused —
-      // typically the daily 5–6 PM ET CME maintenance break. We use the
-      // same paused styling as full prior-session, but a more specific
-      // label so users know data is current as of a few minutes ago.
-      pill.classList.add('hero-live-pill-paused');
-      dot?.classList.add('hero-live-dot-paused');
-      label.textContent = ' FEED PAUSED \u00b7 today';
-      break;
-    case 'paused':
-      pill.classList.add('hero-live-pill-paused');
-      dot?.classList.add('hero-live-dot-paused');
-      label.textContent = sessionDate
-        ? ' MARKET CLOSED \u00b7 ' + formatSessionDate(sessionDate)
-        : ' MARKET CLOSED';
-      break;
-    case 'warming':
-      pill.classList.add('hero-live-pill-warming');
-      dot?.classList.add('hero-live-dot-warming');
-      label.textContent = ' WARMING UP';
-      break;
-  }
-}
-
 // formatSessionDate turns a "YYYY-MM-DD" string into a human label like
 // "Fri Apr 17". We render in UTC to avoid the user's local TZ surprising
 // them with a one-day shift around midnight (the underlying string is
@@ -620,23 +673,6 @@ function formatSessionDate(yyyymmdd: string): string {
   if (!m) return yyyymmdd;
   const d = new Date(Date.UTC(parseInt(m[1]!, 10), parseInt(m[2]!, 10) - 1, parseInt(m[3]!, 10)));
   return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' });
-}
-
-function setHeroChartEmpty(isEmpty: boolean): void {
-  const empty = document.getElementById('heroChartEmpty');
-  if (!empty) return;
-  empty.style.display = isEmpty ? 'flex' : 'none';
-}
-
-// pulseLiveIndicator briefly flashes the green dot in the chart card header
-// each time we receive a fresh candle update. The CSS handles the actual
-// pulse animation; we just toggle a class for one frame.
-function pulseLiveIndicator(): void {
-  const dot = document.getElementById('heroLiveDot');
-  if (!dot) return;
-  dot.classList.remove('pulse-flash');
-  void dot.offsetWidth;
-  dot.classList.add('pulse-flash');
 }
 
 // ─── Ticker ─────────────────────────────────────────────

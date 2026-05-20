@@ -3,54 +3,12 @@
     <div class="hero-bg"><div class="hero-grid-pattern"></div><div class="hero-glow"></div></div>
     <div class="container hero-content">
         <div class="hero-eyebrow">
-            <h1 class="hero-tagline" id="heroTagline">Live oil prices &amp; energy market data — <span class="hero-tagline-accent" id="heroTaglineAccent">connecting to the live feed&hellip;</span></h1>
+            <h1 class="hero-tagline" id="heroTagline">Live WTI &amp; Brent crude oil prices — <span class="hero-tagline-accent" id="heroTaglineAccent">connecting to the live feed&hellip;</span></h1>
         </div>
 
-        <div class="hero-chart-card" id="heroWTI" data-symbol="WTI">
-            <div class="hero-chart-header">
-                <div class="hero-chart-title-block">
-                    <div class="hero-chart-symbol">
-                        WTI Crude Oil
-                        <span class="hero-live-pill" id="heroLivePill" title="Streaming real-time 1-minute candles">
-                            <span class="hero-live-dot" id="heroLiveDot"></span>
-                            LIVE · 1m
-                        </span>
-                    </div>
-                    <div class="hero-chart-contract" id="heroChartContract">Loading…</div>
-                </div>
-                <div class="hero-chart-price-block">
-                    <div class="hero-chart-price" id="heroChartPrice">{{if .HeroWTI}}${{printf "%.2f" .HeroWTI.Price}}{{else}}—{{end}}</div>
-                    <div class="hero-chart-change {{if .HeroWTI}}{{if .HeroWTI.IsPositive}}positive{{else}}negative{{end}}{{end}}" id="heroChartChange">{{if .HeroWTI}}{{.HeroWTI.Sign}}{{printf "%.2f" .HeroWTI.Change}} ({{.HeroWTI.Sign}}{{printf "%.2f" .HeroWTI.ChangePct}}%){{else}}—{{end}}</div>
-                </div>
-                <div class="hero-chart-source-block">
-                    <span class="hero-chart-source" id="heroChartSource"></span>
-                    <span class="hero-chart-updated" id="heroChartUpdated"></span>
-                </div>
-            </div>
-            <div class="hero-chart-tabs" id="heroChartTabs" role="tablist" aria-label="Hero chart lookback window">
-                <button type="button" class="hero-chart-tab is-active" role="tab" data-hero-range="21600" aria-selected="true">6H</button>
-                <button type="button" class="hero-chart-tab" role="tab" data-hero-range="43200" aria-selected="false">12H</button>
-                <button type="button" class="hero-chart-tab" role="tab" data-hero-range="86400" aria-selected="false">24H</button>
-            </div>
-            <div class="hero-chart-container" id="heroChartContainer" role="img" aria-label="WTI crude oil live 1-minute candle chart">
-                <div class="hero-chart-empty" id="heroChartEmpty" style="display:none;">
-                    <div class="hero-chart-empty-icon">
-                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
-                    </div>
-                    <div class="hero-chart-empty-title">Warming up the live feed…</div>
-                    <div class="hero-chart-empty-text">First 1-minute candle is being collected from the live feed. The chart will populate within ~60 seconds.</div>
-                </div>
-            </div>
-            <div class="hero-chart-footer">
-                <span class="hero-chart-footer-link"><a href="/commodity/WTI">WTI details</a></span>
-                <span class="hero-chart-footer-sep">·</span>
-                <span class="hero-chart-footer-link"><a href="/commodity/BRENT">Brent</a></span>
-                <span class="hero-chart-footer-sep">·</span>
-                <span class="hero-chart-footer-link"><a href="/charts">All charts</a></span>
-                <span class="hero-chart-footer-sep">·</span>
-                <span class="hero-chart-footer-tz" title="Times shown in NYMEX exchange-local time (America/New_York). Switches between EST and EDT with US daylight savings.">NYMEX · ET</span>
-            </div>
-        </div>
+        {{template "hero_chart_card" dict "Symbol" "WTI" "Title" "WTI Crude Oil" "AriaLabel" "WTI crude oil live 1-minute candle chart" "DetailsHref" "/commodity/WTI" "OtherHref" "/commodity/BRENT" "OtherLabel" "Brent" "Price" .HeroWTI}}
+
+        {{template "hero_chart_card" dict "Symbol" "BRENT" "Title" "Brent Crude Oil" "AriaLabel" "Brent crude oil live 1-minute candle chart" "DetailsHref" "/commodity/BRENT" "OtherHref" "/commodity/WTI" "OtherLabel" "WTI" "Price" .HeroBRENT}}
 
         <div class="hero-cta">
             <a href="#markets" class="btn btn-primary">
