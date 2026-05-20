@@ -42,6 +42,7 @@ type PageData struct {
 	Prices     []priceView
 	CardPrices []priceView // subset rendered as the headline price cards
 	HeroWTI    *priceView
+	HeroBRENT  *priceView
 	Forecasts  []forecastView
 	Consensus  []consensusView
 
@@ -141,6 +142,7 @@ func InitPageTemplates(dir string) error {
 		filepath.Join(dir, "partials", "footer.html"),
 		filepath.Join(dir, "partials", "price_grid.html"),
 		filepath.Join(dir, "partials", "forecast_grid.html"),
+		filepath.Join(dir, "partials", "hero_chart_card.html"),
 	}
 
 	funcs := template.FuncMap{
@@ -150,6 +152,23 @@ func InitPageTemplates(dir string) error {
 				return template.JS("{}")
 			}
 			return template.JS(b)
+		},
+		// dict builds a map[string]any from alternating key/value pairs so
+		// templates can pass multiple named params to a partial in one
+		// call site, e.g. {{template "card" dict "Symbol" "WTI" "Title" "..."}}.
+		"dict": func(values ...any) (map[string]any, error) {
+			if len(values)%2 != 0 {
+				return nil, fmt.Errorf("dict requires an even number of args")
+			}
+			m := make(map[string]any, len(values)/2)
+			for i := 0; i < len(values); i += 2 {
+				k, ok := values[i].(string)
+				if !ok {
+					return nil, fmt.Errorf("dict key %d is not a string", i)
+				}
+				m[k] = values[i+1]
+			}
+			return m, nil
 		},
 	}
 
@@ -218,6 +237,9 @@ func (a *API) populateMarketData(data *PageData) {
 
 	if v, ok := byID["WTI"]; ok {
 		data.HeroWTI = &v
+	}
+	if v, ok := byID["BRENT"]; ok {
+		data.HeroBRENT = &v
 	}
 
 	preds := a.market.GetPredictions()

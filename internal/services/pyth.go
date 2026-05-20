@@ -14,20 +14,30 @@ import (
 	"time"
 )
 
-// Pyth Network (Hermes) integration — WTI ONLY.
+// Pyth Network (Hermes) integration — WTI + Brent.
 //
-// We use Pyth as a real-time tick source for a single symbol: WTI Crude Oil
-// (USOILSPOT/USD CFD, published by first-party publishers including CME and
-// major market makers). For every other commodity on the site we rely on
-// Yahoo Finance, which is the more battle-tested feed for daily metadata,
-// historical bars, and the long tail of contracts.
+// We use Pyth as a real-time tick source for the two crude benchmarks:
+//   - WTI:   USOILSPOT/USD CFD (continuous spot, ~$0–1 basis to CL=F)
+//   - BRENT: UKOILSPOT/USD CFD (continuous spot, $2–4 basis to BZ=F)
+// For every other commodity on the site we rely on Yahoo Finance, which
+// is the more battle-tested feed for daily metadata, historical bars, and
+// the long tail of contracts.
 //
-// Why WTI only? Pyth's coverage of the rest of the energy complex is weak
-// in practice: dated futures (Henry Hub natgas, ICE Gasoil) are listed in
-// the registry but lack live publishers, and Pyth has no spot/CFD feed for
-// products like RBOB, heating oil, OPEC basket, or the Asian/Canadian
-// crudes. The continuous WTI spot CFD is the one place where Pyth provides
-// a clear win over Yahoo's 15-minute-delayed tick.
+// Why these two only? Pyth's coverage of the rest of the energy complex is
+// weak in practice: dated futures for Henry Hub natgas, ICE Gasoil, and
+// Brent contract-month feeds are listed in the registry but lack live
+// publishers (publish_time stays at 0). Pyth has no spot/CFD feed for
+// RBOB, heating oil, OPEC basket, or the Asian/Canadian crudes. The two
+// crude spot CFDs are the only places where Pyth provides a clear win
+// over Yahoo's 15-minute-delayed tick.
+//
+// Both spot CFDs trade at a (slowly varying) basis vs the front-month
+// future Yahoo reports — significant enough for Brent that we can't just
+// drop the raw Pyth tick into a Yahoo-anchored chart without correction.
+// PythService stores a per-symbol additive `basis` (front_month - spot)
+// that callers (MarketDataService) refresh whenever Yahoo's prices update.
+// Read-side accessors (GetQuote, GetBucketBar, GetQuotes) apply the basis
+// transparently so consumers always see prices at the front-month level.
 //
 // Hermes is the off-chain price API operated by the Pyth Data Association.
 // It exposes parsed prices over a free, unauthenticated REST endpoint:
@@ -74,11 +84,12 @@ type pythFeed struct {
 	feedID string // Pyth Hermes price feed id (hex, no 0x prefix)
 }
 
-// pythFeeds is the static list of feeds the poller subscribes to. WTI's
-// USOILSPOT/USD CFD is a continuous spot product (no expiry), so the feed
-// id is safe to hard-code.
+// pythFeeds is the static list of feeds the poller subscribes to. Both
+// USOILSPOT/USD (WTI) and UKOILSPOT/USD (Brent) are continuous spot
+// products (no expiry), so the feed ids are safe to hard-code.
 var pythFeeds = []pythFeed{
 	{symbol: "WTI", feedID: "925ca92ff005ae943c158e3563f59698ce7e75c5a8c8dd43303a0a154887b3e6"},
+	{symbol: "BRENT", feedID: "27f0d5e09a830083e5491795cac9ca521399c8f7fd56240d09484b14e614d57a"},
 }
 
 // pythRawResponse mirrors the parsed fields we care about from Hermes.
@@ -121,11 +132,21 @@ func (q PythQuote) IsLive() bool {
 // quotes by symbol, and aggregates each tick into a rolling 1-minute candle
 // buffer per symbol so the frontend can render a true streaming chart.
 // Safe for concurrent use.
+//
+// `basis` is a per-symbol additive offset (yahoo_front_month_price -
+// pyth_raw_spot_price) that read-side accessors apply on top of the raw
+// Pyth value. It exists because Pyth's spot CFDs trade at a small but
+// non-zero spread to the front-month futures Yahoo quotes — significant
+// enough for Brent that displaying raw spot would put a misleading $2–$4
+// cliff between Yahoo's historical bars and the Pyth-driven live bar.
+// MarketDataService keeps `basis` fresh via SetBasis whenever Yahoo's
+// price cache updates. Default 0 is a safe no-op.
 type PythService struct {
 	client  *http.Client
 	mu      sync.RWMutex
 	quotes  map[string]PythQuote
 	candles map[string][]models.PythCandle // keyed by internal symbol
+	basis   map[string]float64             // additive shift, applied on read
 	stop    chan struct{}
 }
 
@@ -134,6 +155,7 @@ func NewPythService() *PythService {
 		client:  &http.Client{Timeout: 8 * time.Second},
 		quotes:  make(map[string]PythQuote),
 		candles: make(map[string][]models.PythCandle),
+		basis:   make(map[string]float64),
 		stop:    make(chan struct{}),
 	}
 	// Prime once synchronously so the very first /api/prices call after
@@ -143,6 +165,27 @@ func NewPythService() *PythService {
 	}
 	go svc.loop()
 	return svc
+}
+
+// SetBasis records a per-symbol additive offset (yahoo_front_month -
+// pyth_raw) that read-side accessors will apply transparently. Pass 0 to
+// disable the shift for a symbol.
+func (s *PythService) SetBasis(symbol string, basis float64) {
+	s.mu.Lock()
+	if s.basis == nil {
+		s.basis = make(map[string]float64)
+	}
+	s.basis[symbol] = basis
+	s.mu.Unlock()
+}
+
+// basisLocked returns the current basis for `symbol`. Caller must hold
+// at least a read lock on s.mu.
+func (s *PythService) basisLocked(symbol string) float64 {
+	if s.basis == nil {
+		return 0
+	}
+	return s.basis[symbol]
 }
 
 // Stop terminates the background poller. Safe to call multiple times.
@@ -305,6 +348,9 @@ func (s *PythService) appendTickLocked(symbol string, price float64, ts time.Tim
 // Returns (bar, true) only if the bucket has at least one Pyth tick;
 // otherwise (zero, false) so the caller knows there's nothing to show
 // for that bucket yet.
+//
+// Output is shifted by the symbol's basis so the bar lands on the same
+// price level as Yahoo's surrounding front-month bars.
 func (s *PythService) GetBucketBar(symbol string, bucketStart, bucketSec int64) (models.PythCandle, bool) {
 	if bucketSec <= 0 {
 		return models.PythCandle{}, false
@@ -340,6 +386,12 @@ func (s *PythService) GetBucketBar(symbol string, bucketStart, bucketSec int64) 
 	if !initialized {
 		return models.PythCandle{}, false
 	}
+	if b := s.basisLocked(symbol); b != 0 {
+		out.Open += b
+		out.High += b
+		out.Low += b
+		out.Close += b
+	}
 	return out, true
 }
 
@@ -362,8 +414,10 @@ func (s *PythService) GetCandles(symbol string, max int) []models.PythCandle {
 }
 
 // GetQuotes returns a copy of the latest Pyth quotes keyed by internal
-// symbol. Quotes older than `pythCacheRetention` are dropped so we don't
-// surface a price that's days out of date even if the upstream goes silent.
+// symbol, with each quote's price shifted by the symbol's basis so it
+// lands on Yahoo's front-month level. Quotes older than
+// `pythCacheRetention` are dropped so we don't surface a price that's
+// days out of date even if the upstream goes silent.
 func (s *PythService) GetQuotes() map[string]PythQuote {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -372,14 +426,29 @@ func (s *PythService) GetQuotes() map[string]PythQuote {
 		if v.Stale(pythCacheRetention) {
 			continue
 		}
+		v.Price += s.basisLocked(k)
 		out[k] = v
 	}
 	return out
 }
 
-// GetQuote returns a single Pyth quote, or (zero, false) if missing or
-// older than the cache retention window.
+// GetQuote returns a single Pyth quote with basis applied, or
+// (zero, false) if missing or older than the cache retention window.
 func (s *PythService) GetQuote(symbol string) (PythQuote, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	q, ok := s.quotes[symbol]
+	if !ok || q.Stale(pythCacheRetention) {
+		return PythQuote{}, false
+	}
+	q.Price += s.basisLocked(symbol)
+	return q, true
+}
+
+// GetRawQuote returns the underlying Pyth quote with NO basis correction
+// applied. Used by the basis updater itself, which needs the raw spot
+// value to compute the next basis from a fresh Yahoo front-month price.
+func (s *PythService) GetRawQuote(symbol string) (PythQuote, bool) {
 	s.mu.RLock()
 	q, ok := s.quotes[symbol]
 	s.mu.RUnlock()

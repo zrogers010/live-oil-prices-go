@@ -1,0 +1,47 @@
+{{define "hero_chart_card"}}
+<div class="hero-chart-card" data-symbol="{{.Symbol}}">
+    <div class="hero-chart-header">
+        <div class="hero-chart-title-block">
+            <div class="hero-chart-symbol">
+                {{.Title}}
+                <span class="hero-live-pill" data-role="live-pill" title="Streaming real-time 1-minute candles">
+                    <span class="hero-live-dot" data-role="live-dot"></span>
+                    LIVE · 1m
+                </span>
+            </div>
+            <div class="hero-chart-contract" data-role="contract">Loading…</div>
+        </div>
+        <div class="hero-chart-price-block">
+            <div class="hero-chart-price" data-role="price">{{if .Price}}${{printf "%.2f" .Price.Price}}{{else}}—{{end}}</div>
+            <div class="hero-chart-change {{if .Price}}{{if .Price.IsPositive}}positive{{else}}negative{{end}}{{end}}" data-role="change">{{if .Price}}{{.Price.Sign}}{{printf "%.2f" .Price.Change}} ({{.Price.Sign}}{{printf "%.2f" .Price.ChangePct}}%){{else}}—{{end}}</div>
+        </div>
+        <div class="hero-chart-source-block">
+            <span class="hero-chart-source" data-role="source"></span>
+            <span class="hero-chart-updated" data-role="updated"></span>
+        </div>
+    </div>
+    <div class="hero-chart-tabs" data-role="tabs" role="tablist" aria-label="Hero chart lookback window">
+        <button type="button" class="hero-chart-tab is-active" role="tab" data-hero-range="21600" aria-selected="true">6H</button>
+        <button type="button" class="hero-chart-tab" role="tab" data-hero-range="43200" aria-selected="false">12H</button>
+        <button type="button" class="hero-chart-tab" role="tab" data-hero-range="86400" aria-selected="false">24H</button>
+    </div>
+    <div class="hero-chart-container" data-role="container" role="img" aria-label="{{.AriaLabel}}">
+        <div class="hero-chart-empty" data-role="empty" style="display:none;">
+            <div class="hero-chart-empty-icon">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+            </div>
+            <div class="hero-chart-empty-title">Warming up the live feed…</div>
+            <div class="hero-chart-empty-text">First 1-minute candle is being collected from the live feed. The chart will populate within ~60 seconds.</div>
+        </div>
+    </div>
+    <div class="hero-chart-footer">
+        <span class="hero-chart-footer-link"><a href="{{.DetailsHref}}">{{.Symbol}} details</a></span>
+        <span class="hero-chart-footer-sep">·</span>
+        <span class="hero-chart-footer-link"><a href="{{.OtherHref}}">{{.OtherLabel}}</a></span>
+        <span class="hero-chart-footer-sep">·</span>
+        <span class="hero-chart-footer-link"><a href="/charts">All charts</a></span>
+        <span class="hero-chart-footer-sep">·</span>
+        <span class="hero-chart-footer-tz" title="Times shown in NYMEX exchange-local time (America/New_York). Switches between EST and EDT with US daylight savings.">NYMEX · ET</span>
+    </div>
+</div>
+{{end}}
