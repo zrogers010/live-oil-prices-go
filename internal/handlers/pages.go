@@ -67,7 +67,13 @@ type priceView struct {
 	VolumeFormatted string
 	UpdatedAt       string
 	IsPositive      bool
-	Sign            string
+	// IsLive is true when the row is sourced from a live streaming feed
+	// (currently only Pyth) AND its last publish is within ~60s. Used by
+	// templates to render an inline "Live" pill so the SSR shows the
+	// status badge without waiting for JS hydration. Mirrors the
+	// `isPythLive(...)` predicate in web/src/app.ts.
+	IsLive bool
+	Sign   string
 }
 
 type forecastView struct {
@@ -317,11 +323,28 @@ func toPriceView(p models.Price) priceView {
 		VolumeFormatted: formatVolume(p.Volume),
 		UpdatedAt:       p.UpdatedAt,
 		IsPositive:      p.Change >= 0,
+		IsLive:          isLiveTick(p.Source, p.UpdatedAt),
 	}
 	if v.IsPositive {
 		v.Sign = "+"
 	}
 	return v
+}
+
+// isLiveTick mirrors the JS-side `isPythLive` predicate: only Pyth-sourced
+// rows are eligible for the green Live pill, and the publish must be
+// recent (≤60s) — outside that window the underlying market is paused
+// (CME daily break, weekend, holiday) and a "Live" badge would lie.
+func isLiveTick(source, updatedAt string) bool {
+	if source != "pyth" || updatedAt == "" {
+		return false
+	}
+	t, err := time.Parse(time.RFC3339, updatedAt)
+	if err != nil {
+		return false
+	}
+	age := time.Since(t)
+	return age >= 0 && age <= 60*time.Second
 }
 
 func toForecastView(p models.Prediction) forecastView {
