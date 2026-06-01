@@ -57,6 +57,38 @@ else
     echo "  Certbot already installed."
 fi
 
+# Install systemd timer to auto-renew the cert. The pip-installed certbot
+# does NOT ship with a renewal timer (only the OS package does), so we
+# install one ourselves. Without this, certs silently expire after 90 days.
+echo "  Installing certbot renewal timer..."
+cat > /etc/systemd/system/certbot-renew.service << 'EOF'
+[Unit]
+Description=Renew Let's Encrypt certificates
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/certbot renew --quiet --deploy-hook "systemctl reload nginx"
+EOF
+
+cat > /etc/systemd/system/certbot-renew.timer << 'EOF'
+[Unit]
+Description=Run certbot renew twice daily
+
+[Timer]
+OnCalendar=*-*-* 03,15:00:00
+RandomizedDelaySec=1h
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+EOF
+
+systemctl daemon-reload
+systemctl enable --now certbot-renew.timer
+echo "  Renewal timer enabled (runs twice daily)."
+
 # ---------- Deploy user ----------
 echo "[5/7] Creating deploy user..."
 if ! id "$DEPLOY_USER" &>/dev/null; then
