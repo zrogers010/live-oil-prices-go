@@ -7,6 +7,7 @@ import (
 	"html/template"
 	"live-oil-prices-go/internal/models"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -50,6 +51,18 @@ type PageData struct {
 	// per-page partner cards. Sourced from TradingViewAffiliateURL so
 	// there's exactly one place to change the affiliate ID.
 	PartnerURL string
+
+	// AdSense configuration - only populated when ADSENSE_CLIENT env var is set
+	AdSenseClient string
+	AdSlots       AdSlots
+}
+
+// AdSlots holds optional AdSense slot IDs for different ad placements
+type AdSlots struct {
+	BelowPriceTable string
+	NewsFlow        string
+	Sidebar         string
+	Article         string
 }
 
 type priceView struct {
@@ -66,6 +79,7 @@ type priceView struct {
 	Volume          int64
 	VolumeFormatted string
 	UpdatedAt       string
+	UpdatedLabel    string
 	IsPositive      bool
 	// IsLive is true when the row is sourced from a live streaming feed
 	// (currently only Pyth) AND its last publish is within ~60s. Used by
@@ -178,7 +192,7 @@ func InitPageTemplates(dir string) error {
 		},
 	}
 
-	pages := []string{"home", "charts", "forecast", "news", "disclosure"}
+	pages := []string{"home", "charts", "forecast", "news", "disclosure", "privacy"}
 	for _, name := range pages {
 		files := append([]string{layout, filepath.Join(dir, "pages", name+".html")}, partials...)
 		t, err := template.New("layout").Funcs(funcs).ParseFiles(files...)
@@ -202,6 +216,10 @@ func (a *API) renderPage(w http.ResponseWriter, r *http.Request, name string, da
 		data.PartnerURL = TradingViewAffiliateURL
 	}
 
+	// Populate AdSense config from environment
+	data.AdSenseClient = getAdSenseClient()
+	data.AdSlots = getAdSlots()
+
 	var buf bytes.Buffer
 	if err := tmpl.ExecuteTemplate(&buf, "layout", data); err != nil {
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
@@ -210,6 +228,25 @@ func (a *API) renderPage(w http.ResponseWriter, r *http.Request, name string, da
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "public, max-age=15")
 	_, _ = buf.WriteTo(w)
+}
+
+// getAdSenseClient returns the AdSense publisher ID from env, or empty string if not set
+func getAdSenseClient() string {
+	client := os.Getenv("ADSENSE_CLIENT")
+	if client != "" && !strings.HasPrefix(client, "ca-pub-") {
+		return ""
+	}
+	return client
+}
+
+// getAdSlots returns AdSense slot IDs from environment variables
+func getAdSlots() AdSlots {
+	return AdSlots{
+		BelowPriceTable: os.Getenv("ADSENSE_SLOT_BELOW_PRICE_TABLE"),
+		NewsFlow:        os.Getenv("ADSENSE_SLOT_NEWS_FLOW"),
+		Sidebar:         os.Getenv("ADSENSE_SLOT_SIDEBAR"),
+		Article:         os.Getenv("ADSENSE_SLOT_ARTICLE"),
+	}
 }
 
 // populateMarketData fills the live data fields (prices, hero, forecasts)
@@ -308,6 +345,9 @@ func toConsensusView(c models.ConsensusForecast) consensusView {
 }
 
 func toPriceView(p models.Price) priceView {
+	isLive := isLiveTick(p.Source, p.UpdatedAt)
+	updatedLabel := formatUpdatedLabel(p.UpdatedAt, isLive)
+
 	v := priceView{
 		Symbol:          p.Symbol,
 		SymbolPrefix:    safePrefix(p.Symbol),
@@ -322,8 +362,9 @@ func toPriceView(p models.Price) priceView {
 		Volume:          p.Volume,
 		VolumeFormatted: formatVolume(p.Volume),
 		UpdatedAt:       p.UpdatedAt,
+		UpdatedLabel:    updatedLabel,
 		IsPositive:      p.Change >= 0,
-		IsLive:          isLiveTick(p.Source, p.UpdatedAt),
+		IsLive:          isLive,
 	}
 	if v.IsPositive {
 		v.Sign = "+"
@@ -345,6 +386,55 @@ func isLiveTick(source, updatedAt string) bool {
 	}
 	age := time.Since(t)
 	return age >= 0 && age <= 60*time.Second
+}
+
+// formatUpdatedLabel produces a human-readable "as of" timestamp for the
+// price view. If data is older than 24 hours, it's labeled clearly as
+// delayed or last close rather than implying it's current.
+func formatUpdatedLabel(updatedAt string, isLive bool) string {
+	if updatedAt == "" {
+		return ""
+	}
+	if isLive {
+		return ""
+	}
+
+	t, err := time.Parse(time.RFC3339, updatedAt)
+	if err != nil {
+		return ""
+	}
+
+	age := time.Since(t)
+	if age < 0 {
+		return ""
+	}
+
+	// Fresh data (< 1 hour) - no label needed
+	if age < time.Hour {
+		return ""
+	}
+
+	// Recent data (1-24 hours) - show time ago
+	if age < 24*time.Hour {
+		hours := int(age.Hours())
+		if hours == 1 {
+			return "Updated 1h ago"
+		}
+		return fmt.Sprintf("Updated %dh ago", hours)
+	}
+
+	// Old data (> 24 hours) - label as delayed/last close
+	loc, err := time.LoadLocation("America/New_York")
+	if err != nil {
+		loc = time.UTC
+	}
+	localTime := t.In(loc)
+
+	if age < 7*24*time.Hour {
+		return fmt.Sprintf("Last close %s", localTime.Format("Mon 3:04 PM"))
+	}
+
+	return fmt.Sprintf("Delayed (as of %s)", localTime.Format("Jan 2"))
 }
 
 func toForecastView(p models.Prediction) forecastView {
@@ -531,33 +621,55 @@ func safePrefix(s string) string {
 
 func (a *API) ServeHome(w http.ResponseWriter, r *http.Request) {
 	data := &PageData{
-		ActivePage:    "home",
-		Title:         "Live Oil Prices — Real-Time Crude Oil, WTI, Brent & Energy Market Data",
-		Description:   "Live oil prices updated every 15 seconds. Track WTI crude, Brent crude, natural gas, heating oil, RBOB gasoline, and OPEC basket prices with interactive charts and breaking energy market news.",
-		Keywords:      "oil prices, crude oil price, WTI price, Brent crude price, live oil prices, oil price today, natural gas price, heating oil, RBOB gasoline, OPEC, energy market, oil chart, oil news",
-		Canonical:     "https://liveoilprices.com/",
-		OGTitle:       "Live Oil Prices — Real-Time Crude Oil & Energy Market Data",
+		ActivePage:  "home",
+		Title:       "Live Oil Prices — Real-Time Crude Oil, WTI, Brent & Energy Market Data",
+		Description: "Live oil prices updated every 15 seconds. Track WTI crude, Brent crude, natural gas, heating oil, RBOB gasoline, and OPEC basket prices with interactive charts and breaking energy market news.",
+		Keywords:    "oil prices, crude oil price, WTI price, Brent crude price, live oil prices, oil price today, natural gas price, heating oil, RBOB gasoline, OPEC, energy market, oil chart, oil news",
+		Canonical:   "https://liveoilprices.com/",
+		OGTitle:     "Live Oil Prices — Real-Time Crude Oil & Energy Market Data",
 		OGDescription: "Track WTI, Brent, natural gas, and 10+ energy commodities with live prices, interactive charts, and breaking market news.",
 		SchemaType:    "WebSite",
-		StructuredData: []any{
-			map[string]any{
-				"@context":    "https://schema.org",
-				"@type":       "Organization",
-				"name":        "Live Oil Prices",
-				"url":         "https://liveoilprices.com",
-				"description": "Real-time energy market data, interactive oil price charts, statistical price forecasts, and breaking energy news.",
-			},
-			map[string]any{
-				"@context":    "https://schema.org",
-				"@type":       "WebSite",
-				"name":        "Live Oil Prices",
-				"url":         "https://liveoilprices.com",
-				"description": "Live crude oil prices, energy market charts, statistical price forecasts and breaking oil and gas news.",
-				"potentialAction": map[string]any{
-					"@type":       "SearchAction",
-					"target":      "https://liveoilprices.com/commodity/{search_term_string}",
-					"query-input": "required name=search_term_string",
-				},
+	}
+
+	// Populate market data first so we can access current prices
+	a.populateMarketData(data)
+
+	// Update title/description with real prices if available
+	wtiPrice := ""
+	brentPrice := ""
+	for _, p := range data.Prices {
+		if p.Symbol == "WTI" && p.Price > 0 {
+			wtiPrice = fmt.Sprintf("$%.2f", p.Price)
+		}
+		if p.Symbol == "BRENT" && p.Price > 0 {
+			brentPrice = fmt.Sprintf("$%.2f", p.Price)
+		}
+	}
+	if wtiPrice != "" && brentPrice != "" {
+		data.Title = fmt.Sprintf("Live Oil Prices — WTI %s, Brent %s | Real-Time Energy Market Data", wtiPrice, brentPrice)
+		data.OGTitle = fmt.Sprintf("Live Oil Prices — WTI %s, Brent %s", wtiPrice, brentPrice)
+	} else if wtiPrice != "" {
+		data.Title = fmt.Sprintf("Live Oil Prices — WTI %s | Real-Time Crude Oil & Energy Market Data", wtiPrice)
+	}
+
+	data.StructuredData = []any{
+		map[string]any{
+			"@context":    "https://schema.org",
+			"@type":       "Organization",
+			"name":        "Live Oil Prices",
+			"url":         "https://liveoilprices.com",
+			"description": "Real-time energy market data, interactive oil price charts, statistical price forecasts, and breaking energy news.",
+		},
+		map[string]any{
+			"@context":    "https://schema.org",
+			"@type":       "WebSite",
+			"name":        "Live Oil Prices",
+			"url":         "https://liveoilprices.com",
+			"description": "Live crude oil prices, energy market charts, statistical price forecasts and breaking oil and gas news.",
+			"potentialAction": map[string]any{
+				"@type":       "SearchAction",
+				"target":      "https://liveoilprices.com/commodity/{search_term_string}",
+				"query-input": "required name=search_term_string",
 			},
 		},
 	}
@@ -657,6 +769,23 @@ func (a *API) ServeDisclosure(w http.ResponseWriter, r *http.Request) {
 		},
 	}
 	a.renderPage(w, r, "disclosure", data)
+}
+
+func (a *API) ServePrivacy(w http.ResponseWriter, r *http.Request) {
+	data := &PageData{
+		ActivePage:  "privacy",
+		HideTicker:  true,
+		Title:       "Privacy Policy — Live Oil Prices",
+		Description: "Learn how Live Oil Prices collects, uses, and protects your data. Full transparency on cookies, analytics, and advertising practices.",
+		Keywords:    "privacy policy, live oil prices privacy, data protection, cookies, analytics",
+		Canonical:   "https://liveoilprices.com/privacy",
+		OGTitle:     "Privacy Policy — Live Oil Prices",
+		OGDescription: "Learn how Live Oil Prices collects, uses, and protects your data.",
+		StructuredData: []any{
+			breadcrumbJSONLD([][2]string{{"Home", "https://liveoilprices.com/"}, {"Privacy Policy", "https://liveoilprices.com/privacy"}}),
+		},
+	}
+	a.renderPage(w, r, "privacy", data)
 }
 
 // ─── JSON-LD helpers ────────────────────────────────────────────────────

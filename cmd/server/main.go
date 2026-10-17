@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 )
@@ -73,16 +74,22 @@ func newServerHandler(market handlers.MarketDataClient, news handlers.NewsClient
 	mux := http.NewServeMux()
 	api.RegisterRoutes(mux)
 
-	// Server-rendered HTML pages. Each route uses Go 1.22 exact-match
-	// patterns so they take precedence over the static FileServer below.
-	mux.HandleFunc("GET /{$}", api.ServeHome)
-	mux.HandleFunc("GET /charts", api.ServeCharts)
-	mux.HandleFunc("GET /forecast", api.ServeForecast)
-	mux.HandleFunc("GET /news", api.ServeNews)
-	mux.HandleFunc("GET /disclosure", api.ServeDisclosure)
-	mux.HandleFunc("GET /commodity/{symbol}", api.ServeCommodityPage)
+	// Server-rendered HTML pages
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/" {
+			api.ServeHome(w, r)
+		} else {
+			http.NotFound(w, r)
+		}
+	})
+	mux.HandleFunc("/charts", api.ServeCharts)
+	mux.HandleFunc("/forecast", api.ServeForecast)
+	mux.HandleFunc("/news", api.ServeNews)
+	mux.HandleFunc("/disclosure", api.ServeDisclosure)
+	mux.HandleFunc("/privacy", api.ServePrivacy)
+	mux.HandleFunc("/commodity/{symbol}", api.ServeCommodityPage)
 
-	mux.HandleFunc("GET /sitemap.xml", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/sitemap.xml", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/xml; charset=utf-8")
 		now := time.Now().Format("2006-01-02")
 		fmt.Fprint(w, `<?xml version="1.0" encoding="UTF-8"?>`)
@@ -92,13 +99,33 @@ func newServerHandler(market handlers.MarketDataClient, news handlers.NewsClient
 		fmt.Fprintf(w, `<url><loc>https://liveoilprices.com/forecast</loc><lastmod>%s</lastmod><changefreq>hourly</changefreq><priority>0.9</priority></url>`, now)
 		fmt.Fprintf(w, `<url><loc>https://liveoilprices.com/news</loc><lastmod>%s</lastmod><changefreq>hourly</changefreq><priority>0.9</priority></url>`, now)
 		fmt.Fprintf(w, `<url><loc>https://liveoilprices.com/disclosure</loc><lastmod>%s</lastmod><changefreq>yearly</changefreq><priority>0.3</priority></url>`, now)
+		fmt.Fprintf(w, `<url><loc>https://liveoilprices.com/privacy</loc><lastmod>%s</lastmod><changefreq>monthly</changefreq><priority>0.3</priority></url>`, now)
 		for _, sym := range commoditySymbols {
 			fmt.Fprintf(w, `<url><loc>https://liveoilprices.com/commodity/%s</loc><lastmod>%s</lastmod><changefreq>always</changefreq><priority>0.8</priority></url>`, sym, now)
 		}
 		fmt.Fprint(w, `</urlset>`)
 	})
 
-	mux.Handle("/", http.FileServer(http.Dir("web/static")))
+	// ads.txt - only serve when ADSENSE_CLIENT is set
+	mux.HandleFunc("/ads.txt", func(w http.ResponseWriter, r *http.Request) {
+		client := os.Getenv("ADSENSE_CLIENT")
+		if client == "" || !strings.HasPrefix(client, "ca-pub-") {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.Header().Set("Cache-Control", "public, max-age=86400")
+		// Extract pub ID (e.g. ca-pub-1234567890123456 -> 1234567890123456)
+		pubID := strings.TrimPrefix(client, "ca-pub-")
+		fmt.Fprintf(w, "google.com, pub-%s, DIRECT, f08c47fec0942fa0\n", pubID)
+	})
+
+	// Static files - only serve for specific paths that don't conflict
+	fileServer := http.FileServer(http.Dir("web/static"))
+	mux.HandleFunc("/css/", func(w http.ResponseWriter, r *http.Request) { fileServer.ServeHTTP(w, r) })
+	mux.HandleFunc("/js/", func(w http.ResponseWriter, r *http.Request) { fileServer.ServeHTTP(w, r) })
+	mux.HandleFunc("/robots.txt", func(w http.ResponseWriter, r *http.Request) { fileServer.ServeHTTP(w, r) })
+	mux.HandleFunc("/favicon.ico", func(w http.ResponseWriter, r *http.Request) { fileServer.ServeHTTP(w, r) })
 
 	return middleware.Chain(mux)
 }

@@ -4,20 +4,20 @@
         <div class="hero-chart-title-block">
             <div class="hero-chart-symbol">
                 {{.Title}}
-                <span class="hero-live-pill" data-role="live-pill" title="Streaming real-time 1-minute candles">
+                <span class="hero-live-pill" data-role="live-pill" title="Streaming real-time 1-minute candles"{{if not .Price.IsLive}} style="display:none;"{{end}}>
                     <span class="hero-live-dot" data-role="live-dot"></span>
                     LIVE
                 </span>
             </div>
-            <div class="hero-chart-contract" data-role="contract">Loading…</div>
+            <div class="hero-chart-contract" data-role="contract">{{if .Price.Contract}}{{.Price.Contract}}{{else}}Front month{{end}}</div>
         </div>
         <div class="hero-chart-price-block">
             <div class="hero-chart-price" data-role="price">{{if .Price}}${{printf "%.2f" .Price.Price}}{{else}}—{{end}}</div>
             <div class="hero-chart-change {{if .Price}}{{if .Price.IsPositive}}positive{{else}}negative{{end}}{{end}}" data-role="change">{{if .Price}}{{.Price.Sign}}{{printf "%.2f" .Price.Change}} ({{.Price.Sign}}{{printf "%.2f" .Price.ChangePct}}%){{else}}—{{end}}</div>
         </div>
         <div class="hero-chart-source-block">
-            <span class="hero-chart-source" data-role="source"></span>
-            <span class="hero-chart-updated" data-role="updated"></span>
+            <span class="hero-chart-source" data-role="source">{{if .Price.IsLive}}Real-time{{else if .Price.Source}}{{if eq .Price.Source "pyth"}}Pyth Network{{else if eq .Price.Source "yahoo"}}Yahoo Finance{{else}}Market data{{end}}{{end}}</span>
+            <span class="hero-chart-updated" data-role="updated">{{if .Price.UpdatedLabel}}{{.Price.UpdatedLabel}}{{end}}</span>
         </div>
     </div>
     <div class="hero-chart-tabs" data-role="tabs" role="tablist" aria-label="Hero chart lookback window">
@@ -30,8 +30,8 @@
             <div class="hero-chart-empty-icon">
                 <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
             </div>
-            <div class="hero-chart-empty-title">Warming up the live feed…</div>
-            <div class="hero-chart-empty-text">First 1-minute candle is being collected from the live feed. The chart will populate within ~60 seconds.</div>
+            <div class="hero-chart-empty-title">Loading chart data</div>
+            <div class="hero-chart-empty-text">Chart will populate shortly.</div>
         </div>
     </div>
     <div class="hero-chart-footer">
