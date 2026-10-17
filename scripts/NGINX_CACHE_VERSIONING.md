@@ -302,36 +302,49 @@ The script will not overwrite existing destinations and reports a summary of mov
 
 ### 2. Back up and apply nginx config
 
-Copy `scripts/nginx-prod.conf` from the repo to the server, then:
+Copy `scripts/nginx-prod.conf` from the repo to the server.
+
+**Step A: Review the changes**
+
+Paste this first to back up and review the diff:
 
 ```bash
-# On the EC2 host
-
-# 1. Back up the live config
+# On the EC2 host - Step A: backup and review
 BACKUP="/root/liveoilprices.conf.bak-$(date +%Y%m%d-%H%M%S)"
 sudo cp -a /etc/nginx/conf.d/liveoilprices.conf "$BACKUP"
 echo "Backup saved to $BACKUP"
 
-# 2. Copy candidate config to temp location
-# (manually scp or copy scripts/nginx-prod.conf to /tmp/liveoilprices.conf)
+# Copy candidate: scp scripts/nginx-prod.conf to /tmp/liveoilprices.conf first
 
-# 3. Review the diff BEFORE installing
-echo "Reviewing changes..."
+# Review the diff
+echo ""
+echo "=== Reviewing changes ==="
 diff -u /etc/nginx/conf.d/liveoilprices.conf /tmp/liveoilprices.conf || true
-read -p "Proceed with installation? (y/N) " confirm
-if [ "$confirm" != "y" ]; then
-    echo "Aborted"
-    exit 0
-fi
+echo ""
+echo "Review complete. If changes look good, proceed to Step B."
+```
 
-# 4-6. Install, test, and reload (in a guarded subshell)
+**Step B: Install, test, and reload**
+
+After reviewing the diff, paste this to install (runs in a guarded subshell):
+
+```bash
+# On the EC2 host - Step B: install and reload
 (
 set -euo pipefail
 
-# 4. Install the candidate config
+# Restore the backup path from Step A
+BACKUP=$(ls -t /root/liveoilprices.conf.bak-* 2>/dev/null | head -1)
+if [ -z "$BACKUP" ]; then
+    echo "ERROR: No backup found. Run Step A first." >&2
+    exit 1
+fi
+echo "Using backup: $BACKUP"
+
+# Install the candidate config
 sudo install -m 0644 -o root -g root /tmp/liveoilprices.conf /etc/nginx/conf.d/liveoilprices.conf
 
-# 5. Test and automatically restore on failure
+# Test and automatically restore on failure
 if ! sudo nginx -t; then
     echo "nginx -t failed, restoring backup"
     sudo cp "$BACKUP" /etc/nginx/conf.d/liveoilprices.conf
@@ -339,7 +352,7 @@ if ! sudo nginx -t; then
     exit 1
 fi
 
-# 6. Reload nginx
+# Reload nginx
 sudo systemctl reload nginx
 echo "nginx reloaded successfully"
 )

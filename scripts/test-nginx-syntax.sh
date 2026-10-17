@@ -109,7 +109,8 @@ else
 fi
 
 # Check that rollback location is active (not commented out)
-if echo "$STRIPPED" | grep -q 'location ~\* .*\\\.rollback'; then
+# Must match exactly \.rollback (not .rollback2 or other variants)
+if echo "$STRIPPED" | grep -qE 'location[[:space:]]+~\*[[:space:]]+.*\\\.rollback[[:space:]]*\{'; then
     printf "  ✓ rollback location is active with ~* (case-insensitive)\n"
 else
     printf "  ✗ rollback location missing or commented out\n"
@@ -117,34 +118,80 @@ else
     exit 1
 fi
 
-# Check that .rollback location contains return 404 or deny all (blocks access)
-# Use awk to extract the entire location block and check for the blocking directive
-ROLLBACK_BLOCK=$(awk '
-    /location ~\* .*\.rollback/ { in_block=1; depth=0; block="" }
-    in_block {
-        block = block "\n" $0
-        gsub(/#.*/, "", $0)  # strip comments
-        for (i=1; i<=length($0); i++) {
-            c = substr($0, i, 1)
-            if (c == "{") depth++
-            if (c == "}") depth--
-        }
-        if (depth == 0 && in_block) {
-            print block
-            exit
+# Check that .rollback location's FIRST return/deny directive is 404 or deny all
+# Extract the location block, tokenize, and find the first return/deny statement
+ROLLBACK_CHECK=$(awk '
+BEGIN {
+    in_block = 0
+    depth = 0
+    found_first = 0
+}
+{
+    # Match location exactly with \.rollback (not .rollback2)
+    if ($0 ~ /location[[:space:]]+~\*[[:space:]]+.*\\\.rollback[[:space:]]*\{/) {
+        in_block = 1
+        depth = 0
+        found_first = 0
+    }
+    
+    if (in_block) {
+        original = $0
+        gsub(/#.*/, "")  # strip comments
+        
+        # Tokenize on whitespace and ; to handle multi-statement lines
+        n = split($0, tokens, /[[:space:];]+/)
+        
+        for (i = 1; i <= n; i++) {
+            token = tokens[i]
+            
+            # Track braces
+            if (token ~ /\{/) depth++
+            if (token ~ /\}/) {
+                depth--
+                if (depth == 0) {
+                    if (!found_first) {
+                        print "NO_DIRECTIVE"
+                    }
+                    exit
+                }
+            }
+            
+            # Look for first return or deny directive
+            if (!found_first && depth > 0) {
+                if (token == "return") {
+                    # Next token should be the status code
+                    next_token = tokens[i+1]
+                    if (next_token == "404") {
+                        print "GOOD: return 404"
+                        found_first = 1
+                    } else if (next_token ~ /^[0-9]+$/) {
+                        print "BAD: return " next_token
+                        found_first = 1
+                    }
+                } else if (token == "deny") {
+                    next_token = tokens[i+1]
+                    if (next_token == "all") {
+                        print "GOOD: deny all"
+                        found_first = 1
+                    } else {
+                        print "BAD: deny " next_token
+                        found_first = 1
+                    }
+                }
+            }
         }
     }
+}
 ' "$SCRIPT_DIR/nginx-prod.conf")
 
-if echo "$ROLLBACK_BLOCK" | grep -Eq '(return 404|deny all)'; then
-    # Also check that return 404/deny all is NOT followed by return 200
-    if echo "$ROLLBACK_BLOCK" | grep -q 'return 404' && echo "$ROLLBACK_BLOCK" | sed -n '/return 404/,$p' | grep -q 'return 200'; then
-        echo "  ✗ .rollback location has 'return 200' after 'return 404' (bypasses block)"
-        exit 1
-    fi
-    echo "  ✓ .rollback location blocks access with return 404 or deny all"
+if echo "$ROLLBACK_CHECK" | grep -q "^GOOD:"; then
+    echo "  ✓ .rollback location blocks access with return 404 or deny all (first directive)"
+elif echo "$ROLLBACK_CHECK" | grep -q "^BAD:"; then
+    DIRECTIVE=$(echo "$ROLLBACK_CHECK" | sed 's/^BAD: //')
+    echo "  ✗ .rollback location's first return/deny is not blocking: $DIRECTIVE"
+    exit 1
 else
-    echo "  ✗ .rollback location must contain 'return 404' or 'deny all' to block access"
+    echo "  ✗ .rollback location missing return 404 or deny all directive"
     exit 1
 fi
 
@@ -166,62 +213,116 @@ else
     exit 1
 fi
 
-# Check for ANY expires directive in server blocks, except in allowlisted locations
-# Allowlist: /robots.txt (can use expires for simple static files)
-# Use awk to parse brace depth and track location context
+# Check for ANY expires directive at any depth, except in allowlisted locations
+# Allowlist: only "location /robots.txt" or "location = /robots.txt" (exact matches)
+# Tokenize on whitespace, ;, {, } to handle all cases (multi-statement lines, if blocks, etc.)
 EXPIRES_VIOLATIONS=$(awk '
-BEGIN { 
-    server_depth=0
-    location_depth=0
-    current_location=""
-    in_server=0
+BEGIN {
+    depth = 0
+    location_depth = -1
+    current_location = ""
+    in_location_line = 0
+    location_modifier = ""
 }
 {
+    original_line = $0
     # Strip comments
-    line_no_comment = $0
-    gsub(/#.*/, "", line_no_comment)
+    gsub(/#.*/, "")
     
-    # Track server block
-    if (line_no_comment ~ /server[[:space:]]*\{/) {
-        in_server = 1
-        server_depth = 0
+    # Tokenize: split on whitespace, braces, semicolons
+    # Process character by character to handle all cases
+    line_chars = $0
+    n = length(line_chars)
+    token = ""
+    
+    for (i = 1; i <= n; i++) {
+        c = substr(line_chars, i, 1)
+        
+        # Token delimiters: whitespace, {, }, ;
+        if (c ~ /[[:space:];{}]/) {
+            if (token != "") {
+                # Process token
+                if (token == "location") {
+                    in_location_line = 1
+                    location_modifier = ""
+                    current_location = ""
+                } else if (in_location_line) {
+                    # Capture modifier (= or ~*) or the path
+                    if (token == "=" || token == "~" || token == "~*") {
+                        location_modifier = token
+                    } else if (current_location == "") {
+                        current_location = token
+                    }
+                } else if (token == "expires") {
+                    # Check if we are in an allowlisted location
+                    allowed = 0
+                    if (location_depth >= 0) {
+                        # We are inside a location block
+                        # Allow only: "location /robots.txt" or "location = /robots.txt"
+                        if ((location_modifier == "" || location_modifier == "=") && current_location == "/robots.txt") {
+                            allowed = 1
+                        }
+                    }
+                    if (!allowed) {
+                        if (location_depth >= 0) {
+                            print "Disallowed expires in location \"" current_location "\" (modifier: \"" location_modifier "\") at line " NR
+                        } else if (depth > 0) {
+                            print "Disallowed expires at server/if/nested context at line " NR
+                        } else {
+                            print "Disallowed expires at http/top level at line " NR
+                        }
+                    }
+                }
+                token = ""
+            }
+            
+            # Process delimiter
+            if (c == "{") {
+                if (in_location_line) {
+                    location_depth = depth
+                    in_location_line = 0
+                }
+                depth++
+            } else if (c == "}") {
+                depth--
+                if (location_depth == depth) {
+                    location_depth = -1
+                    current_location = ""
+                    location_modifier = ""
+                }
+            }
+        } else {
+            token = token c
+        }
     }
     
-    # Track location blocks - extract the path
-    if (line_no_comment ~ /location[[:space:]]/) {
-        # Simple extraction: get the path after "location" and optional modifiers
-        loc_line = line_no_comment
-        sub(/^.*location[[:space:]]+/, "", loc_line)
-        sub(/^[~*]+[[:space:]]*/, "", loc_line)
-        sub(/[[:space:]]*\{.*$/, "", loc_line)
-        current_location = loc_line
-        location_depth = 0
-    }
-    
-    # Count braces for depth tracking
-    brace_count = gsub(/\{/, "{", line_no_comment)
-    close_count = gsub(/\}/, "}", line_no_comment)
-    
-    if (in_server) {
-        server_depth += brace_count
-        server_depth -= close_count
-        if (server_depth == 0) in_server = 0
-    }
-    
-    if (current_location != "") {
-        location_depth += brace_count
-        location_depth -= close_count
-        if (location_depth == 0) current_location = ""
-    }
-    
-    # Check for expires directive
-    if (line_no_comment ~ /[[:space:]]expires[[:space:]]/ && in_server) {
-        # Allowlist: /robots.txt and any location containing "robots"
-        if (current_location !~ /robots/) {
-            if (current_location == "") {
-                print "Server-level expires found at line " NR
-            } else {
-                print "Disallowed expires in location \"" current_location "\" at line " NR
+    # Process final token if any
+    if (token != "") {
+        if (token == "location") {
+            in_location_line = 1
+            location_modifier = ""
+            current_location = ""
+        } else if (in_location_line) {
+            if (token == "=" || token == "~" || token == "~*") {
+                location_modifier = token
+            } else if (current_location == "") {
+                current_location = token
+            }
+        } else if (token == "expires") {
+            allowed = 0
+            if (location_depth >= 0) {
+                if ((location_modifier == "" || location_modifier == "=") && current_location == "/robots.txt") {
+                    allowed = 1
+                }
+            }
+            if (!allowed) {
+                if (location_depth >= 0) {
+                    print "Disallowed expires in location \"" current_location "\" at line " NR
+                } else if (depth > 0) {
+                    print "Disallowed expires at nested context at line " NR
+                } else {
+                    print "Disallowed expires at top level at line " NR
+                }
             }
         }
     }
@@ -232,7 +333,7 @@ if [ -n "$EXPIRES_VIOLATIONS" ]; then
     echo "  ✗ Disallowed 'expires' directive(s) found:"
     # shellcheck disable=SC2001
     echo "$EXPIRES_VIOLATIONS" | sed 's/^/      /'
-    echo "     Only /robots.txt location may use 'expires' (use add_header Cache-Control elsewhere)"
+    echo "     Only 'location /robots.txt' or 'location = /robots.txt' may use 'expires'"
     exit 1
 fi
 echo "  ✓ No disallowed 'expires' directives (only /robots.txt allowed)"
@@ -258,8 +359,8 @@ else
     exit 1
 fi
 
-# Find the line number of the location directive
-LOC_LINE=$(grep -n 'location.*rollback' "$SCRIPT_DIR/nginx-prod.conf" | head -1 | cut -d: -f1)
+# Find the line number of the location directive (match exactly \.rollback)
+LOC_LINE=$(grep -nE 'location[[:space:]]+~\*[[:space:]]+.*\\\.rollback[[:space:]]*\{' "$SCRIPT_DIR/nginx-prod.conf" | head -1 | cut -d: -f1)
 # Find the line number of the nearest server { before it
 SERVER_LINE=$(head -n "$LOC_LINE" "$SCRIPT_DIR/nginx-prod.conf" | grep -n "^server {" | tail -1 | cut -d: -f1)
 
