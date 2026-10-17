@@ -266,10 +266,6 @@ git commit -q -m "change for test b"
 rm -rf "$TEST_DIR/rollbacks"/*
 bash "$TEST_DIR/deploy-test.sh" > /dev/null 2>&1
 
-# Save the "new" state
-NEW_BINARY=$(cat bin/server)
-NEW_JS=$(cat web/static/js/app.js)
-
 # Now set up for health check failure on next deploy
 touch "$TEST_DIR/health_fail"
 echo "old-binary" > bin/server
@@ -375,6 +371,7 @@ echo ""
 echo "=== Test (e): Deploy after rollback (clean detached HEAD) succeeds ==="
 
 # Rollback to a known snapshot
+# shellcheck disable=SC2012
 SNAPSHOT_TS=$(ls "$TEST_DIR/rollbacks" | head -1)
 bash "$TEST_DIR/rollback-test.sh" "$SNAPSHOT_TS" > /dev/null 2>&1
 

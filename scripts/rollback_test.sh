@@ -86,8 +86,8 @@ case "\$1" in
             kill "\$OLD_PID" 2>/dev/null || true
             rm -f "\$SERVICE_PID_FILE"
         fi
-        # Start new process in background
-        "$TEST_DIR/mock-service" &
+        # Start new process in background, detached from output pipes
+        "$TEST_DIR/mock-service" >/dev/null 2>&1 &
         echo \$! > "\$SERVICE_PID_FILE"
         echo "Mock restart/start: \$2" >&2
         exit 0
@@ -157,10 +157,13 @@ echo "new-binary-content" > "$TEST_DIR/project/bin/server"
 
 # Now try rollback while service is "running"
 echo "Attempting rollback while service is running..."
-if bash "$TEST_DIR/rollback-test.sh" 20261017-120000 2>&1 | grep -q "pre-rollback"; then
+ROLLBACK_OUTPUT=$(bash "$TEST_DIR/rollback-test.sh" 20261017-120000 2>&1)
+if echo "$ROLLBACK_OUTPUT" | grep -q "pre-rollback"; then
     echo "✓ Rollback succeeded even with service running (temp + mv)"
 else
     echo "✗ Rollback failed with service running"
+    echo "Rollback output was:"
+    echo "$ROLLBACK_OUTPUT" | head -20
     exit 1
 fi
 
@@ -210,12 +213,12 @@ else
     exit 1
 fi
 
-# Check that a pre-rollback backup was created
+# Check that pre-rollback backups were created (2 from our 2 rollback runs)
 BACKUP_COUNT=$(find "$TEST_DIR/rollbacks" -type d -name "pre-rollback-*" | wc -l)
-if [ "$BACKUP_COUNT" -eq 1 ]; then
-    echo "✓ Pre-rollback backup created"
+if [ "$BACKUP_COUNT" -eq 2 ]; then
+    echo "✓ Pre-rollback backups created (2)"
 else
-    echo "✗ Pre-rollback backup NOT created (count: $BACKUP_COUNT)"
+    echo "✗ Expected 2 pre-rollback backups, got $BACKUP_COUNT"
     exit 1
 fi
 
