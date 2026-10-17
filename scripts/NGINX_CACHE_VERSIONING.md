@@ -106,65 +106,106 @@ if [ "$COMMIT" != "268dd9b73a5395090b11c02335b3539711bd2c6e" ]; then
     echo "WARNING: Current commit $COMMIT is not 268dd9b"
     echo "Continue anyway? (y/N)"
     read -r confirm
-    [ "$confirm" = "y" ] || echo "Aborted" >&2 && return 1
+    if [ "$confirm" != "y" ]; then
+        echo "Aborted" >&2
+        exit 1
+    fi
 fi
 
 ROLLBACK_DIR="/home/deploy/liveoilprices-rollbacks"
+mkdir -p "$ROLLBACK_DIR"
 TIMESTAMP=$(date +%Y%m%d-%H%M%S)
-SNAPSHOT="$ROLLBACK_DIR/$TIMESTAMP"
+TEMP_SNAPSHOT="$ROLLBACK_DIR/.snapshot-$TIMESTAMP.tmp"
+FINAL_SNAPSHOT="$ROLLBACK_DIR/$TIMESTAMP"
 
-# Create the snapshot directory
-mkdir -p "$SNAPSHOT"
+# Create temp snapshot directory
+mkdir -p "$TEMP_SNAPSHOT"
 
 # Snapshot the current running state (from 268dd9b)
 # All these files must exist or the snapshot is incomplete
-cp bin/server "$SNAPSHOT/server"
-cp -r web/templates "$SNAPSHOT/templates"
-cp -r web/static/js "$SNAPSHOT/js"
-cp -r web/static/css "$SNAPSHOT/css"
+cp bin/server "$TEMP_SNAPSHOT/server"
+cp -r web/templates "$TEMP_SNAPSHOT/templates"
+cp -r web/static/js "$TEMP_SNAPSHOT/js"
+cp -r web/static/css "$TEMP_SNAPSHOT/css"
 
 # Record the git commit (268dd9b is the base)
-echo "$COMMIT" > "$SNAPSHOT/COMMIT"
+echo "$COMMIT" > "$TEMP_SNAPSHOT/COMMIT"
 
-echo "Manual snapshot created at $SNAPSHOT"
-ls -lh "$SNAPSHOT"
+# Validate all files were copied
+for file in server templates js css COMMIT; do
+    if [ ! -e "$TEMP_SNAPSHOT/$file" ]; then
+        echo "ERROR: Failed to copy $file" >&2
+        rm -rf "$TEMP_SNAPSHOT"
+        exit 1
+    fi
+done
+
+# Atomically move to final location (only on success)
+mv "$TEMP_SNAPSHOT" "$FINAL_SNAPSHOT"
+
+echo "Manual snapshot created at $FINAL_SNAPSHOT"
+ls -lh "$FINAL_SNAPSHOT"
 echo "Snapshot complete. Files:"
-ls -1 "$SNAPSHOT"
+ls -1 "$FINAL_SNAPSHOT"
 )
 ```
 
 **To restore this manual snapshot:**
 
 ```bash
+# Run in a subshell so any error aborts without closing your SSH session
+(
+set -euo pipefail
+
 cd /home/deploy/liveoilprices
 
-# Define snapshot explicitly (adjust the timestamp to the snapshot you want)
-# This uses the same directory Step 0 wrote to
-SNAPSHOT=$(ls -d /home/deploy/liveoilprices-rollbacks/20* 2>/dev/null | sort | tail -1)
+# Expected commit for the 268dd9b baseline snapshot
+EXPECTED_COMMIT="268dd9b73a5395090b11c02335b3539711bd2c6e"
+
+# Find snapshot with matching COMMIT file
+SNAPSHOT=""
+for snap in /home/deploy/liveoilprices-rollbacks/20*; do
+    if [ -f "$snap/COMMIT" ]; then
+        SNAP_COMMIT=$(cat "$snap/COMMIT")
+        if [ "$SNAP_COMMIT" = "$EXPECTED_COMMIT" ]; then
+            SNAPSHOT="$snap"
+            break
+        fi
+    fi
+done
+
 if [ -z "$SNAPSHOT" ]; then
-    echo "ERROR: No snapshot found in /home/deploy/liveoilprices-rollbacks/"
-    echo "Run Step 0 first to create a manual snapshot"
+    echo "ERROR: No snapshot found for commit $EXPECTED_COMMIT"
+    echo "Run Step 0 first to create the manual 268dd9b snapshot"
     echo "ERROR: Aborting - cannot restore without snapshot" >&2
-    return 1
+    exit 1
 fi
 echo "Restoring from: $SNAPSHOT"
 
-# Validate snapshot files exist BEFORE stopping the service
-if [ ! -f "$SNAPSHOT/server" ] || [ ! -f "$SNAPSHOT/COMMIT" ]; then
-    echo "ERROR: Snapshot is incomplete (missing server or COMMIT)"
+# Validate ALL required files exist BEFORE stopping the service
+MISSING=""
+for file in server templates js css COMMIT; do
+    if [ ! -e "$SNAPSHOT/$file" ]; then
+        MISSING="$MISSING $file"
+    fi
+done
+
+if [ -n "$MISSING" ]; then
+    echo "ERROR: Snapshot is incomplete. Missing:$MISSING"
     echo "ERROR: Aborting - cannot restore from incomplete snapshot" >&2
-    return 1
+    exit 1
 fi
 
 SNAPSHOT_COMMIT=$(cat "$SNAPSHOT/COMMIT")
 if ! git rev-parse --verify "$SNAPSHOT_COMMIT" &>/dev/null; then
     echo "ERROR: Snapshot commit $SNAPSHOT_COMMIT not found in git history"
     echo "ERROR: Aborting - cannot restore to unknown commit" >&2
-    return 1
+    exit 1
 fi
 echo "  Snapshot commit: $SNAPSHOT_COMMIT"
+echo "  ✓ All snapshot files validated"
 
-# Now stop the service (snapshot validated)
+# Now stop the service (snapshot fully validated)
 echo "Stopping service..."
 sudo systemctl stop liveoilprices
 
@@ -199,7 +240,7 @@ if ! sudo systemctl is-active --quiet liveoilprices; then
     echo "ERROR: Service failed to start after restore"
     sudo systemctl status liveoilprices --no-pager || true
     echo "ERROR: Restore failed" >&2
-    return 1
+    exit 1
 fi
 echo "  ✓ Service is active"
 
@@ -212,7 +253,7 @@ if [ "$HEALTH_STATUS" = "200" ] && [ "$HOME_STATUS" = "200" ]; then
 else
     echo "ERROR: Health check failed (/api/health: $HEALTH_STATUS, /: $HOME_STATUS)"
     echo "ERROR: Restore failed" >&2
-    return 1
+    exit 1
 fi
 
 echo ""
@@ -220,9 +261,10 @@ echo "=== Restore complete ==="
 echo "  Restored to snapshot: $SNAPSHOT"
 echo "  Git HEAD: detached at $SNAPSHOT_COMMIT"
 echo ""
-echo "IMPORTANT: You are in detached HEAD state."
-echo "Before running deploy.sh again, run: git checkout main"
-echo "The restored files will stay in place while you checkout main."
+echo "CRITICAL: You are in detached HEAD state with the OLD binary and templates."
+echo "Run 'git checkout main && bash scripts/deploy.sh' IMMEDIATELY to deploy the new version."
+echo "Do NOT restart the service manually - the old binary will crash-loop with new templates."
+)
 ```
 
 ### 1. Move existing rollback directories out of web/static/
@@ -251,6 +293,10 @@ Copy `scripts/nginx-prod.conf` from the repo to the server, then:
 
 ```bash
 # On the EC2 host
+# Run in a subshell so any error aborts
+(
+set -euo pipefail
+
 # 1. Back up the live config
 BACKUP="/root/liveoilprices.conf.bak-$(date +%Y%m%d-%H%M%S)"
 sudo cp -a /etc/nginx/conf.d/liveoilprices.conf "$BACKUP"
@@ -271,12 +317,13 @@ if ! sudo nginx -t; then
     echo "nginx -t failed, restoring backup"
     sudo cp "$BACKUP" /etc/nginx/conf.d/liveoilprices.conf
     echo "ERROR: nginx config invalid, backup restored" >&2
-    return 1
+    exit 1
 fi
 
 # 6. Reload nginx
 sudo systemctl reload nginx
 echo "nginx reloaded successfully"
+)
 ```
 
 ### 3. Verify the fix

@@ -87,15 +87,24 @@ fi
 echo ""
 echo "Semantic checks:"
 
-# Strip comments for semantic checking (avoid matching commented-out lines)
-STRIPPED=$(grep -v '^\s*#' "$SCRIPT_DIR/nginx-prod.conf")
+# Strip comments for semantic checking (remove full-line and trailing comments)
+# Also remove blank lines to simplify matching
+STRIPPED=$(sed -e 's/#.*$//' -e '/^[[:space:]]*$/d' "$SCRIPT_DIR/nginx-prod.conf")
 
-# Check that map regex is exactly {12} (in active code, not comments)
+# Check that map regex is exactly {12} AND anchored with ^ and $ (in active code, not comments)
 if echo "$STRIPPED" | grep -F '{12}' > /dev/null; then
     echo "  ✓ map uses ~^[0-9a-f]{12}\$ (SHA-256 truncated to 12 hex chars)"
 else
     echo "  ✗ map regex is not ~^[0-9a-f]{12}\$ (mutation M: {12}->{6} would pass)"
     echo "     Config may have {6} or {12} only in comments"
+    exit 1
+fi
+
+# Check that the map regex is properly anchored with ^ and $
+if echo "$STRIPPED" | grep -q '~^.*{12}\$'; then
+    echo "  ✓ map regex is anchored with ^...$ (prevents partial matches)"
+else
+    echo "  ✗ map regex is missing ^ or $ anchors (unanchored regex allows partial matches)"
     exit 1
 fi
 
@@ -105,6 +114,14 @@ if echo "$STRIPPED" | grep -q 'location ~\* .*\\\.rollback'; then
 else
     printf "  ✗ rollback location missing or commented out\n"
     printf "     Expected: location ~* .*\\\\.rollback { return 404; }\n"
+    exit 1
+fi
+
+# Check that .rollback location contains return 404 or deny all (blocks access)
+if echo "$STRIPPED" | grep -A2 'location ~\* .*\\\.rollback' | grep -Eq '(return 404|deny all)'; then
+    echo "  ✓ .rollback location blocks access with return 404 or deny all"
+else
+    echo "  ✗ .rollback location must contain 'return 404' or 'deny all' to block access"
     exit 1
 fi
 
@@ -126,17 +143,16 @@ else
     exit 1
 fi
 
-# Verify /css/ and /js/ locations do NOT use expires directive
-if echo "$STRIPPED" | grep -A5 'location /css/' | grep -q 'expires'; then
-    echo "  ✗ /css/ location uses expires (should only use add_header Cache-Control)"
+# Verify NO expires directive anywhere in server blocks for this site
+# Extract all server blocks for liveoilprices.com (between server { ... })
+# Check if any line contains 'expires' at any nesting level
+SERVER_BLOCKS=$(awk '/server\s*{/,/^}/' "$SCRIPT_DIR/nginx-prod.conf" | sed -e 's/#.*$//' -e '/^[[:space:]]*$/d')
+if echo "$SERVER_BLOCKS" | grep -qw 'expires'; then
+    echo "  ✗ 'expires' directive found in server blocks (conflicts with add_header Cache-Control)"
+    echo "     Use 'add_header Cache-Control' instead of 'expires' for all locations"
     exit 1
 fi
-
-if echo "$STRIPPED" | grep -A5 'location /js/' | grep -q 'expires'; then
-    echo "  ✗ /js/ location uses expires (should only use add_header Cache-Control)"
-    exit 1
-fi
-echo "  ✓ /css/ and /js/ locations do not use expires directive"
+echo "  ✓ No 'expires' directive in any location (uses add_header Cache-Control)"
 
 # Check that immutable 1y header is only on hashed branch (map regex line, not default)
 if echo "$STRIPPED" | grep -q '~.*{12}.*immutable'; then
