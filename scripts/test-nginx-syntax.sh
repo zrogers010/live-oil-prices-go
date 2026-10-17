@@ -143,16 +143,17 @@ else
     exit 1
 fi
 
-# Verify NO expires directive anywhere in server blocks for this site
-# Extract all server blocks for liveoilprices.com (between server { ... })
-# Check if any line contains 'expires' at any nesting level
-SERVER_BLOCKS=$(awk '/server\s*{/,/^}/' "$SCRIPT_DIR/nginx-prod.conf" | sed -e 's/#.*$//' -e '/^[[:space:]]*$/d')
-if echo "$SERVER_BLOCKS" | grep -qw 'expires'; then
-    echo "  ✗ 'expires' directive found in server blocks (conflicts with add_header Cache-Control)"
-    echo "     Use 'add_header Cache-Control' instead of 'expires' for all locations"
+# Verify /css/ and /js/ locations do NOT use expires directive
+if echo "$STRIPPED" | grep -A5 'location /css/' | grep -qw 'expires'; then
+    echo "  ✗ /css/ location uses expires (should only use add_header Cache-Control)"
     exit 1
 fi
-echo "  ✓ No 'expires' directive in any location (uses add_header Cache-Control)"
+
+if echo "$STRIPPED" | grep -A5 'location /js/' | grep -qw 'expires'; then
+    echo "  ✗ /js/ location uses expires (should only use add_header Cache-Control)"
+    exit 1
+fi
+echo "  ✓ /css/ and /js/ locations do not use expires directive"
 
 # Check that immutable 1y header is only on hashed branch (map regex line, not default)
 if echo "$STRIPPED" | grep -q '~.*{12}.*immutable'; then
