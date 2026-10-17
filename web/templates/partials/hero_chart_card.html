@@ -1,7 +1,7 @@
 {{define "hero_chart_card"}}
-<div class="hero-chart-card" data-hero-symbol="{{.Symbol}}">
+<div class="hero-chart-card" data-symbol="{{.Symbol}}">
     <div class="hero-chart-header">
-        <div class="hero-chart-header-left">
+        <div class="hero-chart-title-block">
             <div class="hero-chart-symbol">
                 {{.Title}}
                 <span class="hero-live-pill" data-role="live-pill" title="Streaming live 1-minute candles"{{if not .HasPrice}} style="display:none;"{{else}}{{if not .Price.IsLive}} style="display:none;"{{end}}{{end}}>
