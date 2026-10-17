@@ -1,6 +1,7 @@
 import { getPrices, getChartData, getNews, getPredictions, getHeroChart, getConsensus } from './api';
 import { initChart, updateChartData, subscribeCrosshair, createCandleChart, type CandleChartHandle, type SessionMarker, type SessionBand } from './charts';
 import type { Price, ChartData, NewsArticle, OHLCV, Prediction, HeroChart, ConsensusForecast } from './types';
+import { HeroPoller } from './poller';
 
 let currentSymbol = 'WTI';
 let currentDays = 90;
@@ -184,9 +185,7 @@ class HeroChartController {
   // Live state.
   private chart: CandleChartHandle | null = null;
   private mode: HeroMode | null = null;
-  private pollTimer: number | null = null;
-  private inFlight = false;
-  private backoffLevel = 0;
+  private poller: HeroPoller | null = null;
   private visibleDurationSec: number = HERO_DEFAULT_RANGE_SEC;
   private latestPrice: Price | null = null;
   private lastSeenBarTime = 0;
@@ -223,31 +222,17 @@ class HeroChartController {
       this.setupRangeTabs();
     }
 
-    try {
-      const payload = await getHeroChart(this.symbol, HERO_MAX_BARS);
-      if (payload === null) {
-        // 404 or null response - back off deliberately with short first retry
-        console.error(`Failed to load hero chart for ${this.symbol}: null response`);
-        if (!this.mode) {
-          this.mode = 'warming-up';
-        }
-        this.backoffLevel = 0; // Start at 0 for short initial retry (10s base × 2^0 = 10s)
-        // Use a shorter base for first-load retries
-        this.pollTimer = window.setTimeout(() => this.scheduleNextPoll(), 10_000);
-      } else {
-        this.applyPayload(payload);
-        this.backoffLevel = 0; // Reset backoff on successful initial load
-      }
-    } catch (err) {
-      console.error(`Failed to load hero chart for ${this.symbol}:`, err);
-      // Enter normal backoff schedule with short first retry
-      if (!this.mode) {
-        this.mode = 'warming-up';
-      }
-      this.backoffLevel = 0; // Start at 0 for short initial retry (10s base × 2^0 = 10s)
-      // Use a shorter base for first-load retries
-      this.pollTimer = window.setTimeout(() => this.scheduleNextPoll(), 10_000);
-    }
+    // Initialize the poller
+    this.poller = new HeroPoller({
+      symbol: this.symbol,
+      fetch: () => getHeroChart(this.symbol, HERO_MAX_BARS),
+      onSuccess: (payload) => this.applyPayload(payload),
+      getMode: () => this.mode,
+      isHidden: () => document.hidden
+    });
+    
+    // Start polling (does immediate first fetch)
+    this.poller.start();
   }
 
   // applyPriceRecord absorbs a /api/prices entry for this symbol, syncing
@@ -385,7 +370,6 @@ class HeroChartController {
       }
       if (this.mode !== 'warming-up') {
         this.mode = 'warming-up';
-        this.transitionPolling('warming-up');
       }
       return;
     }
@@ -400,7 +384,6 @@ class HeroChartController {
       this.chart.setData(payload.bars);
       this.chart.setVisibleDuration(this.visibleDurationSec);
       this.mode = payload.mode;
-      this.transitionPolling(payload.mode);
       this.applySessionOverlay(payload);
     } else if (payload.mode === 'live' || payload.mode === 'today-paused') {
       // Same intraday mode — only mutate the last bar so existing pan/zoom
@@ -453,143 +436,18 @@ class HeroChartController {
     applyHeroSessionOverlayOnChart(this.chart, payload);
   }
 
-  private transitionPolling(mode: HeroMode): void {
-    this.cancelPolling();
-    // Don't start polling if the tab is hidden.
-    if (document.hidden) return;
-    this.scheduleNextPoll();
-  }
-
-  private cancelPolling(): void {
-    if (this.pollTimer != null) {
-      window.clearTimeout(this.pollTimer);
-      this.pollTimer = null;
-    }
-  }
-
-  private getBaseInterval(mode: HeroMode): number {
-    // Choose polling interval based on the mode.
-    if (mode === 'live') {
-      return HERO_LIVE_POLL_MS;
-    } else if (mode === 'today-paused' || mode === 'warming-up') {
-      return HERO_DELAYED_POLL_MS;
-    } else {
-      return HERO_PAUSED_POLL_MS;
-    }
-  }
-
-  private scheduleNextPoll(): void {
-    this.cancelPolling();
-    
-    // Re-check visibility before scheduling
-    if (document.hidden) return;
-    
-    // Use CURRENT mode from controller state, not a captured parameter
-    const mode = this.mode || 'warming-up';
-    
-    // Calculate backoff: base × 2^level, capped at 5 minutes
-    const baseInterval = this.getBaseInterval(mode);
-    const backoffMultiplier = Math.pow(2, this.backoffLevel);
-    const interval = Math.min(baseInterval * backoffMultiplier, 300_000);
-    
-    this.pollTimer = window.setTimeout(async () => {
-      // Don't fetch if tab became hidden while timer was pending
-      if (document.hidden) {
-        return;
-      }
-      
-      if (this.inFlight) {
-        // Skip this tick if a fetch is already in progress
-        this.scheduleNextPoll();
-        return;
-      }
-      
-      this.inFlight = true;
-      try {
-        const payload = await getHeroChart(this.symbol, HERO_MAX_BARS);
-        if (payload === null) {
-          // 404 or similar - back off deliberately
-          this.backoffLevel = Math.min(this.backoffLevel + 1, 5);
-        } else {
-          this.applyPayload(payload);
-          this.backoffLevel = 0; // Reset backoff on success
-        }
-      } catch (err: any) {
-        console.error(`Hero chart poll failed for ${this.symbol}:`, err);
-        
-        // Honor Retry-After header - execute fetch after delay instead of scheduling another poll
-        // so the gap equals Retry-After rather than Retry-After + normal interval
-        if (err.retryAfter) {
-          const retryAfterMs = err.retryAfter * 1000;
-          // Escalate backoff for repeated 429s
-          this.backoffLevel = Math.min(this.backoffLevel + 1, 5);
-          this.pollTimer = window.setTimeout(async () => {
-            if (document.hidden) return;
-            
-            this.inFlight = true;
-            try {
-              const payload = await getHeroChart(this.symbol, HERO_MAX_BARS);
-              if (payload === null) {
-                this.backoffLevel = Math.min(this.backoffLevel + 1, 5);
-              } else {
-                this.applyPayload(payload);
-                this.backoffLevel = 0;
-              }
-            } catch (retryErr) {
-              console.error(`Retry-After fetch failed for ${this.symbol}:`, retryErr);
-              this.backoffLevel = Math.min(this.backoffLevel + 1, 5);
-            } finally {
-              this.inFlight = false;
-            }
-            this.scheduleNextPoll();
-          }, retryAfterMs);
-          this.inFlight = false;
-          return;
-        }
-        
-        // Increase backoff level (capped at 5 for max 5-minute interval)
-        this.backoffLevel = Math.min(this.backoffLevel + 1, 5);
-      } finally {
-        this.inFlight = false;
-      }
-      
-      // Schedule next poll using CURRENT mode (re-reads this.mode)
-      this.scheduleNextPoll();
-    }, interval);
-  }
-
   // pausePolling stops the polling timer when the tab is hidden.
   pausePolling(): void {
-    this.cancelPolling();
+    if (this.poller) {
+      this.poller.pause();
+    }
   }
 
   // resumePolling restarts polling when the tab becomes visible again.
-  // Works even if no successful load has happened yet.
   async resumePolling(): Promise<void> {
-    if (this.pollTimer != null || this.inFlight) return;
-    
-    // If no mode set yet, use warming-up as default
-    if (!this.mode) {
-      this.mode = 'warming-up';
+    if (this.poller) {
+      this.poller.resume();
     }
-    
-    this.inFlight = true;
-    try {
-      const payload = await getHeroChart(this.symbol, HERO_MAX_BARS);
-      if (payload === null) {
-        this.backoffLevel = Math.min(this.backoffLevel + 1, 5);
-      } else {
-        this.applyPayload(payload);
-        this.backoffLevel = 0; // Reset backoff on successful resume
-      }
-    } catch (err) {
-      console.error(`Resume poll failed for ${this.symbol}:`, err);
-      this.backoffLevel = Math.min(this.backoffLevel + 1, 5);
-    } finally {
-      this.inFlight = false;
-    }
-    
-    this.scheduleNextPoll();
   }
 
   // setLiveState updates the pill's text and styling for the current
