@@ -9,14 +9,14 @@
                     LIVE
                 </span>
             </div>
-            <div class="hero-chart-contract" data-role="contract">{{if .HasPrice}}{{if .Price.Contract}}{{.Price.Contract}}{{else}}Front month{{end}}{{else}}{{end}}</div>
+            <div class="hero-chart-contract" data-role="contract">{{if .HasPrice}}{{if .Price.Contract}}{{.Price.Contract}} &mdash; Front Month{{else}}Front month{{end}}{{end}}</div>
         </div>
         <div class="hero-chart-price-block">
             <div class="hero-chart-price" data-role="price">{{if .HasPrice}}${{printf "%.2f" .Price.Price}}{{else}}{{end}}</div>
             <div class="hero-chart-change {{if .HasPrice}}{{if .Price.IsPositive}}positive{{else}}negative{{end}}{{end}}" data-role="change">{{if .HasPrice}}{{.Price.Sign}}{{printf "%.2f" .Price.Change}} ({{.Price.Sign}}{{printf "%.2f" .Price.ChangePct}}%){{else}}{{end}}</div>
         </div>
         <div class="hero-chart-source-block">
-            <span class="hero-chart-source" data-role="source">{{if .HasPrice}}{{if .Price.IsLive}}Live{{else if eq .Price.Source "pyth"}}Pyth Network{{else if eq .Price.Source "yahoo"}}Market data{{else}}Market data{{end}}{{end}}</span>
+            <span class="hero-chart-source" data-role="source">{{if .HasPrice}}{{if .Price.IsLive}}Live{{else if eq .Price.Source "pyth"}}Pyth Network{{else if eq .Price.Source "yahoo"}}NYMEX / ICE &bull; 15-min Delayed{{else}}Market data{{end}}{{end}}</span>
             <span class="hero-chart-updated" data-role="updated">{{if .HasPrice}}{{.Price.UpdatedLabel}}{{end}}</span>
         </div>
     </div>

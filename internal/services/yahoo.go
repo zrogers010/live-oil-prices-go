@@ -256,7 +256,11 @@ func (s *YahooFinanceService) fetchQuote(sym yahooSymbol) (models.Price, error) 
 		dayLow = price
 	}
 
-	contract := parseContractMonth(meta.ShortName, sym.name)
+	quoteTime := time.Now()
+	if meta.RegularMarketTime > 0 {
+		quoteTime = time.Unix(meta.RegularMarketTime, 0)
+	}
+	contract := contractLabel(sym.yahoo, meta.ShortName, quoteTime)
 
 	return models.Price{
 		Symbol:    sym.internal,
@@ -282,6 +286,20 @@ func (s *YahooFinanceService) GetPrices() map[string]models.Price {
 		out[k] = v
 	}
 	return out
+}
+
+// lastHistoryBarTime returns the timestamp of the most recent cached daily
+// bar for `symbol`. The closes slice from GetHistory is derived from the
+// same bars, so this is the date of GetHistory's last element.
+func (s *YahooFinanceService) lastHistoryBarTime(symbol string) (int64, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	bars := s.historyOHLC[symbol]
+	closes := s.history[symbol]
+	if len(bars) == 0 || len(bars) != len(closes) {
+		return 0, false
+	}
+	return bars[len(bars)-1].Time, true
 }
 
 // GetHistory returns a copy of the cached daily close history for the given
@@ -772,39 +790,94 @@ var monthNames = []string{
 	"Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
 }
 
-// parseContractMonth extracts a clean contract label like "May 2026" from
-// Yahoo Finance's shortName. Falls back to deriving from current date.
-func parseContractMonth(shortName, baseName string) string {
-	for _, m := range monthNames {
-		idx := -1
-		for i := 0; i <= len(shortName)-len(m); i++ {
-			if shortName[i:i+len(m)] == m {
-				idx = i
-				break
+// contractLabel returns the front-month contract label (e.g. "Dec 2026
+// Contract") for a Yahoo continuous futures symbol.
+//
+// The label is taken from the data whenever Yahoo provides it: shortName
+// for CL=F / NG=F / HO=F / RB=F looks like "Crude Oil Nov 26". BZ=F
+// ("Brent Crude Oil Last Day Financ") carries no month, so for Brent we
+// compute the active contract from the exchange's published expiry rule.
+// For any other symbol without a month in its metadata we return "" and
+// the UI shows a generic "Front month" label rather than guessing.
+//
+// `now` is the quote's regularMarketTime so the label always matches the
+// bar it describes, not the wall clock of the server.
+func contractLabel(yahooSymbol, shortName string, now time.Time) string {
+	if m, y, ok := parseShortNameMonth(shortName); ok {
+		return fmt.Sprintf("%s %d Contract", monthNames[m-1], y)
+	}
+	if yahooSymbol == "BZ=F" {
+		m, y := brentFrontMonth(now)
+		return fmt.Sprintf("%s %d Contract", monthNames[m-1], y)
+	}
+	return ""
+}
+
+// parseShortNameMonth finds a "<Mon> <YY>" token (e.g. "Nov 26") in a Yahoo
+// futures shortName. The month must start a word so names that merely
+// contain the letters (e.g. "Mayan") don't match.
+func parseShortNameMonth(shortName string) (time.Month, int, bool) {
+	for i, m := range monthNames {
+		for idx := 0; idx+len(m)+3 <= len(shortName); idx++ {
+			if shortName[idx:idx+len(m)] != m {
+				continue
 			}
-		}
-		if idx < 0 {
-			continue
-		}
-		rest := shortName[idx+len(m):]
-		// Expect " YY" after month name
-		if len(rest) >= 3 && rest[0] == ' ' && rest[1] >= '0' && rest[1] <= '9' && rest[2] >= '0' && rest[2] <= '9' {
-			yearStr := rest[1:3]
-			return fmt.Sprintf("%s 20%s Contract", m, yearStr)
-		}
-	}
-	// shortName doesn't have month info (e.g. Brent), derive from date
-	now := time.Now()
-	month := now.Month()
-	year := now.Year()
-	if now.Day() >= 20 {
-		month++
-		if month > 12 {
-			month = 1
-			year++
+			if idx > 0 && shortName[idx-1] != ' ' {
+				continue
+			}
+			rest := shortName[idx+len(m):]
+			if rest[0] != ' ' || rest[1] < '0' || rest[1] > '9' || rest[2] < '0' || rest[2] > '9' {
+				continue
+			}
+			if len(rest) > 3 && rest[3] >= '0' && rest[3] <= '9' {
+				continue
+			}
+			yy := int(rest[1]-'0')*10 + int(rest[2]-'0')
+			return time.Month(i + 1), 2000 + yy, true
 		}
 	}
-	return fmt.Sprintf("%s %d Contract", month.String()[:3], year)
+	return 0, 0, false
+}
+
+// brentFrontMonth returns the contract month/year of the Brent futures
+// contract that is front month at `now`. Both ICE Brent (B) and the NYMEX
+// Brent Last Day Financial contract that Yahoo quotes as BZ=F stop trading
+// on the last business day of the second month preceding the delivery
+// month (e.g. the Dec contract expires on the last business day of Oct).
+// So the front month is the earliest month M whose expiry day is on or
+// after today's exchange date.
+//
+// Business days here are Mon-Fri; exchange holidays are not modelled, so
+// on the rare month whose last weekday is a UK/US holiday the label can
+// roll one day late. Yahoo's own roll of BZ=F can also lag by a day.
+func brentFrontMonth(now time.Time) (time.Month, int) {
+	t := now.In(nyTZ)
+	today := time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, time.UTC)
+	// Contract month M expires in month M-2. Start with the contract whose
+	// expiry falls in the current calendar month (M = this month + 2).
+	expYear, expMonth := today.Year(), today.Month()
+	for i := 0; i < 3; i++ {
+		exp := lastWeekday(expYear, expMonth)
+		if !today.After(exp) {
+			cm := time.Date(expYear, expMonth+2, 1, 0, 0, 0, 0, time.UTC)
+			return cm.Month(), cm.Year()
+		}
+		next := time.Date(expYear, expMonth+1, 1, 0, 0, 0, 0, time.UTC)
+		expYear, expMonth = next.Year(), next.Month()
+	}
+	// Unreachable: some month's last weekday is always ahead of today.
+	cm := time.Date(today.Year(), today.Month()+3, 1, 0, 0, 0, 0, time.UTC)
+	return cm.Month(), cm.Year()
+}
+
+// lastWeekday returns the last Monday-Friday date of the given month (UTC
+// midnight, used purely as a calendar date).
+func lastWeekday(year int, month time.Month) time.Time {
+	d := time.Date(year, month+1, 0, 0, 0, 0, 0, time.UTC) // last day of month
+	for d.Weekday() == time.Saturday || d.Weekday() == time.Sunday {
+		d = d.AddDate(0, 0, -1)
+	}
+	return d
 }
 
 func round2(v float64) float64 {

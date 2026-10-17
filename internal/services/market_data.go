@@ -463,51 +463,49 @@ func (s *MarketDataService) GetPredictions() []models.Prediction {
 // configured symbol. Called by GetPredictions when the cache is stale.
 func (s *MarketDataService) computePredictions() []models.Prediction {
 	prices := s.GetPrices()
-	pm := make(map[string]float64)
-	sources := make(map[string]string)
-	availMap := make(map[string]bool)
+	byID := make(map[string]models.Price, len(prices))
 	for _, p := range prices {
-		pm[p.Symbol] = p.Price
-		sources[p.Symbol] = p.Source
-		availMap[p.Symbol] = p.Available
+		byID[p.Symbol] = p
 	}
 
 	out := make([]models.Prediction, 0, len(predictionSymbols))
 	for _, ps := range predictionSymbols {
+		price, ok := byID[ps.symbol]
 		// Skip if price is unavailable
-		if !availMap[ps.symbol] {
+		if !ok || !price.Available {
 			continue
 		}
-		
-		current := pm[ps.symbol]
+
+		current := price.Price
+		predSource := price.Source
+		if predSource == "" {
+			predSource = "yahoo"
+		}
 		var history []float64
 		if s.yahoo != nil {
 			history = s.yahoo.GetHistory(ps.symbol)
 		}
 
-		if len(history) < 30 {
-			out = append(out, fallbackPrediction(ps.symbol, ps.name, current, ps.horizon))
+		if len(history) < 30 || current <= 0 {
+			out = append(out, insufficientPrediction(ps.symbol, ps.name, current, predSource, ps.horizon, len(history)))
 			continue
 		}
 
-		// Splice the live current price as the most recent close so the forecast
-		// reflects intraday movement, not just the last completed daily bar.
-		closes := history
-		if current > 0 {
-			closes = append(append([]float64{}, history...), current)
-		}
+		// Use the live price as the most recent close so the forecast
+		// reflects intraday movement. Yahoo's daily series already contains
+		// a bar for the current session, so we overwrite that bar instead
+		// of appending a duplicate observation for the same day.
+		lastBar, haveBar := s.yahoo.lastHistoryBarTime(ps.symbol)
+		quoteAt, _ := time.Parse(time.RFC3339, price.UpdatedAt)
+		closes := spliceCurrentClose(history, lastBar, haveBar, current, quoteAt)
 
 		f, err := Forecast(closes, ps.horizon)
 		if err != nil {
-			out = append(out, fallbackPrediction(ps.symbol, ps.name, current, ps.horizon))
+			out = append(out, insufficientPrediction(ps.symbol, ps.name, current, predSource, ps.horizon, len(history)))
 			continue
 		}
 
-		predSource := sources[ps.symbol]
-		if predSource == "" {
-			predSource = "yahoo"
-		}
-		out = append(out, models.Prediction{
+		pred := models.Prediction{
 			Symbol:        ps.symbol,
 			Name:          ps.name,
 			Current:       r2(f.Current),
@@ -518,6 +516,7 @@ func (s *MarketDataService) computePredictions() []models.Prediction {
 			Confidence:    math.Round(f.Confidence*100) / 100,
 			Direction:     f.Direction,
 			Analysis:      buildAnalysis(ps.name, f),
+			Status:        f.Status,
 			Model:         "holt-damped+backtest+rsi/macd",
 			Source:        predSource,
 			Disclaimer:    predictionDisclaimer,
@@ -533,43 +532,48 @@ func (s *MarketDataService) computePredictions() []models.Prediction {
 			NaiveMAPE:     math.Round(f.NaiveMAPE*10000) / 10000,
 			Skill:         math.Round(f.Skill*1000) / 1000,
 			BacktestSteps: f.BacktestSteps,
-		})
+		}
+		if f.Status != ForecastStatusOK {
+			// No publishable forecast: don't emit a predicted price, an
+			// interval around it, or a confidence score for it.
+			pred.Predicted, pred.PredictedLow, pred.PredictedHigh = 0, 0, 0
+			pred.Confidence = 0
+			pred.Direction = "neutral"
+		}
+		out = append(out, pred)
 	}
 	return out
 }
 
-// fallbackPrediction is returned when we don't yet have enough history loaded
-// (e.g. cold start, or Yahoo unreachable). Returns an unavailable prediction
-// that won't render $0.00 in the UI.
-func fallbackPrediction(symbol, name string, current float64, horizon int) models.Prediction {
-	// If current price is unavailable/zero, mark prediction as unavailable
-	if current <= 0 {
-		return models.Prediction{
-			Symbol:     symbol,
-			Name:       name,
-			Current:    0,
-			Predicted:  0,
-			Timeframe:  fmt.Sprintf("%d days", horizon),
-			Confidence: 0.0,
-			Direction:  "neutral",
-			Analysis:   "Forecast unavailable — insufficient data.",
-			Model:      "fallback",
-			Source:     "", // Empty source signals unavailable
-			Disclaimer: predictionDisclaimer,
-		}
+// spliceCurrentClose returns `history` with the live price as its final
+// observation. When the last daily bar already belongs to the quote's
+// exchange day (or later), that bar is replaced; otherwise the live price
+// is appended as a new day. Without bar timestamps we can't tell, so we
+// append (the historical behaviour).
+func spliceCurrentClose(history []float64, lastBarTime int64, haveBarTime bool, current float64, quoteAt time.Time) []float64 {
+	out := make([]float64, len(history), len(history)+1)
+	copy(out, history)
+	if len(out) > 0 && haveBarTime && !quoteAt.IsZero() && exchangeDay(lastBarTime) >= exchangeDay(quoteAt.Unix()) {
+		out[len(out)-1] = current
+		return out
 	}
-	
+	return append(out, current)
+}
+
+// insufficientPrediction is returned when we don't have enough history to
+// fit and validate the model (cold start, Yahoo unreachable). It carries
+// no predicted price; the UI shows a "not enough data" state.
+func insufficientPrediction(symbol, name string, current float64, source string, horizon, samples int) models.Prediction {
 	return models.Prediction{
 		Symbol:     symbol,
 		Name:       name,
 		Current:    r2(current),
-		Predicted:  r2(current),
 		Timeframe:  fmt.Sprintf("%d days", horizon),
-		Confidence: 0.0,
 		Direction:  "neutral",
-		Analysis:   "Forecast unavailable — insufficient historical data loaded yet. Please retry shortly.",
-		Model:      "fallback",
-		Source:     "estimate",
+		Analysis:   fmt.Sprintf("%s: not enough daily price history loaded to fit and backtest the forecast model (%d of at least 77 sessions). No forecast is shown until more data is available.", name, samples),
+		Status:     ForecastStatusInsufficient,
+		Model:      "holt-damped+backtest+rsi/macd",
+		Source:     source,
 		Disclaimer: predictionDisclaimer,
 	}
 }
@@ -632,6 +636,23 @@ func buildAnalysis(name string, f ForecastResult) string {
 	dampStr := ""
 	if f.Phi > 0 && f.Phi < 1 {
 		dampStr = fmt.Sprintf(" (damping φ=%.2f)", f.Phi)
+	}
+
+	signals := fmt.Sprintf("RSI(14) is %.1f (%s), MACD histogram is %s, and the 50/200-day MA configuration suggests %s %s.",
+		f.RSI14, rsiLabel, macdLabel, trendArticle, f.Trend)
+
+	switch f.Status {
+	case ForecastStatusNoEdge:
+		return fmt.Sprintf(
+			"%s: no %d-day forecast. Over the last %d sessions the damped Holt model's %d-day-ahead error (%.1f%% MAPE) "+
+				"was no better than assuming the price stays where it is (%.1f%% MAPE), so we don't publish a point forecast. %s",
+			name, f.HorizonDays, f.BacktestSteps, f.HorizonDays, f.MAPE*100, f.NaiveMAPE*100, signals,
+		)
+	case ForecastStatusInsufficient:
+		return fmt.Sprintf(
+			"%s: not enough daily history to backtest the %d-day forecast model, so no forecast is shown. %s",
+			name, f.HorizonDays, signals,
+		)
 	}
 
 	return fmt.Sprintf(
@@ -713,6 +734,7 @@ const heroBucketSec int64 = 300
 // signature and ignored — the hero always returns the full 24h window.
 func (s *MarketDataService) GetHeroChart(symbol string, _ int) models.HeroChart {
 	out := models.HeroChart{Symbol: symbol, Bars: []models.PythCandle{}}
+	out.Delayed = !s.pyth.Enabled()
 
 	pythLive := false
 	var pythPublishedAt time.Time

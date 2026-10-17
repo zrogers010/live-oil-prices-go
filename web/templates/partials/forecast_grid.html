@@ -26,6 +26,7 @@
             {{end}}
         </ul>
 
+        {{if .HasForecast}}
         <details class="forecast-projection">
             <summary class="forecast-projection-summary">
                 <span>Model projection · {{.Timeframe}}</span>
@@ -48,6 +49,12 @@
                 </div>
             </div>
         </details>
+        {{else}}
+        <div class="forecast-none" data-role="no-forecast">
+            <div class="forecast-none-title">{{.NoForecastTitle}}</div>
+            <p class="forecast-none-text">{{.NoForecastText}}</p>
+        </div>
+        {{end}}
 
         {{if .HasBacktest}}
         <div class="backtest-credibility" aria-label="Backtest credibility">

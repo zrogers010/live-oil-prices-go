@@ -47,6 +47,14 @@ type PageData struct {
 	Forecasts  []forecastView
 	Consensus  []consensusView
 
+	// HeroStatus is the server-rendered hero tagline accent. It describes
+	// the data actually on the page (live stream, delayed quotes, or none)
+	// so the first paint never shows a "connecting…" placeholder.
+	HeroStatus string
+	// PythInUse is true only when at least one rendered price comes from
+	// the Pyth stream. The footer credits Pyth only in that case.
+	PythInUse bool
+
 	// Affiliate partner URL surfaced in the footer attribution and any
 	// per-page partner cards. Sourced from TradingViewAffiliateURL so
 	// there's exactly one place to change the affiliate ID.
@@ -108,6 +116,12 @@ type forecastView struct {
 	Analysis        string
 	Model           string
 	SourceLabel     string
+	// HasForecast is false when the model produced no publishable point
+	// forecast (Status "no-edge" or "insufficient-data"). The template then
+	// shows NoForecastTitle/NoForecastText instead of a projected price.
+	HasForecast     bool
+	NoForecastTitle string
+	NoForecastText  string
 
 	// Signal-stack chips. Each chip has a label and a tone class
 	// ("bullish" | "bearish" | "neutral") so the template can color them.
@@ -268,6 +282,13 @@ func (a *API) populateMarketData(data *PageData) {
 		views = append(views, toPriceView(p))
 	}
 	data.Prices = views
+	data.PythInUse = false
+	for _, v := range views {
+		if v.Source == "pyth" {
+			data.PythInUse = true
+			break
+		}
+	}
 
 	// Card subset, ordered the same way the JS does it.
 	cards := make([]priceView, 0, len(cardSymbols))
@@ -288,6 +309,7 @@ func (a *API) populateMarketData(data *PageData) {
 	if v, ok := byID["BRENT"]; ok {
 		data.HeroBRENT = &v
 	}
+	data.HeroStatus = heroStatus(data.HeroWTI, data.HeroBRENT)
 
 	preds := a.market.GetPredictions()
 	fviews := make([]forecastView, 0, len(preds))
@@ -510,6 +532,23 @@ func toForecastView(p models.Prediction) forecastView {
 
 	signals := buildSignalChips(p)
 
+	// Only a "forecast" status (or a legacy payload without a status that
+	// still carries a positive predicted price) has a projection to show.
+	hasForecast := (p.Status == "" || p.Status == "forecast") && p.Predicted > 0
+	noTitle, noText := "", ""
+	if !hasForecast {
+		dirClass, arrow, dirLabel = "neutral", "–", "No forecast"
+		confPct, confLabel = 0, "Unavailable"
+		switch p.Status {
+		case "no-edge":
+			noTitle = "No reliable forecast"
+			noText = "On recent history the model was no more accurate than assuming no change, so no projected price is shown."
+		default:
+			noTitle = "Not enough data to forecast"
+			noText = "There is not yet enough daily price history to fit and backtest the model."
+		}
+	}
+
 	// Backtest credibility block. We surface the model's actual recent
 	// accuracy and skill-vs-naive so the user has an evidence-based way
 	// to interpret each card, instead of having to trust an opaque
@@ -553,6 +592,9 @@ func toForecastView(p models.Prediction) forecastView {
 		Analysis:         p.Analysis,
 		Model:            model,
 		SourceLabel:      srcLabel,
+		HasForecast:      hasForecast,
+		NoForecastTitle:  noTitle,
+		NoForecastText:   noText,
 		Signals:          signals,
 		HasBacktest:      hasBT,
 		BacktestSteps:    p.BacktestSteps,
@@ -561,6 +603,35 @@ func toForecastView(p models.Prediction) forecastView {
 		SkillPct:         skillPct,
 		BacktestVerdict:  verdict,
 		BacktestSentence: sentence,
+	}
+}
+
+// heroStatus returns the hero tagline accent for the server-rendered
+// page. It only describes data we actually have: a live Pyth stream,
+// delayed Yahoo quotes, or nothing.
+func heroStatus(views ...*priceView) string {
+	have, live, delayed := false, false, false
+	for _, v := range views {
+		if v == nil {
+			continue
+		}
+		have = true
+		if v.IsLive {
+			live = true
+		}
+		if v.Source == "yahoo" {
+			delayed = true
+		}
+	}
+	switch {
+	case live:
+		return "streaming live"
+	case delayed:
+		return "delayed futures quotes via Yahoo Finance"
+	case have:
+		return "latest available quotes"
+	default:
+		return "prices temporarily unavailable"
 	}
 }
 
@@ -656,7 +727,7 @@ func (a *API) ServeHome(w http.ResponseWriter, r *http.Request) {
 		Title:       "Live Oil Prices — Latest Crude Oil, WTI, Brent & Energy Market Data",
 		Description: "Latest oil prices for WTI crude, Brent crude, natural gas, heating oil, RBOB gasoline, and OPEC basket with interactive charts and breaking energy market news.",
 		Keywords:    "oil prices, crude oil price, WTI price, Brent crude price, live oil prices, oil price today, natural gas price, heating oil, RBOB gasoline, OPEC, energy market, oil chart, oil news",
-		Canonical:   "https://liveoilprices.com/",
+		Canonical:   "https://www.liveoilprices.com/",
 		OGTitle:     "Live Oil Prices — Latest Crude Oil & Energy Market Data",
 		OGDescription: "Track WTI, Brent, natural gas, and 10+ energy commodities with latest prices, interactive charts, and breaking market news.",
 		SchemaType:    "WebSite",
@@ -705,18 +776,18 @@ func (a *API) ServeHome(w http.ResponseWriter, r *http.Request) {
 			"@context":    "https://schema.org",
 			"@type":       "Organization",
 			"name":        "Live Oil Prices",
-			"url":         "https://liveoilprices.com",
+			"url":         "https://www.liveoilprices.com",
 			"description": "Latest energy market data, interactive oil price charts, statistical price forecasts, and breaking energy news.",
 		},
 		map[string]any{
 			"@context":    "https://schema.org",
 			"@type":       "WebSite",
 			"name":        "Live Oil Prices",
-			"url":         "https://liveoilprices.com",
+			"url":         "https://www.liveoilprices.com",
 			"description": "Latest crude oil prices, energy market charts, statistical price forecasts and breaking oil and gas news.",
 			"potentialAction": map[string]any{
 				"@type":       "SearchAction",
-				"target":      "https://liveoilprices.com/commodity/{search_term_string}",
+				"target":      "https://www.liveoilprices.com/commodity/{search_term_string}",
 				"query-input": "required name=search_term_string",
 			},
 		},
@@ -730,11 +801,11 @@ func (a *API) ServeCharts(w http.ResponseWriter, r *http.Request) {
 		Title:         "Live Oil Price Charts — WTI, Brent, Natural Gas & RBOB Candlestick Charts",
 		Description:   "Interactive candlestick oil price charts for WTI crude, Brent crude, natural gas, heating oil, RBOB gasoline and OPEC basket. Switch between 1-week, 1-month, 3-month, 6-month and 1-year timeframes with volume analysis.",
 		Keywords:      "oil price chart, crude oil chart, WTI chart, Brent crude chart, natural gas chart, heating oil chart, RBOB chart, candlestick chart, oil price history",
-		Canonical:     "https://liveoilprices.com/charts",
+		Canonical:     "https://www.liveoilprices.com/charts",
 		OGTitle:       "Live Oil Price Charts — Interactive WTI, Brent & Energy Charts",
 		OGDescription: "Interactive candlestick charts for WTI, Brent, natural gas and more, with multi-timeframe lookbacks and volume analysis.",
 		StructuredData: []any{
-			breadcrumbJSONLD([][2]string{{"Home", "https://liveoilprices.com/"}, {"Oil Charts", "https://liveoilprices.com/charts"}}),
+			breadcrumbJSONLD([][2]string{{"Home", "https://www.liveoilprices.com/"}, {"Oil Charts", "https://www.liveoilprices.com/charts"}}),
 			faqJSONLD([][2]string{
 				{"How often are these oil price charts updated?",
 					"Spot prices refresh periodically. Daily candlestick charts use Yahoo Finance end-of-day data and refresh hourly. The streaming WTI hero chart on the homepage uses live exchange ticks (when available) aggregated into 1-minute candles."},
@@ -756,11 +827,11 @@ func (a *API) ServeForecast(w http.ResponseWriter, r *http.Request) {
 		Title:         "Oil Price Outlook & Technical Signals — WTI, Brent, Natural Gas",
 		Description:   "Multi-signal oil price outlook for WTI, Brent, natural gas and heating oil. Trend, RSI, MACD and 50/200-day moving-average regime stacked alongside a damped-Holt 7-day model forecast and an institutional EIA Short-Term Energy Outlook reference.",
 		Keywords:      "oil price outlook, WTI outlook, Brent outlook, oil technical analysis, RSI MACD oil, 50 day moving average oil, oil price signals, EIA STEO forecast, natural gas outlook",
-		Canonical:     "https://liveoilprices.com/forecast",
+		Canonical:     "https://www.liveoilprices.com/forecast",
 		OGTitle:       "Oil Price Outlook & Technical Signals — WTI, Brent & Energy",
 		OGDescription: "Stacked technical signals (Trend, RSI, MACD, 50/200 DMA) plus a damped-Holt forecast and EIA STEO reference for every major oil benchmark.",
 		StructuredData: []any{
-			breadcrumbJSONLD([][2]string{{"Home", "https://liveoilprices.com/"}, {"Outlook", "https://liveoilprices.com/forecast"}}),
+			breadcrumbJSONLD([][2]string{{"Home", "https://www.liveoilprices.com/"}, {"Outlook", "https://www.liveoilprices.com/forecast"}}),
 			faqJSONLD([][2]string{
 				{"How is this different from a traditional price forecast?",
 					"Instead of leading with a single point prediction, each card stacks four independent technical signals — long-term trend, RSI momentum, MACD cross, and the 50/200-day moving-average regime — alongside a damped-Holt statistical forecast. You get to see whether the signals agree before you read the dollar number."},
@@ -784,11 +855,11 @@ func (a *API) ServeNews(w http.ResponseWriter, r *http.Request) {
 		Title:         "Energy Market News — Live Oil, Gas, OPEC & Refining Headlines",
 		Description:   "Breaking energy market news covering crude oil, natural gas, OPEC+ decisions, refining and global energy markets. Aggregated from Reuters, Bloomberg, the EIA and 50+ sources, updated continuously.",
 		Keywords:      "oil news, energy news, crude oil news, OPEC news, natural gas news, oil market news, energy market news today",
-		Canonical:     "https://liveoilprices.com/news",
+		Canonical:     "https://www.liveoilprices.com/news",
 		OGTitle:       "Energy Market News — Oil, Gas & OPEC Headlines",
 		OGDescription: "Breaking oil, gas and energy news from Reuters, Bloomberg, the EIA and 50+ sources, updated continuously.",
 		StructuredData: []any{
-			breadcrumbJSONLD([][2]string{{"Home", "https://liveoilprices.com/"}, {"News", "https://liveoilprices.com/news"}}),
+			breadcrumbJSONLD([][2]string{{"Home", "https://www.liveoilprices.com/"}, {"News", "https://www.liveoilprices.com/news"}}),
 			faqJSONLD([][2]string{
 				{"Where do these articles come from?",
 					"Articles are aggregated from major financial wire services (Reuters, Bloomberg, AP), specialist energy publications, the U.S. Energy Information Administration (EIA), OPEC press releases and a curated list of global energy outlets."},
@@ -809,11 +880,11 @@ func (a *API) ServeDisclosure(w http.ResponseWriter, r *http.Request) {
 		Title:         "Affiliate Disclosure — Live Oil Prices",
 		Description:   "How Live Oil Prices works with affiliate partners, and what that means for you. Full transparency on outbound links and commission relationships.",
 		Keywords:      "affiliate disclosure, live oil prices disclosure, partner disclosure, transparency",
-		Canonical:     "https://liveoilprices.com/disclosure",
+		Canonical:     "https://www.liveoilprices.com/disclosure",
 		OGTitle:       "Affiliate Disclosure — Live Oil Prices",
 		OGDescription: "How Live Oil Prices works with affiliate partners, and what that means for you.",
 		StructuredData: []any{
-			breadcrumbJSONLD([][2]string{{"Home", "https://liveoilprices.com/"}, {"Affiliate Disclosure", "https://liveoilprices.com/disclosure"}}),
+			breadcrumbJSONLD([][2]string{{"Home", "https://www.liveoilprices.com/"}, {"Affiliate Disclosure", "https://www.liveoilprices.com/disclosure"}}),
 		},
 	}
 	a.renderPage(w, r, "disclosure", data)
@@ -826,11 +897,11 @@ func (a *API) ServePrivacy(w http.ResponseWriter, r *http.Request) {
 		Title:       "Privacy Policy — Live Oil Prices",
 		Description: "Learn how Live Oil Prices collects, uses, and protects your data. Full transparency on cookies, analytics, and advertising practices.",
 		Keywords:    "privacy policy, live oil prices privacy, data protection, cookies, analytics",
-		Canonical:   "https://liveoilprices.com/privacy",
+		Canonical:   "https://www.liveoilprices.com/privacy",
 		OGTitle:     "Privacy Policy — Live Oil Prices",
 		OGDescription: "Learn how Live Oil Prices collects, uses, and protects your data.",
 		StructuredData: []any{
-			breadcrumbJSONLD([][2]string{{"Home", "https://liveoilprices.com/"}, {"Privacy Policy", "https://liveoilprices.com/privacy"}}),
+			breadcrumbJSONLD([][2]string{{"Home", "https://www.liveoilprices.com/"}, {"Privacy Policy", "https://www.liveoilprices.com/privacy"}}),
 		},
 	}
 	a.renderPage(w, r, "privacy", data)

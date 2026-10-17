@@ -4064,3 +4064,36 @@ a.footer-attribution-link:hover {
   text-decoration: none;
 }
 .consensus-citation a:hover { text-decoration: underline; }
+
+/* ------------------------------------------------------------------
+   Plain empty / no-forecast states. Flat borders only, no effects.
+   ------------------------------------------------------------------ */
+.forecast-none {
+  margin: 0 0 16px;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-secondary);
+}
+.forecast-none-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.forecast-none-text {
+  margin: 4px 0 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+.ticker-empty {
+  font-size: 13px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.market-table-empty {
+  padding: 24px 16px;
+  text-align: center;
+  font-size: 14px;
+  color: var(--text-muted);
+}
