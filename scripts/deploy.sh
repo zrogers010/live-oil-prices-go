@@ -15,12 +15,37 @@ SERVICE="liveoilprices"
 BIN="$PROJECT_DIR/bin/server"
 ROLLBACK_DIR="/home/deploy/liveoilprices-rollbacks"
 FRONTEND_BUILD_TEMP="$PROJECT_DIR/.build-tmp"
+DEPLOY_BRANCH="${DEPLOY_BRANCH:-main}"
+SNAPSHOT_COMMIT=""
+DEPLOY_FAILED=0
 
 # Safety check: ROLLBACK_DIR must be absolute and non-empty
 if [ -z "$ROLLBACK_DIR" ] || [[ ! "$ROLLBACK_DIR" = /* ]]; then
     echo "ERROR: ROLLBACK_DIR must be a non-empty absolute path"
     exit 1
 fi
+
+# Cleanup function to restore state on failure
+cleanup_on_failure() {
+    if [ "$DEPLOY_FAILED" -eq 1 ]; then
+        echo ""
+        echo "=== Deploy failed, cleaning up ==="
+        
+        # Restore git tree to snapshot commit if we have one
+        if [ -n "$SNAPSHOT_COMMIT" ] && git rev-parse --verify "$SNAPSHOT_COMMIT" &>/dev/null 2>&1; then
+            echo "  Restoring git tree to $SNAPSHOT_COMMIT..."
+            git checkout -f "$SNAPSHOT_COMMIT" 2>/dev/null || true
+        fi
+        
+        # Remove temp files
+        rm -f "$BIN.new"
+        rm -rf "$FRONTEND_BUILD_TEMP"
+        
+        echo "  Cleanup complete. Service unchanged."
+    fi
+}
+
+trap cleanup_on_failure EXIT
 
 echo ""
 echo "=== Live Oil Prices Deploy ==="
@@ -38,41 +63,47 @@ if ! command -v node &>/dev/null; then
     exit 1
 fi
 
-# Check git status - refuse to deploy from a dirty tree
+# Check git status and handle detached HEAD from rollback
 if git rev-parse --is-inside-work-tree &>/dev/null 2>&1; then
-    # Allow a dirty tree only if we're in detached HEAD at a snapshot commit
-    # (i.e., after a rollback that restored tracked files)
-    if ! git diff --quiet || ! git diff --cached --quiet; then
-        CURRENT_COMMIT=$(git rev-parse HEAD 2>/dev/null)
-        DETACHED=false
-        git symbolic-ref HEAD &>/dev/null || DETACHED=true
-        
-        # Check if this is a rollback state (detached at a recorded snapshot commit)
-        ROLLBACK_STATE=false
-        if [ "$DETACHED" = true ] && [ -n "$CURRENT_COMMIT" ]; then
-            # Look for a snapshot with this commit
-            for snapshot in "$ROLLBACK_DIR"/20*/COMMIT; do
-                if [ -f "$snapshot" ]; then
-                    SNAPSHOT_COMMIT=$(cat "$snapshot" 2>/dev/null || echo "")
-                    if [ "$SNAPSHOT_COMMIT" = "$CURRENT_COMMIT" ]; then
-                        ROLLBACK_STATE=true
-                        break
-                    fi
+    CURRENT_COMMIT=$(git rev-parse HEAD 2>/dev/null)
+    DETACHED=false
+    git symbolic-ref HEAD &>/dev/null || DETACHED=true
+    
+    # Check if we're at a recorded snapshot commit (rollback state)
+    ROLLBACK_STATE=false
+    if [ "$DETACHED" = true ] && [ -n "$CURRENT_COMMIT" ]; then
+        # Look in regular snapshots and legacy/manual snapshots
+        for snapshot in "$ROLLBACK_DIR"/*/COMMIT; do
+            if [ -f "$snapshot" ]; then
+                SNAP_COMMIT=$(cat "$snapshot" 2>/dev/null || echo "")
+                if [ "$SNAP_COMMIT" = "$CURRENT_COMMIT" ]; then
+                    ROLLBACK_STATE=true
+                    break
                 fi
-            done 2>/dev/null || true
-        fi
-        
+            fi
+        done 2>/dev/null || true
+    fi
+    
+    if [ "$DETACHED" = true ]; then
         if [ "$ROLLBACK_STATE" = true ]; then
             echo "  Detected rollback state (detached at snapshot commit $CURRENT_COMMIT)"
-            echo "  Resetting to clean state and returning to branch..."
-            # Get the branch name from the most recent snapshot
-            git checkout - 2>/dev/null || git checkout main 2>/dev/null || true
-            git reset --hard HEAD
+            echo "  Returning to branch $DEPLOY_BRANCH..."
+            git checkout -f "$DEPLOY_BRANCH" || {
+                echo "ERROR: Failed to checkout $DEPLOY_BRANCH"
+                DEPLOY_FAILED=1
+                exit 1
+            }
         else
-            echo "ERROR: Working tree is dirty. Commit or stash changes before deploying."
-            git status --short
+            echo "ERROR: Detached HEAD at unknown commit $CURRENT_COMMIT"
+            echo "       Either checkout a branch or rollback to a known snapshot"
+            DEPLOY_FAILED=1
             exit 1
         fi
+    elif ! git diff --quiet || ! git diff --cached --quiet; then
+        echo "ERROR: Working tree is dirty. Commit or stash changes before deploying."
+        git status --short
+        DEPLOY_FAILED=1
+        exit 1
     fi
 fi
 
@@ -119,8 +150,10 @@ if [ -f "$BIN" ] || [ -f "web/static/js/app.js" ]; then
     
     # Record the git commit so rollback can restore the matching tree
     if git rev-parse HEAD &>/dev/null 2>&1; then
-        git rev-parse HEAD > "$ROLLBACK_PATH/COMMIT" || {
+        SNAPSHOT_COMMIT=$(git rev-parse HEAD)
+        echo "$SNAPSHOT_COMMIT" > "$ROLLBACK_PATH/COMMIT" || {
             echo "ERROR: Failed to record git commit"
+            DEPLOY_FAILED=1
             exit 1
         }
     fi
@@ -143,6 +176,7 @@ if git rev-parse --is-inside-work-tree &>/dev/null 2>&1; then
     echo "[2/6] Pulling latest code..."
     if ! git pull --ff-only; then
         echo "ERROR: git pull failed. Aborting deploy."
+        DEPLOY_FAILED=1
         exit 1
     fi
 else
@@ -179,23 +213,28 @@ go vet ./...
 go test ./...
 echo "  Tests passed."
 
-# ---------- Build backend ----------
+# ---------- Build backend to temporary location ----------
 echo "[5/6] Building backend..."
-CGO_ENABLED=0 go build -ldflags="-s -w" -o "$BIN" ./cmd/server
-echo "  Backend built ($(du -h "$BIN" | cut -f1))."
+CGO_ENABLED=0 go build -ldflags="-s -w" -o "$BIN.new" ./cmd/server
+echo "  Backend built ($(du -h "$BIN.new" | cut -f1))."
 
-# Validate assets and templates before swapping (fail-fast)
-echo "  Validating assets and templates..."
-if ! "$BIN" --check-assets 2>&1; then
-    echo "ERROR: Asset validation failed. Not swapping files."
+# Validate assets and templates against the NEW build before swapping
+echo "  Validating new binary against new assets and templates..."
+if ! "$BIN.new" --check-assets --static-root="$FRONTEND_BUILD_TEMP" --templates="web/templates" 2>&1; then
+    echo "ERROR: Asset validation failed. Nothing swapped."
     if [ -n "$ROLLBACK_PATH" ]; then
         echo "  To rollback: scripts/rollback.sh $TIMESTAMP"
     fi
+    DEPLOY_FAILED=1
     exit 1
 fi
 
-# ---------- Swap frontend assets and restart ----------
-echo "[6/6] Swapping frontend assets and restarting service..."
+# ---------- Swap binary and frontend assets, then restart ----------
+echo "[6/6] Swapping binary and frontend assets, then restarting service..."
+
+# Atomically swap the new binary into place
+mv -f "$BIN.new" "$BIN"
+echo "  ✓ Binary swapped"
 
 # Atomically swap the new frontend into place
 mkdir -p web/static
@@ -230,12 +269,13 @@ if ! sudo systemctl is-active --quiet "$SERVICE"; then
             echo "  ERROR: Rollback also failed!"
         fi
     fi
+    DEPLOY_FAILED=1
     exit 1
 fi
 
-# Health check with increased timeout
+# Health check with increased timeout (overridable for tests)
 echo "  Service started. Running health checks..."
-HEALTH_CHECK_TIMEOUT=30
+HEALTH_CHECK_TIMEOUT="${HEALTH_CHECK_TIMEOUT:-30}"
 HEALTH_CHECK_INTERVAL=3
 MAX_HEALTH_CHECKS=$((HEALTH_CHECK_TIMEOUT / HEALTH_CHECK_INTERVAL))
 
@@ -279,10 +319,14 @@ for i in $(seq 1 $MAX_HEALTH_CHECKS); do
                 echo "  ERROR: Rollback also failed!"
             fi
         fi
+        DEPLOY_FAILED=1
         exit 1
     fi
     sleep $HEALTH_CHECK_INTERVAL
 done
+
+# Success - disable cleanup trap
+DEPLOY_FAILED=0
 
 echo ""
 echo "=== Deploy complete ==="

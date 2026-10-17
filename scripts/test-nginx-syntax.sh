@@ -117,6 +117,13 @@ if [ -n "$NGINX_BIN" ]; then
 else
     echo ""
     echo "WARNING: nginx not found in common locations"
+    
+    # In CI, nginx MUST be present
+    if [ "${CI:-false}" = "true" ]; then
+        echo "ERROR: nginx is required in CI but was not found"
+        exit 1
+    fi
+    
     echo "Skipping nginx -t test (manual structure checks passed)"
 fi
 

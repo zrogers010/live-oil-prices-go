@@ -6,7 +6,28 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 TEST_DIR=$(mktemp -d)
-trap 'rm -rf "$TEST_DIR"' EXIT
+
+cleanup() {
+    # Kill any mock-service processes and all child processes
+    if [ -f "$TEST_DIR/service.pid" ]; then
+        SERVICE_PID=$(cat "$TEST_DIR/service.pid" 2>/dev/null || echo "")
+        if [ -n "$SERVICE_PID" ]; then
+            kill "$SERVICE_PID" 2>/dev/null || true
+        fi
+    fi
+    
+    # Kill entire process group to catch any orphans
+    # Send TERM to all children, then wait briefly
+    pkill -P $$ 2>/dev/null || true
+    sleep 0.1
+    
+    # Force kill any stragglers
+    pkill -9 -P $$ 2>/dev/null || true
+    
+    rm -rf "$TEST_DIR"
+}
+
+trap cleanup EXIT
 
 echo "Testing rollback restore functionality..."
 echo "Test directory: $TEST_DIR"
@@ -146,11 +167,18 @@ fi
 echo ""
 echo "Verifying restored files..."
 
-# Clean up any running mock service
+# Clean up any running mock service (will also be cleaned in trap)
 if [ -f "$TEST_DIR/service.pid" ]; then
     SERVICE_PID=$(cat "$TEST_DIR/service.pid")
     kill "$SERVICE_PID" 2>/dev/null || true
     rm -f "$TEST_DIR/service.pid"
+fi
+
+# Verify no child processes remain from mock service
+REMAINING=$(pgrep -P $$ 2>/dev/null | wc -l)
+if [ "$REMAINING" -gt 0 ]; then
+    echo "WARNING: $REMAINING child processes still running"
+    pgrep -P $$ 2>/dev/null || true
 fi
 
 # Check that old content was restored

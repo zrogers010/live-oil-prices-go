@@ -1,4 +1,4 @@
-.PHONY: all build build-frontend build-backend run dev clean deploy test test-go test-ts test-poller test-poller-extra test-poller-mutation test-poller-notbefore
+.PHONY: all build build-frontend build-backend run dev clean deploy test test-go test-ts test-poller test-poller-extra test-poller-mutation test-poller-notbefore test-rollback test-deploy
 
 all: build
 
@@ -28,7 +28,7 @@ clean:
 deploy:
 	bash scripts/deploy.sh
 
-test: test-go test-ts test-poller test-poller-extra test-poller-mutation test-poller-notbefore test-rollback
+test: test-go test-ts test-poller test-poller-extra test-poller-mutation test-poller-notbefore test-rollback test-deploy
 
 test-go:
 	go test ./...
@@ -50,3 +50,6 @@ test-poller-notbefore:
 
 test-rollback:
 	bash scripts/rollback_test.sh
+
+test-deploy:
+	bash scripts/deploy_test.sh
