@@ -25,7 +25,7 @@
         <header class="section-header">
             <div class="section-label">Live Market Data</div>
             <h2 class="section-title" id="markets-heading">Oil &amp; Energy Prices Today</h2>
-            <p class="section-desc">Live streaming WTI &amp; Brent prices alongside the broader energy complex, with every card refreshing every 15 seconds.</p>
+            <p class="section-desc">Latest WTI &amp; Brent prices alongside the broader energy complex, with every card refreshing periodically.</p>
         </header>
 
         {{template "price_grid" .CardPrices}}
@@ -39,7 +39,7 @@
         </div>
 
         {{if .AdSenseClient}}
-        <div style="margin: 2.5rem auto; max-width: 970px;">
+        <div style="margin: 2.5rem auto; max-width: 970px; min-height: 100px; display: flex; align-items: center; justify-content: center;">
             {{if .AdSlots.BelowPriceTable}}
             <ins class="adsbygoogle"
                  style="display:block"
@@ -137,7 +137,7 @@
         <div class="news-grid" id="newsGrid" role="feed" aria-label="Energy news articles"></div>
 
         {{if .AdSenseClient}}
-        <div style="margin: 2.5rem auto; max-width: 728px;">
+        <div style="margin: 2.5rem auto; max-width: 728px; min-height: 250px; display: flex; align-items: center; justify-content: center;">
             {{if .AdSlots.NewsFlow}}
             <ins class="adsbygoogle"
                  style="display:block"

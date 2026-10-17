@@ -34,16 +34,16 @@ func NewAPI(market MarketDataClient, news NewsClient) *API {
 }
 
 func (a *API) RegisterRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("/api/prices", middleware.JSON(a.GetPrices))
-	mux.HandleFunc("/api/charts/{symbol}", middleware.JSON(a.GetChartData))
-	mux.HandleFunc("/api/hero/{symbol}", middleware.JSON(a.GetHeroChart))
-	mux.HandleFunc("/api/news", middleware.JSON(a.GetNews))
-	mux.HandleFunc("/api/news/{id}", middleware.JSON(a.GetNewsArticle))
-	mux.HandleFunc("/api/predictions", middleware.JSON(a.GetPredictions))
-	mux.HandleFunc("/api/analysis", middleware.JSON(a.GetAnalysis))
-	mux.HandleFunc("/api/consensus", middleware.JSON(a.GetConsensusForecasts))
-	mux.HandleFunc("/api/consensus/{symbol}", middleware.JSON(a.GetConsensusForecast))
-	mux.HandleFunc("/api/health", middleware.JSON(a.HealthCheck))
+	mux.HandleFunc("GET /api/prices", middleware.JSON(a.GetPrices))
+	mux.HandleFunc("GET /api/charts/{symbol}", middleware.JSON(a.GetChartData))
+	mux.HandleFunc("GET /api/hero/{symbol}", middleware.JSON(a.GetHeroChart))
+	mux.HandleFunc("GET /api/news", middleware.JSON(a.GetNews))
+	mux.HandleFunc("GET /api/news/{id}", middleware.JSON(a.GetNewsArticle))
+	mux.HandleFunc("GET /api/predictions", middleware.JSON(a.GetPredictions))
+	mux.HandleFunc("GET /api/analysis", middleware.JSON(a.GetAnalysis))
+	mux.HandleFunc("GET /api/consensus", middleware.JSON(a.GetConsensusForecasts))
+	mux.HandleFunc("GET /api/consensus/{symbol}", middleware.JSON(a.GetConsensusForecast))
+	mux.HandleFunc("GET /api/health", middleware.JSON(a.HealthCheck))
 }
 
 func (a *API) GetPrices(w http.ResponseWriter, r *http.Request) {

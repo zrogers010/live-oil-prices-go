@@ -346,7 +346,7 @@ func toConsensusView(c models.ConsensusForecast) consensusView {
 
 func toPriceView(p models.Price) priceView {
 	isLive := isLiveTick(p.Source, p.UpdatedAt)
-	updatedLabel := formatUpdatedLabel(p.UpdatedAt, isLive)
+	updatedLabel := formatUpdatedLabel(p.UpdatedAt, isLive, p.Source)
 
 	v := priceView{
 		Symbol:          p.Symbol,
@@ -389,14 +389,20 @@ func isLiveTick(source, updatedAt string) bool {
 }
 
 // formatUpdatedLabel produces a human-readable "as of" timestamp for the
-// price view. If data is older than 24 hours, it's labeled clearly as
-// delayed or last close rather than implying it's current.
-func formatUpdatedLabel(updatedAt string, isLive bool) string {
+// price view. Shows appropriate labels for delayed, estimated, or aged data.
+func formatUpdatedLabel(updatedAt string, isLive bool, source string) string {
 	if updatedAt == "" {
 		return ""
 	}
+	
+	// Show nothing for live data
 	if isLive {
 		return ""
+	}
+
+	// Synthetic/estimate data
+	if source == "estimate" {
+		return "Data temporarily unavailable"
 	}
 
 	t, err := time.Parse(time.RFC3339, updatedAt)
@@ -409,12 +415,30 @@ func formatUpdatedLabel(updatedAt string, isLive bool) string {
 		return ""
 	}
 
-	// Fresh data (< 1 hour) - no label needed
+	// Yahoo Finance data is ~15 min delayed (not live)
+	if source == "yahoo" {
+		loc, err := time.LoadLocation("America/New_York")
+		if err != nil {
+			loc = time.UTC
+		}
+		localTime := t.In(loc)
+		
+		// Recent (< 1 day)
+		if age < 24*time.Hour {
+			return fmt.Sprintf("Delayed · %s ET", localTime.Format("3:04 PM"))
+		}
+		// Older data
+		if age < 7*24*time.Hour {
+			return fmt.Sprintf("Last close %s", localTime.Format("Mon 3:04 PM"))
+		}
+		return fmt.Sprintf("Delayed (as of %s)", localTime.Format("Jan 2"))
+	}
+
+	// Other sources - same age-based logic
 	if age < time.Hour {
 		return ""
 	}
 
-	// Recent data (1-24 hours) - show time ago
 	if age < 24*time.Hour {
 		hours := int(age.Hours())
 		if hours == 1 {
@@ -423,7 +447,6 @@ func formatUpdatedLabel(updatedAt string, isLive bool) string {
 		return fmt.Sprintf("Updated %dh ago", hours)
 	}
 
-	// Old data (> 24 hours) - label as delayed/last close
 	loc, err := time.LoadLocation("America/New_York")
 	if err != nil {
 		loc = time.UTC
@@ -622,35 +645,49 @@ func safePrefix(s string) string {
 func (a *API) ServeHome(w http.ResponseWriter, r *http.Request) {
 	data := &PageData{
 		ActivePage:  "home",
-		Title:       "Live Oil Prices — Real-Time Crude Oil, WTI, Brent & Energy Market Data",
-		Description: "Live oil prices updated every 15 seconds. Track WTI crude, Brent crude, natural gas, heating oil, RBOB gasoline, and OPEC basket prices with interactive charts and breaking energy market news.",
+		Title:       "Live Oil Prices — Latest Crude Oil, WTI, Brent & Energy Market Data",
+		Description: "Latest oil prices for WTI crude, Brent crude, natural gas, heating oil, RBOB gasoline, and OPEC basket with interactive charts and breaking energy market news.",
 		Keywords:    "oil prices, crude oil price, WTI price, Brent crude price, live oil prices, oil price today, natural gas price, heating oil, RBOB gasoline, OPEC, energy market, oil chart, oil news",
 		Canonical:   "https://liveoilprices.com/",
-		OGTitle:     "Live Oil Prices — Real-Time Crude Oil & Energy Market Data",
-		OGDescription: "Track WTI, Brent, natural gas, and 10+ energy commodities with live prices, interactive charts, and breaking market news.",
+		OGTitle:     "Live Oil Prices — Latest Crude Oil & Energy Market Data",
+		OGDescription: "Track WTI, Brent, natural gas, and 10+ energy commodities with latest prices, interactive charts, and breaking market news.",
 		SchemaType:    "WebSite",
 	}
 
 	// Populate market data first so we can access current prices
 	a.populateMarketData(data)
 
-	// Update title/description with real prices if available
+	// Update title/description with real prices if available and not synthetic
 	wtiPrice := ""
 	brentPrice := ""
+	hasLiveData := false
 	for _, p := range data.Prices {
-		if p.Symbol == "WTI" && p.Price > 0 {
+		if p.Symbol == "WTI" && p.Price > 0 && p.Source != "estimate" {
 			wtiPrice = fmt.Sprintf("$%.2f", p.Price)
+			if p.IsLive {
+				hasLiveData = true
+			}
 		}
-		if p.Symbol == "BRENT" && p.Price > 0 {
+		if p.Symbol == "BRENT" && p.Price > 0 && p.Source != "estimate" {
 			brentPrice = fmt.Sprintf("$%.2f", p.Price)
+			if p.IsLive {
+				hasLiveData = true
+			}
 		}
 	}
+	
+	dataLabel := "Latest"
+	if hasLiveData {
+		dataLabel = "Real-Time"
+	}
+	
 	if wtiPrice != "" && brentPrice != "" {
-		data.Title = fmt.Sprintf("Live Oil Prices — WTI %s, Brent %s | Real-Time Energy Market Data", wtiPrice, brentPrice)
+		data.Title = fmt.Sprintf("Live Oil Prices — WTI %s, Brent %s | %s Energy Market Data", wtiPrice, brentPrice, dataLabel)
 		data.OGTitle = fmt.Sprintf("Live Oil Prices — WTI %s, Brent %s", wtiPrice, brentPrice)
 	} else if wtiPrice != "" {
-		data.Title = fmt.Sprintf("Live Oil Prices — WTI %s | Real-Time Crude Oil & Energy Market Data", wtiPrice)
+		data.Title = fmt.Sprintf("Live Oil Prices — WTI %s | %s Crude Oil & Energy Market Data", wtiPrice, dataLabel)
 	}
+	// If no real prices, keep the generic static title
 
 	data.StructuredData = []any{
 		map[string]any{
@@ -658,14 +695,14 @@ func (a *API) ServeHome(w http.ResponseWriter, r *http.Request) {
 			"@type":       "Organization",
 			"name":        "Live Oil Prices",
 			"url":         "https://liveoilprices.com",
-			"description": "Real-time energy market data, interactive oil price charts, statistical price forecasts, and breaking energy news.",
+			"description": "Latest energy market data, interactive oil price charts, statistical price forecasts, and breaking energy news.",
 		},
 		map[string]any{
 			"@context":    "https://schema.org",
 			"@type":       "WebSite",
 			"name":        "Live Oil Prices",
 			"url":         "https://liveoilprices.com",
-			"description": "Live crude oil prices, energy market charts, statistical price forecasts and breaking oil and gas news.",
+			"description": "Latest crude oil prices, energy market charts, statistical price forecasts and breaking oil and gas news.",
 			"potentialAction": map[string]any{
 				"@type":       "SearchAction",
 				"target":      "https://liveoilprices.com/commodity/{search_term_string}",

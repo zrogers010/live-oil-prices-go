@@ -4,19 +4,19 @@
         <div class="hero-chart-title-block">
             <div class="hero-chart-symbol">
                 {{.Title}}
-                <span class="hero-live-pill" data-role="live-pill" title="Streaming real-time 1-minute candles"{{if not .Price.IsLive}} style="display:none;"{{end}}>
+                <span class="hero-live-pill" data-role="live-pill" title="Streaming live 1-minute candles"{{if not .Price.IsLive}} style="display:none;"{{end}}>
                     <span class="hero-live-dot" data-role="live-dot"></span>
                     LIVE
                 </span>
             </div>
-            <div class="hero-chart-contract" data-role="contract">{{if .Price.Contract}}{{.Price.Contract}}{{else}}Front month{{end}}</div>
+            <div class="hero-chart-contract" data-role="contract">{{if .Price}}{{if ne .Price.Source "estimate"}}{{if .Price.Contract}}{{.Price.Contract}}{{else}}Front month{{end}}{{else}}—{{end}}{{else}}—{{end}}</div>
         </div>
         <div class="hero-chart-price-block">
-            <div class="hero-chart-price" data-role="price">{{if .Price}}${{printf "%.2f" .Price.Price}}{{else}}—{{end}}</div>
-            <div class="hero-chart-change {{if .Price}}{{if .Price.IsPositive}}positive{{else}}negative{{end}}{{end}}" data-role="change">{{if .Price}}{{.Price.Sign}}{{printf "%.2f" .Price.Change}} ({{.Price.Sign}}{{printf "%.2f" .Price.ChangePct}}%){{else}}—{{end}}</div>
+            <div class="hero-chart-price" data-role="price">{{if .Price}}{{if ne .Price.Source "estimate"}}${{printf "%.2f" .Price.Price}}{{else}}—{{end}}{{else}}—{{end}}</div>
+            <div class="hero-chart-change {{if .Price}}{{if ne .Price.Source "estimate"}}{{if .Price.IsPositive}}positive{{else}}negative{{end}}{{end}}{{end}}" data-role="change">{{if .Price}}{{if ne .Price.Source "estimate"}}{{.Price.Sign}}{{printf "%.2f" .Price.Change}} ({{.Price.Sign}}{{printf "%.2f" .Price.ChangePct}}%){{else}}—{{end}}{{else}}—{{end}}</div>
         </div>
         <div class="hero-chart-source-block">
-            <span class="hero-chart-source" data-role="source">{{if .Price.IsLive}}Real-time{{else if .Price.Source}}{{if eq .Price.Source "pyth"}}Pyth Network{{else if eq .Price.Source "yahoo"}}Yahoo Finance{{else}}Market data{{end}}{{end}}</span>
+            <span class="hero-chart-source" data-role="source">{{if .Price}}{{if eq .Price.Source "estimate"}}{{else if .Price.IsLive}}Live{{else if eq .Price.Source "pyth"}}Pyth Network{{else if eq .Price.Source "yahoo"}}Market data{{else}}Market data{{end}}{{end}}</span>
             <span class="hero-chart-updated" data-role="updated">{{if .Price.UpdatedLabel}}{{.Price.UpdatedLabel}}{{end}}</span>
         </div>
     </div>

@@ -1141,7 +1141,6 @@ function renderBacktestBlock(p: Prediction): string {
   return `
     <div class="backtest-credibility" aria-label="Backtest credibility">
       <div class="backtest-verdict">
-        <span class="backtest-verdict-icon" aria-hidden="true">📊</span>
         <span class="backtest-verdict-text">${verdict}</span>
       </div>
       <dl class="backtest-stats">

@@ -6,65 +6,81 @@ This document explains the data sources used by Live Oil Prices and their licens
 
 ### 1. Pyth Network (Real-Time Streaming Data)
 
-**Usage:** Real-time WTI crude oil spot prices (1-minute candle data)
+**Usage:** Real-time WTI and Brent crude oil spot prices (1-minute candle data)
 
-**License:** Creative Commons Attribution 4.0 International (CC BY 4.0)
+**License:** Paid subscription required via Pyth Pro
 
-**Terms:**
-- Free to use with attribution
-- Commercial use permitted
-- Modifications allowed
-- Must give appropriate credit
+**Important:** Pyth Network data is **NOT** open source or CC BY 4.0 licensed for production use. Display rights require a paid Pyth Pro subscription:
+
+- **Pyth Pro Starter:** $500/month minimum, crypto-only assets
+- **Pyth Pro (Commodities):** Starting from $2,500/month for commodities like WTI and Brent
+- No redistribution rights under Douro Labs Subscription Terms
+- API key required for production use
+
+**Current Status:**
+The production instance is receiving `hermes status 401: unauthorized` errors, indicating no valid PYTH_API_KEY is configured.
+
+**Setup Requirements:**
+```bash
+# Required environment variables
+export PYTH_API_KEY="your_api_key_here"
+export PYTH_HERMES_BASE_URL="https://hermes.pyth.network"
+```
+
+**To Subscribe:**
+1. Visit https://www.pyth.network/price-feeds
+2. Choose Pyth Pro plan (commodities require Pro tier, $2,500/month+)
+3. Obtain API key and configure Hermes endpoint
+4. Set environment variables in `/etc/liveoilprices/env`
 
 **Attribution:**
-The site footer includes: "Real-time WTI price data via Pyth Network, licensed under CC BY 4.0"
-
-**License Details:** https://creativecommons.org/licenses/by/4.0/
+While using Pyth data, attribution is required. The site footer includes: "Real-time WTI price data via Pyth Network"
 
 **Redistribution Notes:**
-- ✅ **Permitted:** Displaying prices, creating charts, building applications
-- ✅ **Permitted:** Redistributing data with proper attribution
-- ⚠️ **Required:** Must include attribution to Pyth Network
-- ⚠️ **Required:** Must indicate if modifications were made
+- Display on your own site with paid subscription
+- No bulk redistribution or resale permitted
+- Commercial use requires Pro subscription
+- Terms: https://pyth.network/terms-of-use
 
 **Pyth Network Resources:**
 - Website: https://www.pyth.network/
-- Data License: https://www.pyth.network/terms-of-use
-- Privacy Policy: https://www.pyth.network/privacy-policy
+- Pricing: https://www.pyth.network/price-feeds
+- Developer Docs: https://docs.pyth.network/
 
 ### 2. Yahoo Finance (Historical & Daily Data)
 
 **Usage:** Daily OHLCV (Open, High, Low, Close, Volume) data for multiple commodities
 
-**License:** Yahoo's Terms of Service (personal/non-commercial use)
+**License:** Unlicensed / Personal Non-Commercial Use Only
 
-**Terms:**
-- Free for personal and non-commercial use
-- No redistribution of bulk data
-- Cannot create competing financial data products
-- Reasonable display of quotes is permitted
+**Important:** Yahoo Finance's unofficial API endpoints are:
+- **NOT licensed for commercial use**
+- Limited to personal, non-commercial use only
+- Explicitly prohibit automated access in Yahoo's Terms of Service
+- Not cleared for ad-supported websites
 
-**Attribution:**
-The site footer includes: "Other commodities via Yahoo Finance (15-min delayed)"
+**Redistribution Notes:**
+- Displaying quotes on ad-supported sites violates Yahoo's ToS
+- No bulk data export or API reselling
+- Automated scraping is against terms
+- **Not suitable for production with AdSense enabled**
 
-**Redistribution Notes for Ad-Supported Sites:**
-- ✅ **Permitted:** Displaying individual price quotes on ad-supported websites
-- ✅ **Permitted:** Creating charts from Yahoo Finance data for site users
-- ❌ **Not Permitted:** Bulk data export or API reselling
-- ❌ **Not Permitted:** Creating competing financial data feeds
-- ⚠️ **Advisory:** Ad-supported websites displaying Yahoo Finance data should review Yahoo's terms
+**Recommendation:**
+Replace Yahoo Finance with a licensed commercial data provider **before** enabling AdSense:
 
-**Important for Running Ads:**
-Yahoo Finance's terms generally allow display of quotes on websites, including ad-supported sites, as long as you're not primarily monetizing the data itself. Since Live Oil Prices is an **editorial site** providing market analysis, news, and charts (not a pure data reseller), displaying Yahoo Finance data alongside advertising is typically within acceptable use.
+**Recommended Alternatives:**
+- **IEX Cloud** (https://iexcloud.io) - Clear commercial licensing, API-based
+- **Alpha Vantage** (https://www.alphavantage.co) - Free tier + commercial plans
+- **Twelve Data** (https://twelvedata.com) - Real-time and historical financial data
+- **Polygon.io** (https://polygon.io) - Financial market data APIs with commercial rights
+- **Quandl/Nasdaq Data Link** (https://data.nasdaq.com) - Historical and alternative data
 
-**Recommendation:** If running ads and using Yahoo Finance data at scale, consider:
-1. Reviewing Yahoo Finance's current Terms of Service
-2. Contacting Yahoo Finance for clarification if needed
-3. Consider switching to a commercial data provider (e.g., IEX Cloud, Alpha Vantage, Twelve Data) for long-term commercial operations
+**Current Usage:**
+The site footer states: "Other commodities via Yahoo Finance (15-min delayed)"
 
 **Yahoo Finance Resources:**
 - Terms of Service: https://legal.yahoo.com/us/en/yahoo/terms/otos/index.html
-- API Documentation: (No official public API; site scraping is against ToS)
+- No official public API documentation
 
 ### 3. EIA (U.S. Energy Information Administration)
 
@@ -74,66 +90,63 @@ Yahoo Finance's terms generally allow display of quotes on websites, including a
 
 **Terms:**
 - All EIA data is in the public domain
-- No attribution required (but provided as best practice)
 - Free for any use, including commercial
+- Citation requested (but not required)
+- No restrictions on redistribution
 
 **Attribution:**
-Forecasts include source links to EIA STEO releases
+Forecasts include source links to EIA STEO releases and state "Source: EIA STEO"
 
 **Redistribution Notes:**
-- ✅ **Permitted:** All uses, including commercial redistribution
-- ✅ **No restrictions:** Public domain, no permission needed
+- All uses permitted, including commercial redistribution
+- No permission needed
+- Public domain, no licensing concerns
 
 **EIA Resources:**
-- API Key Registration: https://www.eia.gov/opendata/register.php
+- API Key Registration: https://www.eia.gov/opendata/register.php (free)
 - Terms of Service: https://www.eia.gov/about/copyrights_reuse.php
 - STEO Data: https://www.eia.gov/outlooks/steo/
 
 ## Running Ads: Licensing Summary
 
-| Data Source | Commercial Use | Ads Permitted | Notes |
-|-------------|----------------|---------------|-------|
-| **Pyth Network** | ✅ Yes | ✅ Yes | Requires CC BY 4.0 attribution |
-| **Yahoo Finance** | ⚠️ Review ToS | ⚠️ Likely OK | Editorial use typically fine; bulk resale is not |
-| **EIA** | ✅ Yes | ✅ Yes | Public domain, no restrictions |
-| **Generated/Estimated** | ✅ Yes | ✅ Yes | Model-generated forecasts and synthetic data |
+| Data Source | Commercial Use | Ads Permitted | Status | Notes |
+|-------------|----------------|---------------|--------|-------|
+| **Pyth Network** | $2,500+/month | With subscription | 401 Unauthorized | Requires paid Pyth Pro subscription + API key |
+| **Yahoo Finance** | No | No | Not licensed | Violates ToS for ad-supported sites; replace before enabling ads |
+| **EIA** | Yes | Yes | Public domain | No restrictions |
+| **Generated/Estimated** | Yes | Yes | Original work | Model-generated forecasts and synthetic fallback data |
 
-### Key Considerations for Ads:
+### Critical Issues for Monetization:
 
-1. **Pyth Network:** Fully licensed for commercial use. Attribution is included.
+1. **Pyth Network:** Currently not working (`401 unauthorized`). Requires:
+   - Paid subscription ($2,500/month for commodities)
+   - Valid PYTH_API_KEY configuration
+   - Budget approval for ongoing monthly costs
 
-2. **Yahoo Finance:** Generally permits displaying quotes on websites (including ad-supported ones) as long as the site provides editorial value and isn't solely a data redistribution service. Live Oil Prices includes analysis, news, forecasts, and charts, making it an editorial site rather than a pure data feed.
+2. **Yahoo Finance:** **NOT CLEARED FOR AD-SUPPORTED USE**
+   - Must replace with licensed provider before enabling AdSense
+   - Continuing to use Yahoo Finance with ads risks legal action
+   - Recommended: Switch to IEX Cloud, Alpha Vantage, or Polygon.io
 
-3. **EIA:** Public domain, no concerns.
+3. **EIA:** No concerns, public domain
 
-4. **Generated Data:** Forecast models, synthetic fallback data, and analysis are original work.
+### Recommendations Before Enabling AdSense:
 
-### Best Practices:
-
-- ✅ **Attribution is present:** Pyth Network is credited in the footer
-- ✅ **Editorial content:** The site provides analysis, not just raw data
-- ✅ **No bulk export:** Users cannot download raw data files
-- ✅ **Privacy policy:** Discloses data sources and practices
-- ✅ **Public domain prioritized:** EIA data is used where possible
-
-## Future Considerations
-
-If the site scales significantly or Yahoo Finance objects to the usage, consider switching to:
-
-- **IEX Cloud** (https://iexcloud.io) - Commercial data API with clear pricing
-- **Alpha Vantage** (https://www.alphavantage.co) - Free tier + commercial plans
-- **Twelve Data** (https://twelvedata.com) - Real-time and historical financial data
-- **Polygon.io** (https://polygon.io) - Financial market data APIs
-
-These providers explicitly support commercial use and advertising-supported websites.
+1. **Replace Yahoo Finance immediately** with a licensed commercial data provider
+2. **Subscribe to Pyth Pro** and configure PYTH_API_KEY, or remove live price features
+3. **Alternative:** Use only EIA public domain data + your own analysis/forecasts until commercial data sources are secured
+4. **Budget:** Plan for $2,500-5,000/month in data costs for Pyth + commercial provider
 
 ## Legal Disclaimer
 
 **This document provides general guidance and is not legal advice.** The owner/operator of liveoilprices.com should:
 
 1. Review each data provider's current Terms of Service
-2. Consult with legal counsel if operating at significant scale
-3. Monitor for any updates to data licensing terms
-4. Consider commercial data providers for long-term commercial operations
+2. Consult with legal counsel before monetizing the site
+3. Secure proper commercial data licenses before enabling advertising
+4. Monitor for any updates to data licensing terms
+5. Budget for commercial data subscriptions ($3,000-6,000/month estimated)
+
+**Do not enable AdSense until Yahoo Finance is replaced with a licensed provider.**
 
 Last updated: October 17, 2026

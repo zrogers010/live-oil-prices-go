@@ -17,10 +17,17 @@ SyslogIdentifier=liveoilprices
 
 Environment=PORT=8080
 
-# Optional secrets file. Contains lines like `EIA_API_KEY=xxxxx`.
+# Optional secrets file. Contains lines like `EIA_API_KEY=xxxxx`, `PYTH_API_KEY=xxxxx`, `ADSENSE_CLIENT=ca-pub-xxxxx`.
 # Create it on the server with:
 #   sudo install -d -m 700 -o deploy -g deploy /etc/liveoilprices
-#   sudo tee /etc/liveoilprices/env >/dev/null <<<'EIA_API_KEY=your-key'
+#   sudo tee /etc/liveoilprices/env >/dev/null <<EOF
+# EIA_API_KEY=your_eia_key_here
+# PYTH_API_KEY=your_pyth_key_here
+# PYTH_HERMES_BASE_URL=https://hermes.pyth.network
+# ADSENSE_CLIENT=ca-pub-XXXXXXXXXXXXXXXX
+# ADSENSE_SLOT_BELOW_PRICE_TABLE=1234567890
+# ADSENSE_SLOT_NEWS_FLOW=0987654321
+# EOF
 #   sudo chmod 600 /etc/liveoilprices/env
 # The leading "-" means systemd won't fail if the file is absent.
 EnvironmentFile=-/etc/liveoilprices/env
