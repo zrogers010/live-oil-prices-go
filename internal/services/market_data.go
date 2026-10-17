@@ -158,7 +158,6 @@ func (s *MarketDataService) GetPrices() []models.Price {
 	if s.pyth != nil {
 		pythData = s.pyth.GetQuotes()
 	}
-	now := time.Now().UTC().Format(time.RFC3339)
 	prices := make([]models.Price, len(allCommodities))
 
 	for i, c := range allCommodities {
@@ -178,27 +177,18 @@ func (s *MarketDataService) GetPrices() []models.Price {
 			prices[i] = yp
 			continue
 		}
-		// Synthetic fallback for commodities without a Yahoo Finance ticker
-		base := s.basePrices[c.symbol]
-		volatility := base * 0.008
-		change := (s.rng.Float64() - 0.45) * volatility
-		price := base + change
-		changePct := (change / base) * 100
-		dayVolatility := base * 0.02
-		high := price + s.rng.Float64()*dayVolatility
-		low := price - s.rng.Float64()*dayVolatility
-		volume := int64(500000 + s.rng.Intn(2000000))
+		// No synthetic fallback - return empty price for symbols without real data
 		prices[i] = models.Price{
 			Symbol:    c.symbol,
 			Name:      c.name,
-			Price:     math.Round(price*100) / 100,
-			Change:    math.Round(change*100) / 100,
-			ChangePct: math.Round(changePct*100) / 100,
-			High:      math.Round(high*100) / 100,
-			Low:       math.Round(low*100) / 100,
-			Volume:    volume,
-			UpdatedAt: now,
-			Source:    "estimate",
+			Price:     0,
+			Change:    0,
+			ChangePct: 0,
+			High:      0,
+			Low:       0,
+			Volume:    0,
+			UpdatedAt: "",
+			Source:    "",
 		}
 	}
 	return prices
@@ -227,35 +217,57 @@ func (s *MarketDataService) GetChartData(symbol string, days int, interval strin
 
 	// For daily intervals, return real Yahoo daily history
 	if interval == "1d" {
-		if bars := s.yahoo.GetDailyHistory(symbol, days); len(bars) > 0 {
+		if bars := s.yahoo.GetDailyHistoryByDate(symbol, days); len(bars) > 0 {
 			return models.ChartData{Symbol: symbol, Name: name, Interval: interval, Data: bars}
 		}
 		// No daily history - return empty
 		return models.ChartData{Symbol: symbol, Name: name, Interval: interval, Data: []models.OHLCV{}}
 	}
 
-	// For intraday intervals (2h, 4h), try to get intraday bars from Yahoo
-	// Yahoo provides 5-min bars for ~5 trading days
-	intradayBars, intradayInterval := s.yahoo.GetRolling24hIntraday(symbol)
-	if len(intradayBars) == 0 {
-		// Fall back to daily bars if available, sliced to the requested range
-		if bars := s.yahoo.GetDailyHistory(symbol, days); len(bars) > 0 {
+	// For intraday intervals (2h, 4h), fetch Yahoo intraday for the full range
+	var yahooInterval, yahooRange string
+	var hoursPerCandle int
+	
+	switch {
+	case days <= 1:
+		// 1 day: fetch 2d of 5m bars, aggregate to 1h
+		yahooInterval = "5m"
+		yahooRange = "2d"
+		hoursPerCandle = 1
+		interval = "1h"
+	case days <= 7:
+		// 1 week: fetch 5d of 15m bars, aggregate to 2h
+		yahooInterval = "15m"
+		yahooRange = "5d"
+		hoursPerCandle = 2
+		interval = "2h"
+	case days <= 30:
+		// 1 month: fetch 1mo of 60m bars, aggregate to 4h
+		yahooInterval = "60m"
+		yahooRange = "1mo"
+		hoursPerCandle = 4
+		interval = "4h"
+	default:
+		// Fall back to daily
+		if bars := s.yahoo.GetDailyHistoryByDate(symbol, days); len(bars) > 0 {
 			return models.ChartData{Symbol: symbol, Name: name, Interval: "1d", Data: bars}
 		}
 		return models.ChartData{Symbol: symbol, Name: name, Interval: interval, Data: []models.OHLCV{}}
 	}
 
-	// Aggregate 5-min bars to requested interval
-	var hoursPerCandle int
-	if interval == "2h" {
-		hoursPerCandle = 2
-	} else {
-		hoursPerCandle = 4
+	intradayBars := s.yahoo.FetchIntradayRange(symbol, yahooInterval, yahooRange)
+	if len(intradayBars) == 0 {
+		// Fall back to daily bars if available, sliced to the requested range
+		if bars := s.yahoo.GetDailyHistoryByDate(symbol, days); len(bars) > 0 {
+			return models.ChartData{Symbol: symbol, Name: name, Interval: "1d", Data: bars}
+		}
+		return models.ChartData{Symbol: symbol, Name: name, Interval: interval, Data: []models.OHLCV{}}
 	}
 
+	// Aggregate to requested interval
 	aggregated := aggregateBars(intradayBars, hoursPerCandle)
 	
-	// Slice to requested days
+	// Slice to requested days by calendar date
 	if days > 0 && days < 100 {
 		cutoff := time.Now().UTC().Add(-time.Duration(days) * 24 * time.Hour).Unix()
 		filtered := make([]models.OHLCV, 0, len(aggregated))
@@ -267,7 +279,7 @@ func (s *MarketDataService) GetChartData(symbol string, days int, interval strin
 		aggregated = filtered
 	}
 
-	return models.ChartData{Symbol: symbol, Name: name, Interval: intradayInterval, Data: aggregated}
+	return models.ChartData{Symbol: symbol, Name: name, Interval: interval, Data: aggregated}
 }
 
 // aggregateBars aggregates 5-min (or similar) bars into larger hourly candles

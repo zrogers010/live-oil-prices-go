@@ -1,50 +1,45 @@
 package services
 
 import (
-	"math"
+	"live-oil-prices-go/internal/models"
 	"math/rand"
 	"testing"
 	"time"
 )
 
 func newDeterministicMarketDataService() *MarketDataService {
-	return &MarketDataService{
-		rng: rand.New(rand.NewSource(42)),
-		basePrices: map[string]float64{
-			"WTI":    72.45,
-			"BRENT":  76.82,
-			"NATGAS": 3.24,
-			"HEATING": 2.35,
-			"RBOB":   2.18,
-			"OPEC":   74.50,
-			"DUBAI":  75.10,
-			"MURBAN": 76.30,
-			"WCS":    58.20,
-			"GASOIL": 685.50,
-		},
+	bases := map[string]float64{
+		"WTI":     72.45,
+		"BRENT":   76.82,
+		"NATGAS":  3.24,
+		"HEATING": 2.35,
+		"RBOB":    2.18,
+		"OPEC":    74.50,
+		"DUBAI":   75.10,
+		"MURBAN":  76.30,
+		"WCS":     58.20,
+		"GASOIL":  685.50,
 	}
+
+	svc := &MarketDataService{
+		rng:        rand.New(rand.NewSource(42)),
+		basePrices: bases,
+		yahoo:      nil,
+		pyth:       nil,
+		eia:        nil,
+	}
+	return svc
 }
 
 func TestGetPricesReturnsAllCommodities(t *testing.T) {
 	svc := newDeterministicMarketDataService()
 	prices := svc.GetPrices()
-
 	if len(prices) != len(allCommodities) {
-		t.Fatalf("expected %d prices, got %d", len(allCommodities), len(prices))
+		t.Fatalf("expected %d commodities, got %d", len(allCommodities), len(prices))
 	}
-
 	for _, p := range prices {
-		if p.Symbol == "" {
-			t.Fatalf("price symbol should not be empty")
-		}
-		if p.Name == "" {
-			t.Fatalf("price name should not be empty")
-		}
-		if p.UpdatedAt == "" {
-			t.Fatalf("updatedAt should be set")
-		}
-		if math.IsNaN(p.Price) || math.IsNaN(p.Change) || math.IsNaN(p.ChangePct) {
-			t.Fatalf("price fields should be numeric: %#v", p)
+		if p.Symbol == "" || p.Name == "" {
+			t.Fatalf("missing symbol or name in %+v", p)
 		}
 	}
 }
@@ -89,6 +84,7 @@ func TestGetChartDataDefaultsAndOverrides(t *testing.T) {
 		t.Fatalf("expected explicit interval override to win, got %q", override.Interval)
 	}
 }
+
 func TestGetChartDataUnknownSymbolFallsBack(t *testing.T) {
 	svc := newDeterministicMarketDataService()
 	data := svc.GetChartData("UNKNOWN", 7, "")
@@ -144,6 +140,57 @@ func TestGetChartDataIsStableAcrossCalls(t *testing.T) {
 	if len(first.Data) != len(second.Data) || len(second.Data) != len(third.Data) {
 		t.Fatalf("inconsistent bar counts across calls: %d / %d / %d",
 			len(first.Data), len(second.Data), len(third.Data))
+	}
+}
+
+// TestAggregateBars tests the OHLCV aggregation logic
+func TestAggregateBars(t *testing.T) {
+	now := time.Now().Unix()
+	
+	// Create 12 5-min bars (1 hour total)
+	bars := make([]models.OHLCV, 12)
+	for i := 0; i < 12; i++ {
+		bars[i] = models.OHLCV{
+			Time:   now + int64(i*300), // 5-min intervals
+			Open:   100.0 + float64(i),
+			High:   105.0 + float64(i),
+			Low:    95.0 + float64(i),
+			Close:  102.0 + float64(i),
+			Volume: 1000 + int64(i*100),
+		}
+	}
+	
+	// Aggregate to 1-hour candles (12 bars -> 1 bar)
+	aggregated := aggregateBars(bars, 1)
+	
+	if len(aggregated) != 1 {
+		t.Fatalf("expected 1 aggregated bar, got %d", len(aggregated))
+	}
+	
+	bar := aggregated[0]
+	// Open should be from first bar
+	if bar.Open != 100.0 {
+		t.Errorf("expected open 100.0, got %.2f", bar.Open)
+	}
+	// Close should be from last bar
+	if bar.Close != 113.0 { // 102.0 + 11
+		t.Errorf("expected close 113.0, got %.2f", bar.Close)
+	}
+	// High should be max of all highs
+	if bar.High != 116.0 { // 105.0 + 11
+		t.Errorf("expected high 116.0, got %.2f", bar.High)
+	}
+	// Low should be min of all lows
+	if bar.Low != 95.0 {
+		t.Errorf("expected low 95.0, got %.2f", bar.Low)
+	}
+	// Volume should be sum
+	expectedVolume := int64(0)
+	for i := 0; i < 12; i++ {
+		expectedVolume += 1000 + int64(i*100)
+	}
+	if bar.Volume != expectedVolume {
+		t.Errorf("expected volume %d, got %d", expectedVolume, bar.Volume)
 	}
 }
 
