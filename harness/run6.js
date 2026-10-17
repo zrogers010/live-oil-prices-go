@@ -1,8 +1,10 @@
 // PR42 v3 harness. Only /api/hero/* is stubbed (page.route) where `stub` is set; `doc` overrides the HTML document (SSR fixture).
-const { chromium } = require('/workspace/lop-review/head5/node_modules/playwright');
+const { chromium } = require('playwright');
 const fs = require('fs');
-const H = process.env.TARGET || 'http://localhost:8146';
-const OUT = process.env.OUT || '/workspace/lop-review/harness/out6.txt';
+const path = require('path');
+const H = process.env.TARGET || 'http://localhost:8080';
+const OUT = process.env.OUT || '/tmp/harness-out.txt';
+const HARNESS_DIR = path.join(__dirname);
 const ONLY = process.env.ONLY ? new RegExp(process.env.ONLY) : null;
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const VIS_INIT = () => {
@@ -24,7 +26,7 @@ async function scenario(browser, name, opts, script) {
   const perr = []; page.on('pageerror', e => perr.push(((Date.now() - t0) / 1000).toFixed(1) + ' ' + e.message));
   const st = { mode: opts.mode, delayed: opts.delayed, delayMs: opts.delayMs || 0, plan: opts.plan || null, n: { WTI: 0, BRENT: 0 }, onReq: null, modeAtRespond: true };
   page.on('request', r => { const m = r.url().match(/\/api\/hero\/(WTI|BRENT)/); if (m) { reqs.push({ sym: m[1], t: (Date.now() - t0) / 1000 }); if (st.onReq) st.onReq(m[1]); } });
-  if (opts.doc) await page.route(u => new URL(u).pathname === '/', route => route.fulfill({ status: 200, contentType: 'text/html', body: fs.readFileSync(opts.doc, 'utf8') }));
+  if (opts.doc) await page.route(u => new URL(u).pathname === '/', route => route.fulfill({ status: 200, contentType: 'text/html', body: fs.readFileSync(path.join(HARNESS_DIR, opts.doc), 'utf8') }));
   if (opts.stub) {
     await page.route(/\/api\/hero\/(WTI|BRENT)/, async route => { try {
       const sym = route.request().url().match(/\/api\/hero\/(WTI|BRENT)/)[1];
@@ -190,9 +192,9 @@ const left = () => ({ WTI: 0, BRENT: 0 });
   }));
   // ---- 6. badges
   S.push(scenario(browser, 'B1 SSR real Yahoo (JS off)', { js: false }, async () => {}));
-  S.push(scenario(browser, 'B2 SSR fixture: stale Pyth price (JS off)', { js: false, doc: '/tmp/ssr5-pyth-stale.html' }, async () => {}));
-  S.push(scenario(browser, 'B3 SSR fixture: fresh Pyth price (JS off)', { js: false, doc: '/tmp/ssr5-pyth-fresh.html' }, async () => {}));
-  S.push(scenario(browser, 'B4 stale-Pyth SSR + JS, hero today-paused delayed=false', { doc: '/tmp/ssr5-pyth-stale.html', stub: true, mode: 'today-paused', delayed: false }, async ({ snap }) => { await sleep(4000); await snap('afterJS'); }));
+  S.push(scenario(browser, 'B2 SSR fixture: stale Pyth price (JS off)', { js: false, doc: 'ssr5-pyth-stale.html' }, async () => {}));
+  S.push(scenario(browser, 'B3 SSR fixture: fresh Pyth price (JS off)', { js: false, doc: 'ssr5-pyth-fresh.html' }, async () => {}));
+  S.push(scenario(browser, 'B4 stale-Pyth SSR + JS, hero today-paused delayed=false', { doc: 'ssr5-pyth-stale.html', stub: true, mode: 'today-paused', delayed: false }, async ({ snap }) => { await sleep(4000); await snap('afterJS'); }));
   S.push(scenario(browser, 'B5 Yahoo SSR + JS, stub prior-session', { stub: true, mode: 'prior-session' }, async ({ st, snap }) => { st.sessionDate = '2026-10-16'; await sleep(4000); await snap('afterJS'); }));
   S.push(scenario(browser, 'B6 Yahoo SSR + JS, stub live', { stub: true, mode: 'live' }, async ({ snap }) => { await sleep(4000); await snap('afterJS'); await sleep(12000); await snap('afterPoll'); }));
   S.push(scenario(browser, 'B7 Yahoo SSR + JS, stub warming-up (empty bars)', { stub: true, plan: () => null, mode: 'warming-up' }, async ({ snap }) => { await sleep(4000); await snap('afterJS'); }));
