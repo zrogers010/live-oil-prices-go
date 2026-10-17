@@ -12,7 +12,6 @@ type fakeMarketDataService struct {
 	getPricesFunc     func() []models.Price
 	getChartDataFunc  func(symbol string, days int, interval string) models.ChartData
 	getPredictionsFunc func() []models.Prediction
-	getAnalysisFunc    func() models.MarketAnalysis
 }
 
 func (f *fakeMarketDataService) GetPrices() []models.Price {
@@ -36,12 +35,6 @@ func (f *fakeMarketDataService) GetPredictions() []models.Prediction {
 	return f.getPredictionsFunc()
 }
 
-func (f *fakeMarketDataService) GetAnalysis() models.MarketAnalysis {
-	if f.getAnalysisFunc == nil {
-		return models.MarketAnalysis{}
-	}
-	return f.getAnalysisFunc()
-}
 
 func (f *fakeMarketDataService) GetHeroChart(symbol string, maxLiveBars int) models.HeroChart {
 	return models.HeroChart{Symbol: symbol, Mode: "warming-up", Bars: []models.PythCandle{}}
@@ -110,9 +103,6 @@ func TestRegisterRoutesPriceAndAnalysis(t *testing.T) {
 			getPredictionsFunc: func() []models.Prediction {
 				return []models.Prediction{{Symbol: "WTI", Name: "WTI Crude Oil", Current: 72.1, Predicted: 73.0, Timeframe: "7 days", Confidence: 0.8, Direction: "bullish", Analysis: "Test"}}
 			},
-			getAnalysisFunc: func() models.MarketAnalysis {
-				return models.MarketAnalysis{Sentiment: "bullish", Score: 70, Summary: "Stable", KeyPoints: []string{"A"}, UpdatedAt: "2024-01-01T00:00:00Z"}
-			},
 		},
 		&fakeNewsFeedService{
 			getNewsFunc: func() []models.NewsArticle {
@@ -152,17 +142,6 @@ func TestRegisterRoutesPriceAndAnalysis(t *testing.T) {
 	}
 	if len(predictions) != 1 {
 		t.Fatalf("expected one prediction, got %d", len(predictions))
-	}
-
-	analysisReq := httptest.NewRequest(http.MethodGet, "/api/analysis", nil)
-	analysisRes := httptest.NewRecorder()
-	mux.ServeHTTP(analysisRes, analysisReq)
-	var analysis models.MarketAnalysis
-	if err := json.Unmarshal(analysisRes.Body.Bytes(), &analysis); err != nil {
-		t.Fatalf("invalid analysis response: %v", err)
-	}
-	if analysis.Score != 70 {
-		t.Fatalf("unexpected analysis score: %v", analysis.Score)
 	}
 }
 

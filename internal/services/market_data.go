@@ -895,30 +895,3 @@ func mergeLiveBucket(series []models.PythCandle, live models.PythCandle) []model
 	// timestamp). Trust Yahoo, drop the stale Pyth bucket.
 	return series
 }
-
-func (s *MarketDataService) GetAnalysis() models.MarketAnalysis {
-	now := time.Now().UTC().Format(time.RFC3339)
-	wtiPrice := s.basePrices["WTI"]
-	if s.yahoo != nil {
-		if yp, ok := s.yahoo.GetPrices()["WTI"]; ok {
-			wtiPrice = yp.Price
-		}
-	}
-	return models.MarketAnalysis{
-		Sentiment: "bullish", Score: 72,
-		Summary: fmt.Sprintf("The crude oil market is displaying bullish momentum with WTI trading near $%.2f. Technical indicators are aligned with an upward bias as the 50-day moving average has crossed above the 200-day MA, forming a golden cross pattern. Fundamental drivers including OPEC+ supply discipline, declining US inventories, and resilient global demand support the constructive outlook. Key risk factors include potential demand slowdown from economic headwinds and the possibility of OPEC+ policy changes.", wtiPrice),
-		KeyPoints: []string{
-			"OPEC+ production cuts extended through Q3 2026, removing ~2.2 million bpd from market",
-			"US crude inventories fell 4.2 million barrels, 3rd consecutive weekly draw",
-			"China crude imports at record 12.4 million bpd supporting global demand",
-			"Technical golden cross pattern on WTI daily chart signals bullish trend",
-			"Geopolitical risk premium elevated due to Middle East tensions",
-			"IEA raised 2026 demand growth forecast to 1.4 million bpd",
-		},
-		Technical: models.TechnicalSignals{
-			RSI: 58.4, MACD: "bullish crossover", Signal: "buy",
-			MovingAvg50: r2(wtiPrice - 1.20), MovingAvg200: r2(wtiPrice - 3.50), Trend: "uptrend",
-		},
-		UpdatedAt: now,
-	}
-}

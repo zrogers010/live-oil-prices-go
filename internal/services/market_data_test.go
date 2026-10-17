@@ -256,24 +256,4 @@ func TestGetPredictionsTrackCurrentPrices(t *testing.T) {
 	}
 }
 
-func TestGetAnalysisIncludesCoreFields(t *testing.T) {
-	svc := newDeterministicMarketDataService()
-	analysis := svc.GetAnalysis()
-
-	if analysis.Sentiment != "bullish" {
-		t.Fatalf("expected bullish sentiment, got %q", analysis.Sentiment)
-	}
-	if analysis.Score < 0 || analysis.Score > 100 {
-		t.Fatalf("expected score between 0 and 100, got %.2f", analysis.Score)
-	}
-	if len(analysis.KeyPoints) == 0 {
-		t.Fatalf("expected analysis key points")
-	}
-	if analysis.Technical.Trend == "" {
-		t.Fatalf("expected technical trend")
-	}
-	if analysis.UpdatedAt == "" {
-		t.Fatalf("expected updatedAt")
-	}
-}
 

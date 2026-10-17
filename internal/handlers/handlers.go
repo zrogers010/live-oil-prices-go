@@ -13,7 +13,6 @@ type MarketDataClient interface {
 	GetPrices() []models.Price
 	GetChartData(symbol string, days int, interval string) models.ChartData
 	GetPredictions() []models.Prediction
-	GetAnalysis() models.MarketAnalysis
 	GetHeroChart(symbol string, maxLiveBars int) models.HeroChart
 	GetConsensusForecasts() []models.ConsensusForecast
 	GetConsensusForecast(symbol string) (models.ConsensusForecast, bool)
@@ -40,7 +39,6 @@ func (a *API) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/news", middleware.JSON(a.GetNews))
 	mux.HandleFunc("GET /api/news/{id}", middleware.JSON(a.GetNewsArticle))
 	mux.HandleFunc("GET /api/predictions", middleware.JSON(a.GetPredictions))
-	mux.HandleFunc("GET /api/analysis", middleware.JSON(a.GetAnalysis))
 	mux.HandleFunc("GET /api/consensus", middleware.JSON(a.GetConsensusForecasts))
 	mux.HandleFunc("GET /api/consensus/{symbol}", middleware.JSON(a.GetConsensusForecast))
 	mux.HandleFunc("GET /api/health", middleware.JSON(a.HealthCheck))
@@ -110,10 +108,6 @@ func (a *API) GetHeroChart(w http.ResponseWriter, r *http.Request) {
 
 func (a *API) GetPredictions(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(a.market.GetPredictions())
-}
-
-func (a *API) GetAnalysis(w http.ResponseWriter, r *http.Request) {
-	json.NewEncoder(w).Encode(a.market.GetAnalysis())
 }
 
 // GetConsensusForecasts returns every cached EIA STEO outlook in a stable

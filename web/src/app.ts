@@ -14,10 +14,13 @@ let currentCategory = 'all';
 // ignores it and always returns the full session.
 const HERO_MAX_BARS = 600;
 // HERO_LIVE_POLL_MS is how often we re-fetch the candle buffer in LIVE
-// mode. 2s lines up with the Pyth poll cadence on the server, so each
-// request typically picks up at least one new tick on the in-progress
-// candle.
-const HERO_LIVE_POLL_MS = 2000;
+// mode. 10s provides a good balance: frequent enough to keep the chart
+// feeling responsive, slow enough to avoid hammering the API.
+const HERO_LIVE_POLL_MS = 10_000;
+// HERO_DELAYED_POLL_MS is how often we poll when the feed is delayed
+// (Yahoo 15-min delayed quotes). 60s is sufficient since the underlying
+// data only updates every 15 minutes.
+const HERO_DELAYED_POLL_MS = 60_000;
 // HERO_PAUSED_POLL_MS is how often we re-fetch in prior-session mode. We
 // poll much less aggressively because the data only changes when markets
 // reopen — at which point we want to catch the transition within a minute.
@@ -47,6 +50,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initHeroControllers();
   loadAllData();
   setInterval(refreshPrices, 15000);
+  setupVisibilityHandling();
 });
 
 // initHeroControllers wires up one HeroChartController per .hero-chart-card
@@ -59,6 +63,21 @@ function initHeroControllers(): void {
     const symbol = card.dataset.symbol;
     if (!symbol || heroControllers.has(symbol)) return;
     heroControllers.set(symbol, new HeroChartController(symbol, card));
+  });
+}
+
+// setupVisibilityHandling pauses all hero chart polling when the tab is
+// hidden and resumes when visible, preventing wasted API calls in
+// background tabs.
+function setupVisibilityHandling(): void {
+  document.addEventListener('visibilitychange', () => {
+    heroControllers.forEach(controller => {
+      if (document.hidden) {
+        controller.pausePolling();
+      } else {
+        controller.resumePolling();
+      }
+    });
   });
 }
 
@@ -418,10 +437,30 @@ class HeroChartController {
       window.clearInterval(this.pollTimer);
       this.pollTimer = null;
     }
-    // Fast-poll in every mode that's "intra-session" so we resume
-    // ticking the moment Pyth wakes up. Only true prior-session
-    // (markets fully closed) drops to slow polling.
-    const interval = mode === 'prior-session' ? HERO_PAUSED_POLL_MS : HERO_LIVE_POLL_MS;
+    // Don't start polling if the tab is hidden.
+    if (document.hidden) return;
+    this.startPolling(mode);
+  }
+
+  private startPolling(mode: HeroMode): void {
+    // Choose polling interval based on the mode and whether we have
+    // a live feed. Delayed Yahoo data changes at most every 15 minutes,
+    // so 60s polling is sufficient. Live Pyth data ticks continuously,
+    // so we poll every 10s. Prior-session mode uses 60s since the data
+    // is static until markets reopen.
+    let interval: number;
+    if (mode === 'live') {
+      interval = HERO_LIVE_POLL_MS;
+    } else if (mode === 'today-paused' || mode === 'warming-up') {
+      // today-paused can be either delayed Yahoo or paused Pyth.
+      // Use delayed interval since we can't easily distinguish here,
+      // and 60s is safe for both cases.
+      interval = HERO_DELAYED_POLL_MS;
+    } else {
+      // prior-session: slow polling, data won't change until reopen.
+      interval = HERO_PAUSED_POLL_MS;
+    }
+    
     this.pollTimer = window.setInterval(async () => {
       try {
         const payload = await getHeroChart(this.symbol, HERO_MAX_BARS);
@@ -430,6 +469,31 @@ class HeroChartController {
         // Transient network error — next tick will recover.
       }
     }, interval);
+  }
+
+  // pausePolling stops the polling timer when the tab is hidden.
+  pausePolling(): void {
+    if (this.pollTimer != null) {
+      window.clearInterval(this.pollTimer);
+      this.pollTimer = null;
+    }
+  }
+
+  // resumePolling restarts polling when the tab becomes visible again.
+  // Immediately fetches fresh data, then resumes the regular cadence.
+  async resumePolling(): Promise<void> {
+    if (this.pollTimer != null) return; // Already polling.
+    if (!this.mode) return; // Not initialized yet.
+    
+    // Fetch immediately on resume so users don't wait a full interval.
+    try {
+      const payload = await getHeroChart(this.symbol, HERO_MAX_BARS);
+      this.applyPayload(payload);
+    } catch {
+      // Error on resume; startPolling will retry on the next interval.
+    }
+    
+    this.startPolling(this.mode);
   }
 
   // setLiveState toggles this card's pill between four appearances. In

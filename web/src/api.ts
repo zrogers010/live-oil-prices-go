@@ -60,10 +60,6 @@ export function getPredictions(): Promise<Prediction[]> {
   return fetchJSON<Prediction[]>('/api/predictions');
 }
 
-export function getAnalysis(): Promise<MarketAnalysis> {
-  return fetchJSON<MarketAnalysis>('/api/analysis');
-}
-
 /** getConsensus fetches the institutional outlook (EIA STEO) for every
  *  benchmark we publish. Empty array when EIA_API_KEY isn't configured;
  *  the UI hides the section gracefully in that case. */

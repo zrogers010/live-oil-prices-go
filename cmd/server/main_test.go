@@ -14,7 +14,6 @@ type fakeMarketDataService struct {
 	getPricesFunc     func() []models.Price
 	getChartDataFunc  func(symbol string, days int, interval string) models.ChartData
 	getPredictionsFunc func() []models.Prediction
-	getAnalysisFunc    func() models.MarketAnalysis
 }
 
 func (f *fakeMarketDataService) GetPrices() []models.Price {
@@ -30,13 +29,6 @@ func (f *fakeMarketDataService) GetPredictions() []models.Prediction {
 		return nil
 	}
 	return f.getPredictionsFunc()
-}
-
-func (f *fakeMarketDataService) GetAnalysis() models.MarketAnalysis {
-	if f.getAnalysisFunc == nil {
-		return models.MarketAnalysis{}
-	}
-	return f.getAnalysisFunc()
 }
 
 func (f *fakeMarketDataService) GetHeroChart(symbol string, maxLiveBars int) models.HeroChart {
@@ -89,16 +81,6 @@ func TestNewServerHandlerWiresRoutesAndMiddleware(t *testing.T) {
 					},
 				}
 			},
-			getAnalysisFunc: func() models.MarketAnalysis {
-				return models.MarketAnalysis{
-					Sentiment:  "neutral",
-					Score:      60,
-					Summary:    "Test",
-					KeyPoints:  []string{"point"},
-					Technical:  models.TechnicalSignals{RSI: 45.0},
-					UpdatedAt:  "2026-03-09T00:00:00Z",
-				}
-			},
 		},
 		&fakeNewsFeedService{
 			getNewsFunc: func() []models.NewsArticle {
@@ -123,7 +105,6 @@ func TestNewServerHandlerWiresRoutesAndMiddleware(t *testing.T) {
 	}{
 		{"health", http.MethodGet, "/api/health", http.StatusOK},
 		{"prices", http.MethodGet, "/api/prices", http.StatusOK},
-		{"analysis", http.MethodGet, "/api/analysis", http.StatusOK},
 		{"predictions", http.MethodGet, "/api/predictions", http.StatusOK},
 		{"news", http.MethodGet, "/api/news", http.StatusOK},
 		{"chart", http.MethodGet, "/api/charts/WTI?days=7&interval=2h", http.StatusOK},

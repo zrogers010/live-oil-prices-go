@@ -60,7 +60,6 @@ make dev
 | `GET /api/charts/{symbol}?days=90` | OHLCV chart data |
 | `GET /api/news` | Energy market news feed |
 | `GET /api/predictions` | Outlook + signal stack + backtest stats per benchmark |
-| `GET /api/analysis` | Market analysis with technical signals |
 | `GET /api/consensus` | EIA Short-Term Energy Outlook (institutional forecasts) |
 | `GET /api/consensus/{symbol}` | EIA STEO forecast for a single benchmark |
 | `GET /api/hero/{symbol}` | Streaming hero chart (Pyth live or Yahoo prior session) |
