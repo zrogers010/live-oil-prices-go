@@ -301,13 +301,7 @@ func (a *API) ServeCommodityPage(w http.ResponseWriter, r *http.Request) {
 		if p.Symbol == symbol {
 			// Don't show synthetic/estimate prices in SSR title or price display
 			if p.Source == "estimate" {
-				data.Price = "—"
-				data.Change = "—"
-				data.ChangePct = "—"
-				data.High = "—"
-				data.Low = "—"
-				data.Contract = "—"
-				data.Volume = "—"
+				// Leave all fields empty so template renders dashes without "$"
 				// Keep generic title without price when data is unavailable
 				break
 			}

@@ -1464,7 +1464,7 @@ function sourceBadgeHtml(source?: string, updatedAt?: string): string {
 function forecastSourceLabel(source?: string): string {
   switch (source) {
     case 'pyth':
-      return 'Real-time streaming + Yahoo history';
+      return 'Pyth + Yahoo history';
     case 'yahoo':
       return 'Yahoo Finance (15-min delayed)';
     default:
