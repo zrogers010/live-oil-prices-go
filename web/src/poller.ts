@@ -50,8 +50,16 @@ export class HeroPoller {
     this.getMode = config.getMode;
     this.isHidden = config.isHidden;
     this.clock = config.clock || { now: () => Date.now() };
-    // TEMPORARILY BROKEN: bare timers (should fail test)
-    this.timers = config.timers || { setTimeout, clearTimeout };
+    // Default timers must be invoked with the global object as `this`.
+    // Calling an extracted setTimeout/clearTimeout as a method of another
+    // object throws "Illegal invocation" in Chromium (the v5 regression).
+    this.timers = config.timers || {
+      setTimeout: (fn: () => void, ms: number) => {
+        const timer = (typeof window !== 'undefined' ? window : globalThis).setTimeout(fn, ms);
+        return timer as unknown as number;
+      },
+      clearTimeout: (handle: number) => (typeof window !== 'undefined' ? window : globalThis).clearTimeout(handle as any)
+    };
   }
   
   // Start polling by doing an immediate first tick

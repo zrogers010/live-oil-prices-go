@@ -348,50 +348,73 @@ test('tick respects in-flight guard', async () => {
   await new Promise(r => setTimeout(r, 10));
 });
 
-// Test: default timers with bound context
-test('default timers work without injection', async () => {
-  // Create a setTimeout that throws if `this` is wrong
-  const originalSetTimeout = globalThis.setTimeout;
-  const originalClearTimeout = globalThis.clearTimeout;
-  let setCalled = false;
-  let clearCalled = false;
-  
+// Test: default timers must be called with the global object as `this`.
+// Node's own setTimeout/clearTimeout ignore `this`, so they cannot catch an
+// unbound call (e.g. `{ setTimeout, clearTimeout }` or an extracted method).
+// Browsers throw "TypeError: Illegal invocation" for that. These stubs emulate
+// the browser check, are installed BEFORE the poller is constructed, and do
+// NOT forward the caller's `this`.
+test('default timers are invoked with a valid this (browser Illegal invocation check)', async () => {
+  const g = globalThis as any;
+  const originalSetTimeout = g.setTimeout;
+  const originalClearTimeout = g.clearTimeout;
+  const bindErrors: string[] = [];
+  let setCalls = 0;
+  let clearCalls = 0;
+  const unhandled: unknown[] = [];
+  const onUnhandled = (e: unknown) => { unhandled.push(e); };
+  process.on('unhandledRejection', onUnhandled);
+
+  function strictSetTimeout(this: unknown, fn: (...a: any[]) => void, ms?: number, ...rest: any[]) {
+    if (this !== undefined && this !== globalThis) {
+      bindErrors.push('setTimeout');
+      throw new TypeError('Illegal invocation');
+    }
+    setCalls++;
+    return originalSetTimeout(fn, ms, ...rest);
+  }
+  function strictClearTimeout(this: unknown, handle: any) {
+    if (this !== undefined && this !== globalThis) {
+      bindErrors.push('clearTimeout');
+      throw new TypeError('Illegal invocation');
+    }
+    clearCalls++;
+    return originalClearTimeout(handle);
+  }
+
+  let pauseError: unknown = null;
+  let fetchCalls = 0;
   try {
-    // Override globalThis.setTimeout to track calls
-    globalThis.setTimeout = function(this: any, fn: any, ms: number) {
-      setCalled = true;
-      return originalSetTimeout.call(this, fn, ms);
-    } as any;
-    
-    globalThis.clearTimeout = function(this: any, handle: number) {
-      clearCalled = true;
-      return originalClearTimeout.call(this, handle);
-    } as any;
-    
-    let fetchCalled = false;
+    g.setTimeout = strictSetTimeout;
+    g.clearTimeout = strictClearTimeout;
+
     const poller = new HeroPoller({
       symbol: 'TEST',
-      fetch: async () => {
-        fetchCalled = true;
-        return { mode: 'live', bars: [] };
-      },
+      fetch: async () => { fetchCalls++; return { mode: 'live', bars: [] }; },
       onSuccess: () => {},
       getMode: () => 'live',
       isHidden: () => false
-      // No timers injected - should use defaults
+      // No timers injected: exercises the default timers
     });
-    
+
     poller.start();
-    await new Promise(r => setTimeout(r, 10));
-    
-    assert(fetchCalled, 'fetch was called');
-    assert(setCalled, 'setTimeout was called');
-    
-    poller.pause();
-    assert(clearCalled, 'clearTimeout was called');
+    // Let the fetch resolve and tick() schedule the next poll via the default setTimeout.
+    await new Promise(r => originalSetTimeout(r, 20));
+    const timerScheduled = poller.getState().hasTimer;
+
+    try { poller.pause(); } catch (e) { pauseError = e; }
+
+    assertEquals(bindErrors, [], 'default timers called with an invalid this');
+    assert(pauseError === null, `pause() threw: ${pauseError}`);
+    assertEquals(fetchCalls, 1, 'first fetch ran');
+    assert(timerScheduled && setCalls >= 1, 'default setTimeout scheduled the next poll');
+    assert(clearCalls >= 1, 'default clearTimeout cancelled the pending poll');
+    assert(!poller.getState().hasTimer, 'no timer left after pause');
+    assertEquals(unhandled.length, 0, `unhandled rejection: ${unhandled[0]}`);
   } finally {
-    globalThis.setTimeout = originalSetTimeout;
-    globalThis.clearTimeout = originalClearTimeout;
+    g.setTimeout = originalSetTimeout;
+    g.clearTimeout = originalClearTimeout;
+    process.off('unhandledRejection', onUnhandled);
   }
 });
 
