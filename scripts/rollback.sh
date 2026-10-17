@@ -91,6 +91,12 @@ if [ -d "web/static/css" ]; then
 fi
 echo "  Current state backed up to $BACKUP_PATH"
 
+# Prune old pre-rollback backups, keeping only the 3 newest
+find "$ROLLBACK_DIR" -mindepth 1 -maxdepth 1 -type d -name 'pre-rollback-*' -print0 \
+    | sort -zr \
+    | tail -zn +4 \
+    | xargs -0r rm -rf --
+
 # Restore from snapshot
 echo ""
 echo "[3/4] Restoring from snapshot..."

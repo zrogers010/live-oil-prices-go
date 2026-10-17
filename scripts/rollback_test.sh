@@ -6,8 +6,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 TEST_DIR=$(mktemp -d)
-# shellcheck disable=SC2064
-trap "rm -rf $TEST_DIR" EXIT
+trap 'rm -rf "$TEST_DIR"' EXIT
 
 echo "Testing rollback restore functionality..."
 echo "Test directory: $TEST_DIR"

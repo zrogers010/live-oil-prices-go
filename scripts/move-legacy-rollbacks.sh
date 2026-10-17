@@ -29,15 +29,16 @@ SKIPPED=0
 ERRORS=0
 
 # Move known rollback directories
+# Name them as "legacy-*" so deploy prune (which looks for "20*") won't delete them
 for dir in web/static/js.rollback-20261016 \
            web/static/js.rollback-20261017 \
            web/static/js.rollback-20261017b; do
     if [ -d "$dir" ]; then
         # Extract timestamp from directory name
         BASENAME=$(basename "$dir")
-        # Convert js.rollback-20261016 to 20261016-manual
+        # Convert js.rollback-20261016 to legacy-20261016
         TIMESTAMP="${BASENAME##*rollback-}"
-        DEST="$ROLLBACK_DIR/${TIMESTAMP}-manual"
+        DEST="$ROLLBACK_DIR/legacy-${TIMESTAMP}"
         
         if [ -e "$DEST" ]; then
             echo "  SKIP: $dir"
@@ -57,9 +58,10 @@ for dir in web/static/js.rollback-20261016 \
 done
 
 # Find and move any other *.rollback-* files/directories under web/static
+# Use process substitution to avoid subshell issues with MOVED/SKIPPED/ERRORS
 echo ""
 echo "Searching for other rollback files..."
-find web/static/js web/static/css -name "*.rollback-*" -print0 2>/dev/null | while IFS= read -r -d '' item; do
+while IFS= read -r -d '' item; do
     BASENAME=$(basename "$item")
     # Try to extract timestamp or use basename
     TEMP="${BASENAME##*rollback-}"
@@ -70,24 +72,24 @@ find web/static/js web/static/css -name "*.rollback-*" -print0 2>/dev/null | whi
         TIMESTAMP="$(date +%Y%m%d)-${BASENAME}"
     fi
     
-    DEST="$ROLLBACK_DIR/${TIMESTAMP}-manual"
+    DEST="$ROLLBACK_DIR/legacy-${TIMESTAMP}"
     
-    # Add uniqueness suffix if destination exists
-    COUNTER=1
-    while [ -e "$DEST" ]; do
-        DEST="$ROLLBACK_DIR/${TIMESTAMP}-manual-${COUNTER}"
-        COUNTER=$((COUNTER + 1))
-    done
-    
-    echo "  MOVE: $item"
-    echo "     → $DEST"
-    if mv -n "$item" "$DEST" 2>/dev/null; then
-        MOVED=$((MOVED + 1))
+    # Refuse to overwrite - just skip
+    if [ -e "$DEST" ]; then
+        echo "  SKIP: $item"
+        echo "        Destination already exists: $DEST"
+        SKIPPED=$((SKIPPED + 1))
     else
-        echo "        ERROR: Move failed"
-        ERRORS=$((ERRORS + 1))
+        echo "  MOVE: $item"
+        echo "     → $DEST"
+        if mv -n "$item" "$DEST" 2>/dev/null; then
+            MOVED=$((MOVED + 1))
+        else
+            echo "        ERROR: Move failed"
+            ERRORS=$((ERRORS + 1))
+        fi
     fi
-done
+done < <(find web/static/js web/static/css -name "*.rollback-*" -print0 2>/dev/null)
 
 echo ""
 echo "=== Summary ==="
@@ -106,6 +108,8 @@ if [ $MOVED -gt 0 ]; then
 fi
 
 if [ $ERRORS -gt 0 ]; then
+    echo ""
+    echo "Migration completed with errors."
     exit 1
 fi
 

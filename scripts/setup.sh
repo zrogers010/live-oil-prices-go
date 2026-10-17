@@ -29,6 +29,7 @@ if ! command -v /usr/local/go/bin/go &>/dev/null; then
     rm -rf /usr/local/go
     tar -C /usr/local -xzf "go${GO_VERSION}.linux-amd64.tar.gz"
     rm -f "go${GO_VERSION}.linux-amd64.tar.gz"
+    # shellcheck disable=SC2016
     echo 'export PATH=$PATH:/usr/local/go/bin' > /etc/profile.d/golang.sh
     echo "  Installed Go $(/usr/local/go/bin/go version)"
 else

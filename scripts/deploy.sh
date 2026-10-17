@@ -111,9 +111,8 @@ npm ci
 rm -rf "$FRONTEND_BUILD_TEMP"
 mkdir -p "$FRONTEND_BUILD_TEMP/js" "$FRONTEND_BUILD_TEMP/css"
 
-# Build JS bundles
-npx esbuild web/src/app.ts --bundle --outfile="$FRONTEND_BUILD_TEMP/js/app.js" --minify --sourcemap --target=es2020
-npx esbuild web/src/detail.ts --bundle --outfile="$FRONTEND_BUILD_TEMP/js/detail.js" --minify --sourcemap --target=es2020
+# Build JS bundles using package.json scripts (single source of truth for build flags)
+OUTDIR="$FRONTEND_BUILD_TEMP" npm run build:to
 
 # Copy CSS (if built separately, or if it's static)
 if [ -f "web/static/css/styles.css" ]; then
