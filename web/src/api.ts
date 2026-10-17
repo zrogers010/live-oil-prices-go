@@ -19,7 +19,19 @@ async function fetchJSON<T>(url: string): Promise<T> {
       const retryAfter = res.headers.get('retry-after');
       const err = new Error(`API error: ${res.status} - ${redactedErrorText}`) as any;
       if (retryAfter && (res.status === 429 || res.status === 503)) {
-        err.retryAfter = parseInt(retryAfter, 10) || 60;
+        // Parse Retry-After: can be seconds (integer) or HTTP-date
+        const secondsMatch = /^\d+$/.test(retryAfter);
+        if (secondsMatch) {
+          err.retryAfter = parseInt(retryAfter, 10);
+        } else {
+          // HTTP-date format - calculate seconds from now
+          const retryDate = new Date(retryAfter);
+          if (!isNaN(retryDate.getTime())) {
+            err.retryAfter = Math.max(1, Math.floor((retryDate.getTime() - Date.now()) / 1000));
+          } else {
+            err.retryAfter = 60; // Fallback to 60s if unparseable
+          }
+        }
       }
       throw err;
     }

@@ -229,15 +229,12 @@ class HeroChartController {
       this.backoffLevel = 0; // Reset backoff on successful initial load
     } catch (err) {
       console.error(`Failed to load hero chart for ${this.symbol}:`, err);
-      // Retry initial load after a short delay
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      try {
-        const payload = await getHeroChart(this.symbol, HERO_MAX_BARS);
-        this.applyPayload(payload);
-        this.backoffLevel = 0;
-      } catch (retryErr) {
-        console.error(`Retry also failed for ${this.symbol}:`, retryErr);
+      // Enter normal backoff schedule with a default mode
+      if (!this.mode) {
+        this.mode = 'warming-up';
       }
+      this.backoffLevel = 1; // Start with one backoff level
+      this.scheduleNextPoll(); // Enter polling schedule
     }
   }
 
@@ -448,7 +445,7 @@ class HeroChartController {
     this.cancelPolling();
     // Don't start polling if the tab is hidden.
     if (document.hidden) return;
-    this.scheduleNextPoll(mode);
+    this.scheduleNextPoll();
   }
 
   private cancelPolling(): void {
@@ -469,11 +466,14 @@ class HeroChartController {
     }
   }
 
-  private scheduleNextPoll(mode: HeroMode): void {
+  private scheduleNextPoll(): void {
     this.cancelPolling();
     
     // Re-check visibility before scheduling
     if (document.hidden) return;
+    
+    // Use CURRENT mode from controller state, not a captured parameter
+    const mode = this.mode || 'warming-up';
     
     // Calculate backoff: base × 2^level, capped at 5 minutes
     const baseInterval = this.getBaseInterval(mode);
@@ -488,23 +488,30 @@ class HeroChartController {
       
       if (this.inFlight) {
         // Skip this tick if a fetch is already in progress
-        this.scheduleNextPoll(mode);
+        this.scheduleNextPoll();
         return;
       }
       
       this.inFlight = true;
       try {
         const payload = await getHeroChart(this.symbol, HERO_MAX_BARS);
-        this.applyPayload(payload);
-        this.backoffLevel = 0; // Reset backoff on success
+        if (payload === null) {
+          // 404 or similar - back off deliberately
+          this.backoffLevel = Math.min(this.backoffLevel + 1, 5);
+        } else {
+          this.applyPayload(payload);
+          this.backoffLevel = 0; // Reset backoff on success
+        }
       } catch (err: any) {
         console.error(`Hero chart poll failed for ${this.symbol}:`, err);
         
-        // Honor Retry-After header
+        // Honor Retry-After header - replaces the normal interval
         if (err.retryAfter) {
           const retryAfterMs = err.retryAfter * 1000;
+          // Escalate backoff for repeated 429s
+          this.backoffLevel = Math.min(this.backoffLevel + 1, 5);
           this.pollTimer = window.setTimeout(() => {
-            this.scheduleNextPoll(mode);
+            this.scheduleNextPoll();
           }, retryAfterMs);
           this.inFlight = false;
           return;
@@ -516,8 +523,8 @@ class HeroChartController {
         this.inFlight = false;
       }
       
-      // Schedule next poll (re-checks document.hidden inside)
-      this.scheduleNextPoll(mode);
+      // Schedule next poll using CURRENT mode (re-reads this.mode)
+      this.scheduleNextPoll();
     }, interval);
   }
 
@@ -527,22 +534,32 @@ class HeroChartController {
   }
 
   // resumePolling restarts polling when the tab becomes visible again.
+  // Works even if no successful load has happened yet.
   async resumePolling(): Promise<void> {
     if (this.pollTimer != null || this.inFlight) return;
-    if (!this.mode) return;
+    
+    // If no mode set yet, use warming-up as default
+    if (!this.mode) {
+      this.mode = 'warming-up';
+    }
     
     this.inFlight = true;
     try {
       const payload = await getHeroChart(this.symbol, HERO_MAX_BARS);
-      this.applyPayload(payload);
-      this.backoffLevel = 0; // Reset backoff on successful resume
+      if (payload === null) {
+        this.backoffLevel = Math.min(this.backoffLevel + 1, 5);
+      } else {
+        this.applyPayload(payload);
+        this.backoffLevel = 0; // Reset backoff on successful resume
+      }
     } catch (err) {
       console.error(`Resume poll failed for ${this.symbol}:`, err);
+      this.backoffLevel = Math.min(this.backoffLevel + 1, 5);
     } finally {
       this.inFlight = false;
     }
     
-    this.scheduleNextPoll(this.mode);
+    this.scheduleNextPoll();
   }
 
   // setLiveState updates the pill's text and styling for the current
@@ -559,24 +576,31 @@ class HeroChartController {
     
     switch (state) {
       case 'live':
+        pill.title = 'Streaming real-time exchange data';
         label.textContent = ' LIVE';
         break;
       case 'today-paused':
+        pill.title = 'Feed temporarily paused';
+        label.textContent = ' FEED PAUSED · today';
         pill.classList.add('hero-live-pill-paused');
         dot?.classList.add('hero-live-dot-paused');
-        label.textContent = ' FEED PAUSED';
         break;
       case 'delayed':
+        pill.title = '15-minute delayed exchange data';
+        label.textContent = ' DELAYED';
         pill.classList.add('hero-live-pill-paused');
         dot?.classList.add('hero-live-dot-paused');
-        label.textContent = ' DELAYED';
         break;
       case 'paused':
+        pill.title = 'Market is closed';
         pill.classList.add('hero-live-pill-paused');
         dot?.classList.add('hero-live-dot-paused');
-        label.textContent = ' MARKET CLOSED';
+        label.textContent = sessionDate
+          ? ' MARKET CLOSED · ' + formatSessionDate(sessionDate)
+          : ' MARKET CLOSED';
         break;
       case 'warming':
+        pill.title = 'Loading chart data';
         pill.classList.add('hero-live-pill-warming');
         dot?.classList.add('hero-live-dot-warming');
         label.textContent = ' WARMING UP';
@@ -1681,3 +1705,4 @@ function timeAgo(dateStr: string): string {
   if (hours < 24) return `${hours}h ago`;
   return `${Math.floor(hours / 24)}d ago`;
 }
+
