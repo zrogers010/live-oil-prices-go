@@ -185,6 +185,8 @@ class HeroChartController {
   private chart: CandleChartHandle | null = null;
   private mode: HeroMode | null = null;
   private pollTimer: number | null = null;
+  private inFlight = false;
+  private backoffLevel = 0;
   private visibleDurationSec: number = HERO_DEFAULT_RANGE_SEC;
   private latestPrice: Price | null = null;
   private lastSeenBarTime = 0;
@@ -224,8 +226,18 @@ class HeroChartController {
     try {
       const payload = await getHeroChart(this.symbol, HERO_MAX_BARS);
       this.applyPayload(payload);
+      this.backoffLevel = 0; // Reset backoff on successful initial load
     } catch (err) {
       console.error(`Failed to load hero chart for ${this.symbol}:`, err);
+      // Retry initial load after a short delay
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      try {
+        const payload = await getHeroChart(this.symbol, HERO_MAX_BARS);
+        this.applyPayload(payload);
+        this.backoffLevel = 0;
+      } catch (retryErr) {
+        console.error(`Retry also failed for ${this.symbol}:`, retryErr);
+      }
     }
   }
 
@@ -433,93 +445,128 @@ class HeroChartController {
   }
 
   private transitionPolling(mode: HeroMode): void {
-    if (this.pollTimer != null) {
-      window.clearInterval(this.pollTimer);
-      this.pollTimer = null;
-    }
+    this.cancelPolling();
     // Don't start polling if the tab is hidden.
     if (document.hidden) return;
-    this.startPolling(mode);
+    this.scheduleNextPoll(mode);
   }
 
-  private startPolling(mode: HeroMode): void {
-    // Choose polling interval based on the mode and whether we have
-    // a live feed. Delayed Yahoo data changes at most every 15 minutes,
-    // so 60s polling is sufficient. Live Pyth data ticks continuously,
-    // so we poll every 10s. Prior-session mode uses 60s since the data
-    // is static until markets reopen.
-    let interval: number;
-    if (mode === 'live') {
-      interval = HERO_LIVE_POLL_MS;
-    } else if (mode === 'today-paused' || mode === 'warming-up') {
-      // today-paused can be either delayed Yahoo or paused Pyth.
-      // Use delayed interval since we can't easily distinguish here,
-      // and 60s is safe for both cases.
-      interval = HERO_DELAYED_POLL_MS;
-    } else {
-      // prior-session: slow polling, data won't change until reopen.
-      interval = HERO_PAUSED_POLL_MS;
+  private cancelPolling(): void {
+    if (this.pollTimer != null) {
+      window.clearTimeout(this.pollTimer);
+      this.pollTimer = null;
     }
+  }
+
+  private getBaseInterval(mode: HeroMode): number {
+    // Choose polling interval based on the mode.
+    if (mode === 'live') {
+      return HERO_LIVE_POLL_MS;
+    } else if (mode === 'today-paused' || mode === 'warming-up') {
+      return HERO_DELAYED_POLL_MS;
+    } else {
+      return HERO_PAUSED_POLL_MS;
+    }
+  }
+
+  private scheduleNextPoll(mode: HeroMode): void {
+    this.cancelPolling();
     
-    this.pollTimer = window.setInterval(async () => {
+    // Re-check visibility before scheduling
+    if (document.hidden) return;
+    
+    // Calculate backoff: base × 2^level, capped at 5 minutes
+    const baseInterval = this.getBaseInterval(mode);
+    const backoffMultiplier = Math.pow(2, this.backoffLevel);
+    const interval = Math.min(baseInterval * backoffMultiplier, 300_000);
+    
+    this.pollTimer = window.setTimeout(async () => {
+      // Don't fetch if tab became hidden while timer was pending
+      if (document.hidden) {
+        return;
+      }
+      
+      if (this.inFlight) {
+        // Skip this tick if a fetch is already in progress
+        this.scheduleNextPoll(mode);
+        return;
+      }
+      
+      this.inFlight = true;
       try {
         const payload = await getHeroChart(this.symbol, HERO_MAX_BARS);
         this.applyPayload(payload);
-      } catch {
-        // Transient network error — next tick will recover.
+        this.backoffLevel = 0; // Reset backoff on success
+      } catch (err: any) {
+        console.error(`Hero chart poll failed for ${this.symbol}:`, err);
+        
+        // Honor Retry-After header
+        if (err.retryAfter) {
+          const retryAfterMs = err.retryAfter * 1000;
+          this.pollTimer = window.setTimeout(() => {
+            this.scheduleNextPoll(mode);
+          }, retryAfterMs);
+          this.inFlight = false;
+          return;
+        }
+        
+        // Increase backoff level (capped at 5 for max 5-minute interval)
+        this.backoffLevel = Math.min(this.backoffLevel + 1, 5);
+      } finally {
+        this.inFlight = false;
       }
+      
+      // Schedule next poll (re-checks document.hidden inside)
+      this.scheduleNextPoll(mode);
     }, interval);
   }
 
   // pausePolling stops the polling timer when the tab is hidden.
   pausePolling(): void {
-    if (this.pollTimer != null) {
-      window.clearInterval(this.pollTimer);
-      this.pollTimer = null;
-    }
+    this.cancelPolling();
   }
 
   // resumePolling restarts polling when the tab becomes visible again.
-  // Immediately fetches fresh data, then resumes the regular cadence.
   async resumePolling(): Promise<void> {
-    if (this.pollTimer != null) return; // Already polling.
-    if (!this.mode) return; // Not initialized yet.
+    if (this.pollTimer != null || this.inFlight) return;
+    if (!this.mode) return;
     
-    // Fetch immediately on resume so users don't wait a full interval.
+    this.inFlight = true;
     try {
       const payload = await getHeroChart(this.symbol, HERO_MAX_BARS);
       this.applyPayload(payload);
-    } catch {
-      // Error on resume; startPolling will retry on the next interval.
+      this.backoffLevel = 0; // Reset backoff on successful resume
+    } catch (err) {
+      console.error(`Resume poll failed for ${this.symbol}:`, err);
+    } finally {
+      this.inFlight = false;
     }
     
-    this.startPolling(this.mode);
+    this.scheduleNextPoll(this.mode);
   }
 
-  // setLiveState toggles this card's pill between four appearances. In
-  // paused / today-paused states the optional sessionDate is shown so
-  // users know which trading day's data they're looking at. CSS handles
-  // the visual treatment for each state.
+  // setLiveState updates the pill's text and styling for the current
+  // feed state. The pill is always visible; CSS varies the appearance.
   private setLiveState(state: 'live' | 'today-paused' | 'delayed' | 'paused' | 'warming', sessionDate?: string): void {
     const pill = this.livePillEl;
     if (!pill) return;
+    
+    pill.style.display = ''; // Always visible
     const dot = this.liveDotEl;
     const label = pill.lastChild!;
     pill.classList.remove('hero-live-pill-paused', 'hero-live-pill-warming');
-    dot?.classList.remove('hero-live-dot-paused', 'hero-live-dot-warming');
+    dot?.classList.remove('hero-live-dot-paused', 'hero-live-dot-warming', 'pulse-flash');
+    
     switch (state) {
       case 'live':
         label.textContent = ' LIVE';
         break;
       case 'today-paused':
-        // Today's session is on screen but the live tick is paused —
-        // typically the daily 5–6 PM ET CME maintenance break.
         pill.classList.add('hero-live-pill-paused');
         dot?.classList.add('hero-live-dot-paused');
-        label.textContent = ' FEED PAUSED \u00b7 today';
+        label.textContent = ' FEED PAUSED';
         break;
       case 'delayed':
-        // No real-time feed configured: bars are delayed exchange data.
         pill.classList.add('hero-live-pill-paused');
         dot?.classList.add('hero-live-dot-paused');
         label.textContent = ' DELAYED';
@@ -527,9 +574,7 @@ class HeroChartController {
       case 'paused':
         pill.classList.add('hero-live-pill-paused');
         dot?.classList.add('hero-live-dot-paused');
-        label.textContent = sessionDate
-          ? ' MARKET CLOSED \u00b7 ' + formatSessionDate(sessionDate)
-          : ' MARKET CLOSED';
+        label.textContent = ' MARKET CLOSED';
         break;
       case 'warming':
         pill.classList.add('hero-live-pill-warming');
@@ -543,12 +588,12 @@ class HeroChartController {
     if (this.emptyEl) this.emptyEl.style.display = isEmpty ? 'flex' : 'none';
   }
 
-  // pulseLiveIndicator briefly flashes the green dot in this card's pill
-  // each time we receive a fresh candle update. The CSS handles the
-  // actual pulse animation; we just toggle a class for one frame.
+  // pulseLiveIndicator briefly flashes the green dot ONLY in live mode.
   private pulseLiveIndicator(): void {
     const dot = this.liveDotEl;
     if (!dot) return;
+    // Only pulse in true live mode
+    if (this.mode !== 'live') return;
     dot.classList.remove('pulse-flash');
     void dot.offsetWidth;
     dot.classList.add('pulse-flash');

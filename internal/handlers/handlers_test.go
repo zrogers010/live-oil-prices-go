@@ -94,6 +94,19 @@ func TestHealthCheck(t *testing.T) {
 	}
 }
 
+func TestAnalysisEndpointRemoved(t *testing.T) {
+	api := NewAPI(&fakeMarketDataService{}, &fakeNewsFeedService{})
+	mux := setupMux(api)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/analysis", nil)
+	res := httptest.NewRecorder()
+	mux.ServeHTTP(res, req)
+
+	if res.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 for removed /api/analysis endpoint, got %d", res.Code)
+	}
+}
+
 func TestRegisterRoutesPriceAndAnalysis(t *testing.T) {
 	api := NewAPI(
 		&fakeMarketDataService{

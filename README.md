@@ -1,6 +1,6 @@
 # Live Oil Prices
 
-Real-time energy market intelligence platform with AI-powered analysis, interactive charts, and institutional-grade market data.
+Real-time energy market intelligence platform with live prices, interactive charts, and institutional forecasts.
 
 ## Tech Stack
 

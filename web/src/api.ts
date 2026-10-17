@@ -1,4 +1,4 @@
-import type { Price, ChartData, NewsArticle, Prediction, MarketAnalysis, HeroChart, ConsensusForecast } from './types';
+import type { Price, ChartData, NewsArticle, Prediction, HeroChart, ConsensusForecast } from './types';
 
 const BASE = '';
 
@@ -15,13 +15,12 @@ async function fetchJSON<T>(url: string): Promise<T> {
         return null as unknown as T;
       }
       
-      // Add retry-after header logging for rate limiting transparency
-      // const retryAfter = res.headers.get('retry-after');
-      // if (retryAfter) {
-      //   console.warn(`API rate limited, retry after: ${retryAfter} seconds`);
-      // }
-
-      const err = new Error(`API error: ${res.status} - ${redactedErrorText}`);
+      // Honor retry-after for 429 and 503
+      const retryAfter = res.headers.get('retry-after');
+      const err = new Error(`API error: ${res.status} - ${redactedErrorText}`) as any;
+      if (retryAfter && (res.status === 429 || res.status === 503)) {
+        err.retryAfter = parseInt(retryAfter, 10) || 60;
+      }
       throw err;
     }
     return res.json();

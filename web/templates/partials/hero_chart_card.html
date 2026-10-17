@@ -4,9 +4,9 @@
         <div class="hero-chart-title-block">
             <div class="hero-chart-symbol">
                 {{.Title}}
-                <span class="hero-live-pill" data-role="live-pill" title="Streaming live 1-minute candles"{{if not .HasPrice}} style="display:none;"{{else}}{{if not .Price.IsLive}} style="display:none;"{{end}}{{end}}>
-                    <span class="hero-live-dot" data-role="live-dot"></span>
-                    LIVE
+                <span class="hero-live-pill{{if .HasPrice}}{{if not .Price.IsLive}} hero-live-pill-paused{{end}}{{else}} hero-live-pill-paused{{end}}" data-role="live-pill"{{if not .HasPrice}} style="display:none;"{{end}}>
+                    <span class="hero-live-dot{{if .HasPrice}}{{if not .Price.IsLive}} hero-live-dot-paused{{end}}{{else}} hero-live-dot-paused{{end}}" data-role="live-dot"></span>
+                    {{if .HasPrice}}{{if .Price.IsLive}}LIVE{{else}}DELAYED{{end}}{{else}}DELAYED{{end}}
                 </span>
             </div>
             <div class="hero-chart-contract" data-role="contract">{{if .HasPrice}}{{if .Price.Contract}}{{.Price.Contract}} &mdash; Front Month{{else}}Front month{{end}}{{end}}</div>
