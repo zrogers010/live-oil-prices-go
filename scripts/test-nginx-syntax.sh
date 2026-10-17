@@ -87,27 +87,60 @@ fi
 echo ""
 echo "Semantic checks:"
 
-# Check that map regex is exactly {12}
-if grep -F '{12}' "$SCRIPT_DIR/nginx-prod.conf" > /dev/null; then
+# Strip comments for semantic checking (avoid matching commented-out lines)
+STRIPPED=$(grep -v '^\s*#' "$SCRIPT_DIR/nginx-prod.conf")
+
+# Check that map regex is exactly {12} (in active code, not comments)
+if echo "$STRIPPED" | grep -F '{12}' > /dev/null; then
     echo "  ✓ map uses ~^[0-9a-f]{12}\$ (SHA-256 truncated to 12 hex chars)"
 else
     echo "  ✗ map regex is not ~^[0-9a-f]{12}\$ (mutation M: {12}->{6} would pass)"
+    echo "     Config may have {6} or {12} only in comments"
     exit 1
 fi
 
-# Check that rollback location uses case-insensitive ~* and \.rollback
-if grep -q 'location ~\* .*\\\.rollback' "$SCRIPT_DIR/nginx-prod.conf"; then
-    printf "  ✓ rollback location uses ~* (case-insensitive) and \\\\\.rollback\n"
+# Check that rollback location is active (not commented out)
+if echo "$STRIPPED" | grep -q 'location ~\* .*\\\.rollback'; then
+    printf "  ✓ rollback location is active with ~* (case-insensitive)\n"
 else
-    printf "  ✗ rollback location doesn't use ~* or \\\\\.rollback (mutation M: ~*->~ would pass)\n"
+    printf "  ✗ rollback location missing or commented out\n"
+    printf "     Expected: location ~* .*\\\\.rollback { return 404; }\n"
     exit 1
 fi
+
+# Check that /css/ and /js/ alias locations use add_header Cache-Control (not expires)
+# Look for location /css/ and location /js/ blocks
+if echo "$STRIPPED" | grep -A3 'location /css/' | grep -q 'add_header Cache-Control.*\$lop_static_cc'; then
+    echo "  ✓ /css/ location uses add_header Cache-Control \$lop_static_cc"
+else
+    echo "  ✗ /css/ location missing or not using add_header Cache-Control \$lop_static_cc"
+    exit 1
+fi
+
+if echo "$STRIPPED" | grep -A3 'location /js/' | grep -q 'add_header Cache-Control.*\$lop_static_cc'; then
+    echo "  ✓ /js/ location uses add_header Cache-Control \$lop_static_cc"
+else
+    echo "  ✗ /js/ location missing or not using add_header Cache-Control \$lop_static_cc"
+    exit 1
+fi
+
+# Verify /css/ and /js/ locations do NOT use expires directive
+if echo "$STRIPPED" | grep -A5 'location /css/' | grep -q 'expires'; then
+    echo "  ✗ /css/ location uses expires (should only use add_header Cache-Control)"
+    exit 1
+fi
+
+if echo "$STRIPPED" | grep -A5 'location /js/' | grep -q 'expires'; then
+    echo "  ✗ /js/ location uses expires (should only use add_header Cache-Control)"
+    exit 1
+fi
+echo "  ✓ /css/ and /js/ locations do not use expires directive"
 
 # Check that immutable 1y header is only on hashed branch (map regex line, not default)
-if grep -q '~.*{12}.*immutable' "$SCRIPT_DIR/nginx-prod.conf"; then
+if echo "$STRIPPED" | grep -q '~.*{12}.*immutable'; then
     echo "  ✓ immutable 1y header only on hashed version branch (map regex)"
     # Verify default line does NOT have immutable
-    if grep 'default.*immutable' "$SCRIPT_DIR/nginx-prod.conf" > /dev/null; then
+    if echo "$STRIPPED" | grep 'default.*immutable' > /dev/null; then
         echo "  ✗ default line also has immutable (should only be on hashed)"
         exit 1
     fi
@@ -117,7 +150,7 @@ else
 fi
 
 # Check that default (HTML/no-v) uses max-age=300
-if grep -q 'max-age=300' "$SCRIPT_DIR/nginx-prod.conf"; then
+if echo "$STRIPPED" | grep -q 'max-age=300'; then
     echo "  ✓ HTML/no-v default uses max-age=300 (5 min must-revalidate)"
 else
     echo "  ✗ default max-age=300 not found (mutation M: old Cache-Control would pass)"

@@ -86,14 +86,18 @@ after the apex redirect change (scripts/NGINX_APEX_REDIRECT.md).
 - The `add_header` directive no longer has `always`, so 404 responses don't get cached for a year.
 - The `location ~* \.rollback` block uses `~*` for case-insensitive matching and is placed inside the main server block as the **first** location directive. Regex locations have higher precedence than prefix locations, so this catches any path containing `.rollback` anywhere (case-insensitive), including `/js.rollback-20261017b/app.js`, `/js/x.rollback-1/app.js`, and `/css/styles.ROLLBACK-2`.
 
-## Apply (after Go deployment, PR #43 merged and deployed)
+## Apply (on production server, before pulling PR #43 with new deploy.sh)
 
-### 0. Create manual snapshot BEFORE `git pull` (before first deploy with new deploy.sh)
+### 0. Create manual snapshot BEFORE `git pull`
 
-**Important:** The first deploy with the new `deploy.sh` (from PR #43) needs a baseline snapshot to roll back to. Create this manually **BEFORE pulling the new code**, because if you run `git pull` first, the first production run will use the old 268dd9b deploy.sh (which has no snapshot machinery), so take the manual snapshot before pulling:
+**Why:** PR #43 changes `deploy.sh` to create automatic snapshots. But the first deploy after pulling PR #43 will use the **old** 268dd9b `deploy.sh` (which has no snapshot machinery). So create this manual snapshot **before** pulling, giving you a rollback point if the nginx changes or first new deploy break.
 
 ```bash
 # On the EC2 host, as deploy user
+# Run in a subshell so any error aborts without closing your SSH session
+(
+set -euo pipefail
+
 cd /home/deploy/liveoilprices
 
 # Verify current commit is 268dd9b
@@ -102,7 +106,7 @@ if [ "$COMMIT" != "268dd9b73a5395090b11c02335b3539711bd2c6e" ]; then
     echo "WARNING: Current commit $COMMIT is not 268dd9b"
     echo "Continue anyway? (y/N)"
     read -r confirm
-    [ "$confirm" = "y" ] || exit 0
+    [ "$confirm" = "y" ] || echo "Aborted" >&2 && return 1
 fi
 
 ROLLBACK_DIR="/home/deploy/liveoilprices-rollbacks"
@@ -113,6 +117,7 @@ SNAPSHOT="$ROLLBACK_DIR/$TIMESTAMP"
 mkdir -p "$SNAPSHOT"
 
 # Snapshot the current running state (from 268dd9b)
+# All these files must exist or the snapshot is incomplete
 cp bin/server "$SNAPSHOT/server"
 cp -r web/templates "$SNAPSHOT/templates"
 cp -r web/static/js "$SNAPSHOT/js"
@@ -123,29 +128,56 @@ echo "$COMMIT" > "$SNAPSHOT/COMMIT"
 
 echo "Manual snapshot created at $SNAPSHOT"
 ls -lh "$SNAPSHOT"
+echo "Snapshot complete. Files:"
+ls -1 "$SNAPSHOT"
+)
 ```
 
 **To restore this manual snapshot:**
 
 ```bash
-# Stop the service
-sudo systemctl stop liveoilprices
-
-# Restore the files
 cd /home/deploy/liveoilprices
 
 # Define snapshot explicitly (adjust the timestamp to the snapshot you want)
-SNAPSHOT=$(ls -d /home/deploy/liveoilprices.bak-268dd9b-*/snapshot 2>/dev/null | sort | tail -1)
+# This uses the same directory Step 0 wrote to
+SNAPSHOT=$(ls -d /home/deploy/liveoilprices-rollbacks/20* 2>/dev/null | sort | tail -1)
 if [ -z "$SNAPSHOT" ]; then
-    echo "ERROR: No snapshot found in /home/deploy/liveoilprices.bak-268dd9b-*/"
-    exit 1
+    echo "ERROR: No snapshot found in /home/deploy/liveoilprices-rollbacks/"
+    echo "Run Step 0 first to create a manual snapshot"
+    echo "ERROR: Aborting - cannot restore without snapshot" >&2
+    return 1
 fi
 echo "Restoring from: $SNAPSHOT"
 
+# Validate snapshot files exist BEFORE stopping the service
+if [ ! -f "$SNAPSHOT/server" ] || [ ! -f "$SNAPSHOT/COMMIT" ]; then
+    echo "ERROR: Snapshot is incomplete (missing server or COMMIT)"
+    echo "ERROR: Aborting - cannot restore from incomplete snapshot" >&2
+    return 1
+fi
+
+SNAPSHOT_COMMIT=$(cat "$SNAPSHOT/COMMIT")
+if ! git rev-parse --verify "$SNAPSHOT_COMMIT" &>/dev/null; then
+    echo "ERROR: Snapshot commit $SNAPSHOT_COMMIT not found in git history"
+    echo "ERROR: Aborting - cannot restore to unknown commit" >&2
+    return 1
+fi
+echo "  Snapshot commit: $SNAPSHOT_COMMIT"
+
+# Now stop the service (snapshot validated)
+echo "Stopping service..."
+sudo systemctl stop liveoilprices
+
 # Restore binary
+echo "Restoring binary..."
 cp "$SNAPSHOT/server" bin/server
 
-# Restore templates (remove existing, then copy to avoid nesting)
+# Restore the git commit (detached HEAD - stay here during restore)
+echo "Checking out snapshot commit $SNAPSHOT_COMMIT..."
+git checkout -f "$SNAPSHOT_COMMIT"
+
+# Restore templates AFTER checkout (so new templates from main don't come back)
+echo "Restoring templates, JS, CSS..."
 rm -rf web/templates
 cp -a "$SNAPSHOT/templates" web/templates
 
@@ -157,17 +189,40 @@ cp -a "$SNAPSHOT/js" web/static/js
 rm -rf web/static/css
 cp -a "$SNAPSHOT/css" web/static/css
 
-# Restore the git commit (detached HEAD checkout - return to main before next deploy)
-git checkout -f 268dd9b73a5395090b11c02335b3539711bd2c6e
-
-# Return to main branch to avoid git pull --ff-only failure on next deploy
-git checkout main
-
 # Restart the service
+echo "Restarting service..."
 sudo systemctl start liveoilprices
+sleep 2
 
-# Verify health
-curl http://127.0.0.1:8080/api/health
+# Verify service is active
+if ! sudo systemctl is-active --quiet liveoilprices; then
+    echo "ERROR: Service failed to start after restore"
+    sudo systemctl status liveoilprices --no-pager || true
+    echo "ERROR: Restore failed" >&2
+    return 1
+fi
+echo "  ✓ Service is active"
+
+# Verify health endpoint and home page
+HEALTH_STATUS=$(curl -sf --max-time 5 -o /dev/null -w "%{http_code}" http://127.0.0.1:8080/api/health 2>/dev/null || echo "000")
+HOME_STATUS=$(curl -sf --max-time 5 -o /dev/null -w "%{http_code}" http://127.0.0.1:8080/ 2>/dev/null || echo "000")
+
+if [ "$HEALTH_STATUS" = "200" ] && [ "$HOME_STATUS" = "200" ]; then
+    echo "  ✓ Health check passed (/api/health: $HEALTH_STATUS, /: $HOME_STATUS)"
+else
+    echo "ERROR: Health check failed (/api/health: $HEALTH_STATUS, /: $HOME_STATUS)"
+    echo "ERROR: Restore failed" >&2
+    return 1
+fi
+
+echo ""
+echo "=== Restore complete ==="
+echo "  Restored to snapshot: $SNAPSHOT"
+echo "  Git HEAD: detached at $SNAPSHOT_COMMIT"
+echo ""
+echo "IMPORTANT: You are in detached HEAD state."
+echo "Before running deploy.sh again, run: git checkout main"
+echo "The restored files will stay in place while you checkout main."
 ```
 
 ### 1. Move existing rollback directories out of web/static/
@@ -215,7 +270,8 @@ sudo install -m 0644 -o root -g root /tmp/liveoilprices.conf /etc/nginx/conf.d/l
 if ! sudo nginx -t; then
     echo "nginx -t failed, restoring backup"
     sudo cp "$BACKUP" /etc/nginx/conf.d/liveoilprices.conf
-    exit 1
+    echo "ERROR: nginx config invalid, backup restored" >&2
+    return 1
 fi
 
 # 6. Reload nginx

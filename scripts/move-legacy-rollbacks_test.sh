@@ -9,7 +9,9 @@ echo "Testing move-legacy-rollbacks.sh..."
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 TEST_DIR=$(mktemp -d)
-trap 'rm -rf "$TEST_DIR"' EXIT
+OUTPUT1=$(mktemp)
+OUTPUT2=$(mktemp)
+trap 'rm -rf "$TEST_DIR" "$OUTPUT1" "$OUTPUT2"' EXIT
 
 # Create a mock project structure
 mkdir -p "$TEST_DIR/web/static/js"
@@ -34,11 +36,11 @@ mkdir -p "web/static/js.rollback-20261016"
 echo "old js" > "web/static/js.rollback-20261016/app.js"
 
 # Run script
-if bash scripts/move-legacy-rollbacks.sh > /tmp/move_output.txt 2>&1; then
+if bash scripts/move-legacy-rollbacks.sh > "$OUTPUT1" 2>&1; then
     echo "✓ Script exited 0 (success)"
 else
     echo "✗ Script exited non-zero unexpectedly"
-    cat /tmp/move_output.txt
+    cat "$OUTPUT1"
     exit 1
 fi
 
@@ -70,9 +72,9 @@ mkdir -p "rollbacks/legacy-20261017"
 echo "existing content" > "rollbacks/legacy-20261017/app.js"
 
 # Run script - should exit 1 due to SKIP
-if bash scripts/move-legacy-rollbacks.sh > /tmp/move_output2.txt 2>&1; then
+if bash scripts/move-legacy-rollbacks.sh > "$OUTPUT2" 2>&1; then
     echo "✗ Script exited 0 (should have failed on SKIP)"
-    cat /tmp/move_output2.txt
+    cat "$OUTPUT2"
     exit 1
 else
     EXIT_CODE=$?
@@ -85,11 +87,11 @@ else
 fi
 
 # Verify output mentions SKIP
-if grep -q "SKIP" /tmp/move_output2.txt && grep -q "Destination already exists" /tmp/move_output2.txt; then
+if grep -q "SKIP" "$OUTPUT2" && grep -q "Destination already exists" "$OUTPUT2"; then
     echo "✓ Output mentions SKIP and collision"
 else
     echo "✗ Output doesn't mention SKIP properly"
-    cat /tmp/move_output2.txt
+    cat "$OUTPUT2"
     exit 1
 fi
 
