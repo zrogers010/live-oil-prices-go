@@ -21,6 +21,12 @@ if [ -z "$ROLLBACK_DIR" ] || [ "$ROLLBACK_DIR" = "/" ]; then
     exit 1
 fi
 
+# Guard against relative paths (require absolute path)
+if [[ "$ROLLBACK_DIR" != /* ]]; then
+    echo "ERROR: ROLLBACK_DIR must be an absolute path (got: $ROLLBACK_DIR)"
+    exit 1
+fi
+
 echo ""
 echo "=== Live Oil Prices Deploy ==="
 echo "  Project: $PROJECT_DIR"
@@ -119,7 +125,7 @@ if sudo systemctl is-active --quiet "$SERVICE"; then
     echo "  Service is running."
 else
     echo "  ERROR: Service failed to start!"
-    sudo systemctl status "$SERVICE" --no-pager
+    sudo systemctl status "$SERVICE" --no-pager || true
     exit 1
 fi
 

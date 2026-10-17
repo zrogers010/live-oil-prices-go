@@ -83,6 +83,51 @@ else
     exit 1
 fi
 
+# Semantic assertions
+echo ""
+echo "Semantic checks:"
+
+# Check that map regex is exactly {12}
+if grep -E '~\^[0-9a-f]\{12\}\$' "$SCRIPT_DIR/nginx-prod.conf" > /dev/null; then
+    echo "  ✓ map uses ~^[0-9a-f]{12}\$ (SHA-256 truncated to 12 hex chars)"
+else
+    echo "  ✗ map regex is not ~^[0-9a-f]{12}\$ (mutation M: {12}->{6} would pass)"
+    exit 1
+fi
+
+# Check that rollback location uses case-insensitive ~* and \.rollback
+if grep -q 'location ~\* .*\\\.rollback' "$SCRIPT_DIR/nginx-prod.conf"; then
+    echo "  ✓ rollback location uses ~* (case-insensitive) and \\\.rollback"
+else
+    echo "  ✗ rollback location doesn't use ~* or \\\.rollback (mutation M: ~*->~ would pass)"
+    exit 1
+fi
+
+# Check that immutable 1y header is only on hashed branch
+HASHED_CACHE_LINE=$(grep -n 'public, max-age=31536000, immutable' "$SCRIPT_DIR/nginx-prod.conf" | head -1 | cut -d: -f1)
+if [ -n "$HASHED_CACHE_LINE" ]; then
+    # Check that this line is in the "if hashed" branch
+    # It should be after a line containing $hashed_version or similar
+    CONTEXT=$(head -n "$HASHED_CACHE_LINE" "$SCRIPT_DIR/nginx-prod.conf" | tail -5)
+    if echo "$CONTEXT" | grep -q 'if.*hashed'; then
+        echo "  ✓ immutable 1y header only on hashed version branch"
+    else
+        echo "  ✗ immutable 1y header not in 'if hashed' branch"
+        exit 1
+    fi
+else
+    echo "  ✗ immutable 1y header not found"
+    exit 1
+fi
+
+# Check that default (HTML/no-v) uses max-age=300
+if grep -q 'max-age=300' "$SCRIPT_DIR/nginx-prod.conf"; then
+    echo "  ✓ HTML/no-v default uses max-age=300 (5 min must-revalidate)"
+else
+    echo "  ✗ default max-age=300 not found (mutation M: old Cache-Control would pass)"
+    exit 1
+fi
+
 # Find the line number of the location directive
 LOC_LINE=$(grep -n 'location.*rollback' "$SCRIPT_DIR/nginx-prod.conf" | head -1 | cut -d: -f1)
 # Find the line number of the nearest server { before it

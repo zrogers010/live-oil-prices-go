@@ -1,4 +1,4 @@
-.PHONY: all build build-frontend build-backend run dev clean deploy test test-go test-ts test-poller test-poller-extra test-poller-mutation test-poller-notbefore
+.PHONY: all build build-frontend build-backend run dev clean deploy test test-go test-ts test-poller test-poller-extra test-poller-mutation test-poller-notbefore test-nginx-syntax test-move-legacy
 
 all: build
 
@@ -28,7 +28,7 @@ clean:
 deploy:
 	bash scripts/deploy.sh
 
-test: test-go test-ts test-poller test-poller-extra test-poller-mutation test-poller-notbefore
+test: test-go test-ts test-poller test-poller-extra test-poller-mutation test-poller-notbefore test-nginx-syntax test-move-legacy
 
 test-go:
 	go test ./...
@@ -47,3 +47,9 @@ test-poller-mutation:
 
 test-poller-notbefore:
 	npx --no-install tsx web/src/poller-notbefore.test.ts
+
+test-nginx-syntax:
+	bash scripts/test-nginx-syntax.sh
+
+test-move-legacy:
+	bash scripts/move-legacy-rollbacks_test.sh

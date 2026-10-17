@@ -3,6 +3,7 @@ package main
 import (
 	"live-oil-prices-go/internal/assets"
 	"live-oil-prices-go/internal/handlers"
+	"live-oil-prices-go/internal/models"
 	"live-oil-prices-go/internal/services"
 	"net/http"
 	"net/http/httptest"
@@ -11,6 +12,43 @@ import (
 	"strings"
 	"testing"
 )
+
+// Mock services for testing
+type mockMarketDataService struct{}
+
+func (m *mockMarketDataService) GetPrices() []models.Price {
+	return []models.Price{}
+}
+
+func (m *mockMarketDataService) GetChartData(symbol string, days int, interval string) models.ChartData {
+	return models.ChartData{Symbol: symbol}
+}
+
+func (m *mockMarketDataService) GetPredictions() []models.Prediction {
+	return []models.Prediction{}
+}
+
+func (m *mockMarketDataService) GetHeroChart(symbol string, maxLiveBars int) models.HeroChart {
+	return models.HeroChart{}
+}
+
+func (m *mockMarketDataService) GetConsensusForecasts() []models.ConsensusForecast {
+	return []models.ConsensusForecast{}
+}
+
+func (m *mockMarketDataService) GetConsensusForecast(symbol string) (models.ConsensusForecast, bool) {
+	return models.ConsensusForecast{}, false
+}
+
+type mockNewsFeedService struct{}
+
+func (m *mockNewsFeedService) GetNews() []models.NewsArticle {
+	return []models.NewsArticle{}
+}
+
+func (m *mockNewsFeedService) GetNewsByID(id string) *models.NewsArticle {
+	return nil
+}
 
 func TestAssetCacheHeaders(t *testing.T) {
 	// Create temp directory with test assets
@@ -134,60 +172,110 @@ func TestAssetCacheHeaders(t *testing.T) {
 }
 
 func TestRollbackPathBlocked(t *testing.T) {
-	// Create temp directory with minimal assets for this test
+	// Create a real temp static directory with rollback directories containing actual files
 	tempDir := t.TempDir()
-	jsDir := filepath.Join(tempDir, "js")
-	cssDir := filepath.Join(tempDir, "css")
+	tempStaticDir := filepath.Join(tempDir, "web", "static")
 	
-	if err := os.MkdirAll(jsDir, 0755); err != nil {
-		t.Fatalf("Failed to create js dir: %v", err)
-	}
-	if err := os.MkdirAll(cssDir, 0755); err != nil {
-		t.Fatalf("Failed to create css dir: %v", err)
+	// Create normal js/css directories
+	jsDir := filepath.Join(tempStaticDir, "js")
+	cssDir := filepath.Join(tempStaticDir, "css")
+	
+	// Create rollback directories (lowercase and uppercase variants)
+	jsRollbackDir := filepath.Join(tempStaticDir, "js.rollback-20261016")
+	jsUpperRollbackDir := filepath.Join(tempStaticDir, "js.ROLLBACK-20261017")
+	cssRollbackDir := filepath.Join(tempStaticDir, "css.rollback-x")
+	
+	for _, dir := range []string{jsDir, cssDir, jsRollbackDir, jsUpperRollbackDir, cssRollbackDir} {
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			t.Fatalf("Failed to create directory %s: %v", dir, err)
+		}
 	}
 	
-	// Create minimal test files
-	for _, file := range []string{"js/app.js", "js/detail.js", "css/styles.css"} {
-		fullPath := filepath.Join(tempDir, file)
-		if err := os.WriteFile(fullPath, []byte("test"), 0644); err != nil {
+	// Create files in normal directories (control - these should be accessible)
+	normalFiles := map[string]string{
+		"js/app.js":       "normal js content",
+		"js/detail.js":    "normal detail content",
+		"css/styles.css":  "normal css content",
+	}
+	
+	// Create files in rollback directories (these should be blocked)
+	rollbackFiles := map[string]string{
+		"js.rollback-20261016/app.js":       "rollback js content",
+		"js.ROLLBACK-20261017/app.js":       "uppercase rollback js",
+		"css.rollback-x/styles.css":         "rollback css content",
+	}
+	
+	for file, content := range normalFiles {
+		fullPath := filepath.Join(tempStaticDir, file)
+		if err := os.WriteFile(fullPath, []byte(content), 0644); err != nil {
 			t.Fatalf("Failed to create %s: %v", file, err)
 		}
 	}
 	
-	if err := assets.InitWithRoot(tempDir); err != nil {
-		t.Fatalf("Failed to init assets: %v", err)
+	for file, content := range rollbackFiles {
+		fullPath := filepath.Join(tempStaticDir, file)
+		if err := os.WriteFile(fullPath, []byte(content), 0644); err != nil {
+			t.Fatalf("Failed to create %s: %v", file, err)
+		}
 	}
 	
-	templatesPath := filepath.Join("..", "..", "web", "templates")
-	if err := handlers.InitPageTemplates(templatesPath); err != nil {
-		t.Fatalf("Failed to init page templates: %v", err)
+	// Change working directory to temp directory so web/static is found
+	origWd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Failed to get working directory: %v", err)
 	}
-	if err := handlers.InitCommodityTemplate(filepath.Join(templatesPath, "commodity.html")); err != nil {
-		t.Fatalf("Failed to init commodity template: %v", err)
+	if err := os.Chdir(tempDir); err != nil {
+		t.Fatalf("Failed to change directory: %v", err)
 	}
+	defer os.Chdir(origWd)
+	
+	// Use the actual newServerHandler from main.go with mock services
+	mockMarket := &mockMarketDataService{}
+	mockNews := &mockNewsFeedService{}
+	handler := newServerHandler(mockMarket, mockNews)
 
-	market := services.NewMarketDataService()
-	news := services.NewNewsFeedService()
-	handler := newServerHandler(market, news)
-
+	// Test that rollback paths are blocked (return 404 even though files exist)
 	rollbackPaths := []string{
 		"/js.rollback-20261016/app.js",
-		"/js.rollback-20261017/app.js",
-		"/js.rollback-20261017b/app.js",
-		"/js/x.rollback-1/app.js",
-		"/static/.rollback/test.js",
-		"/path/with.rollback/file.css",
+		"/js.ROLLBACK-20261017/app.js",
+		"/css.rollback-x/styles.css",
 	}
 
 	for _, path := range rollbackPaths {
-		t.Run(path, func(t *testing.T) {
+		t.Run("blocked:"+path, func(t *testing.T) {
+			// Verify file exists on disk
+			diskPath := filepath.Join(tempStaticDir, strings.TrimPrefix(path, "/"))
+			if _, err := os.Stat(diskPath); err != nil {
+				t.Fatalf("Test setup failed: file %s does not exist: %v", diskPath, err)
+			}
+			
 			req := httptest.NewRequest("GET", path, nil)
 			w := httptest.NewRecorder()
 
 			handler.ServeHTTP(w, req)
 
 			if w.Code != http.StatusNotFound {
-				t.Errorf("Expected 404 for rollback path %s, got %d", path, w.Code)
+				t.Errorf("Expected 404 for rollback path %s (file exists but should be blocked), got %d", path, w.Code)
+			}
+		})
+	}
+	
+	// Test that normal paths still work (control)
+	normalPaths := []string{
+		"/js/app.js",
+		"/js/detail.js",
+		"/css/styles.css",
+	}
+	
+	for _, path := range normalPaths {
+		t.Run("control:"+path, func(t *testing.T) {
+			req := httptest.NewRequest("GET", path, nil)
+			w := httptest.NewRecorder()
+
+			handler.ServeHTTP(w, req)
+
+			if w.Code != http.StatusOK {
+				t.Errorf("Expected 200 for normal path %s (control), got %d", path, w.Code)
 			}
 		})
 	}
@@ -357,7 +445,8 @@ func TestRenderedHTMLContainsVersionedAssets(t *testing.T) {
 
 func TestDirectoryListingsDisabled(t *testing.T) {
 	// Create a real temp static directory structure
-	tempStaticDir := filepath.Join(t.TempDir(), "static")
+	tempDir := t.TempDir()
+	tempStaticDir := filepath.Join(tempDir, "web", "static")
 	jsDir := filepath.Join(tempStaticDir, "js")
 	jsSubdir := filepath.Join(jsDir, "subdir")
 	cssDir := filepath.Join(tempStaticDir, "css")
@@ -377,21 +466,20 @@ func TestDirectoryListingsDisabled(t *testing.T) {
 		}
 	}
 	
-	// Create a handler using the same pattern as main.go
-	// This tests the actual directory-blocking logic from main.go
-	mux := http.NewServeMux()
-	fileServer := http.FileServer(http.Dir(tempStaticDir))
+	// Change working directory to temp directory so web/static is found
+	origWd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Failed to get working directory: %v", err)
+	}
+	if err := os.Chdir(tempDir); err != nil {
+		t.Fatalf("Failed to change directory: %v", err)
+	}
+	defer os.Chdir(origWd)
 	
-	// This is the code from main.go that blocks directory listings
-	mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Check if the path is a directory
-		path := filepath.Join(tempStaticDir, filepath.Clean(r.URL.Path))
-		if info, err := os.Stat(path); err == nil && info.IsDir() {
-			http.NotFound(w, r)
-			return
-		}
-		fileServer.ServeHTTP(w, r)
-	}))
+	// Use the actual newServerHandler from main.go with mock services
+	mockMarket := &mockMarketDataService{}
+	mockNews := &mockNewsFeedService{}
+	handler := newServerHandler(mockMarket, mockNews)
 
 	directoryPaths := []string{
 		"/js/",
@@ -404,10 +492,10 @@ func TestDirectoryListingsDisabled(t *testing.T) {
 			req := httptest.NewRequest("GET", path, nil)
 			w := httptest.NewRecorder()
 
-			mux.ServeHTTP(w, req)
+			handler.ServeHTTP(w, req)
 
 			if w.Code != http.StatusNotFound {
-				t.Errorf("Expected 404 for directory %s, got %d (M9)", path, w.Code)
+				t.Errorf("Expected 404 for directory %s, got %d (M9 would allow this)", path, w.Code)
 			}
 		})
 	}
@@ -418,7 +506,7 @@ func TestDirectoryListingsDisabled(t *testing.T) {
 		for _, path := range filePaths {
 			req := httptest.NewRequest("GET", path, nil)
 			w := httptest.NewRecorder()
-			mux.ServeHTTP(w, req)
+			handler.ServeHTTP(w, req)
 			if w.Code != http.StatusOK {
 				t.Errorf("Expected 200 for file %s, got %d", path, w.Code)
 			}

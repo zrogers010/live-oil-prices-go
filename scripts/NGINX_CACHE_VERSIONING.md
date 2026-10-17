@@ -88,13 +88,23 @@ after the apex redirect change (scripts/NGINX_APEX_REDIRECT.md).
 
 ## Apply (after Go deployment, PR #43 merged and deployed)
 
-### 0. Create manual snapshot of 268dd9b (before first deploy with new deploy.sh)
+### 0. Create manual snapshot BEFORE `git pull` (before first deploy with new deploy.sh)
 
-**Important:** The first deploy with the new `deploy.sh` (from PR #43) needs a baseline snapshot to roll back to. Create this manually **before** running the new deploy.sh:
+**Important:** The first deploy with the new `deploy.sh` (from PR #43) needs a baseline snapshot to roll back to. Create this manually **BEFORE pulling the new code**, because if you run `git pull` first, the first production run will use the old 268dd9b deploy.sh (which has no snapshot machinery), so take the manual snapshot before pulling:
 
 ```bash
 # On the EC2 host, as deploy user
 cd /home/deploy/liveoilprices
+
+# Verify current commit is 268dd9b
+COMMIT=$(git rev-parse HEAD)
+if [ "$COMMIT" != "268dd9b73a5395090b11c02335b3539711bd2c6e" ]; then
+    echo "WARNING: Current commit $COMMIT is not 268dd9b"
+    echo "Continue anyway? (y/N)"
+    read -r confirm
+    [ "$confirm" = "y" ] || exit 0
+fi
+
 ROLLBACK_DIR="/home/deploy/liveoilprices-rollbacks"
 TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 SNAPSHOT="$ROLLBACK_DIR/$TIMESTAMP"
@@ -109,7 +119,7 @@ cp -r web/static/js "$SNAPSHOT/js"
 cp -r web/static/css "$SNAPSHOT/css"
 
 # Record the git commit (268dd9b is the base)
-echo "268dd9b73a5395090b11c02335b3539711bd2c6e" > "$SNAPSHOT/COMMIT"
+echo "$COMMIT" > "$SNAPSHOT/COMMIT"
 
 echo "Manual snapshot created at $SNAPSHOT"
 ls -lh "$SNAPSHOT"
@@ -123,13 +133,35 @@ sudo systemctl stop liveoilprices
 
 # Restore the files
 cd /home/deploy/liveoilprices
-cp "$SNAPSHOT/server" bin/server
-cp -r "$SNAPSHOT/templates" web/templates
-cp -r "$SNAPSHOT/js" web/static/js
-cp -r "$SNAPSHOT/css" web/static/css
 
-# Restore the git commit
+# Define snapshot explicitly (adjust the timestamp to the snapshot you want)
+SNAPSHOT=$(ls -d /home/deploy/liveoilprices.bak-268dd9b-*/snapshot 2>/dev/null | sort | tail -1)
+if [ -z "$SNAPSHOT" ]; then
+    echo "ERROR: No snapshot found in /home/deploy/liveoilprices.bak-268dd9b-*/"
+    exit 1
+fi
+echo "Restoring from: $SNAPSHOT"
+
+# Restore binary
+cp "$SNAPSHOT/server" bin/server
+
+# Restore templates (remove existing, then copy to avoid nesting)
+rm -rf web/templates
+cp -a "$SNAPSHOT/templates" web/templates
+
+# Restore JS (remove existing to avoid web/static/js/js nesting)
+rm -rf web/static/js
+cp -a "$SNAPSHOT/js" web/static/js
+
+# Restore CSS (remove existing to avoid nesting)
+rm -rf web/static/css
+cp -a "$SNAPSHOT/css" web/static/css
+
+# Restore the git commit (detached HEAD checkout - return to main before next deploy)
 git checkout -f 268dd9b73a5395090b11c02335b3539711bd2c6e
+
+# Return to main branch to avoid git pull --ff-only failure on next deploy
+git checkout main
 
 # Restart the service
 sudo systemctl start liveoilprices
@@ -241,12 +273,9 @@ ls web/static/ | grep rollback
 If something breaks:
 
 ```bash
-sudo cp -a /root/liveoilprices.conf.rollback-<timestamp> /etc/nginx/conf.d/liveoilprices.conf
+sudo cp -a /root/liveoilprices.conf.bak-<timestamp> /etc/nginx/conf.d/liveoilprices.conf
 sudo nginx -t && sudo systemctl reload nginx
 ```
-
-If you moved the `map` to `/etc/nginx/nginx.conf`, restore the previous
-version of that file as well.
 
 ## Rate Limiting (Not Implemented)
 
