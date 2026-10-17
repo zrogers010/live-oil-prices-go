@@ -226,6 +226,14 @@ fi
 echo "[3/6] Building frontend..."
 npm cache clean --force 2>/dev/null || true
 rm -rf node_modules
+
+if ! npm ci; then
+    echo "ERROR: npm ci failed"
+    DEPLOY_FAILED=1
+    # Clean up temp CSS backup if it exists
+    if [ -n "$CSS_TEMP_BACKUP" ] && [ -f "$CSS_TEMP_BACKUP" ]; then
+        rm -f "$CSS_TEMP_BACKUP"
+    fi
     exit 1
 fi
 
