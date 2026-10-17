@@ -11,7 +11,7 @@ TEMP_DIR=$(mktemp -d)
 trap 'rm -rf "$TEMP_DIR"' EXIT
 
 # Create minimal wrapper config that includes nginx-prod.conf in http context
-cat > "$TEMP_DIR/nginx.conf" <<'EOF'
+cat > "$TEMP_DIR/nginx.conf" <<EOF
 # Minimal nginx config for syntax testing
 # Don't specify user directive - run as current user
 worker_processes 1;
@@ -23,6 +23,10 @@ events {
 }
 
 http {
+    # Override default log paths to avoid permission issues in CI
+    access_log $TEMP_DIR/access.log;
+    error_log $TEMP_DIR/error.log;
+    
     # Include the actual config file we're testing
     # This file should contain the map directive and server blocks
     include PLACEHOLDER_PATH;
