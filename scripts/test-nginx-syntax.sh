@@ -23,12 +23,6 @@ events {
 }
 
 http {
-    # Stub out the certbot SSL includes with empty blocks
-    # These would normally be provided by certbot
-    map $ssl_preread_server_name $name {
-        default "";
-    }
-    
     # Include the actual config file we're testing
     # This file should contain the map directive and server blocks
     include PLACEHOLDER_PATH;
