@@ -177,7 +177,7 @@ func (s *MarketDataService) GetPrices() []models.Price {
 			prices[i] = yp
 			continue
 		}
-		// No synthetic fallback - return empty price for symbols without real data
+		// No real data available - return unavailable price
 		prices[i] = models.Price{
 			Symbol:    c.symbol,
 			Name:      c.name,
@@ -189,6 +189,7 @@ func (s *MarketDataService) GetPrices() []models.Price {
 			Volume:    0,
 			UpdatedAt: "",
 			Source:    "",
+			Available: false,
 		}
 	}
 	return prices
