@@ -115,8 +115,9 @@ func TestRollbackPathBlocked(t *testing.T) {
 
 	rollbackPaths := []string{
 		"/js.rollback-20261016/app.js",
-		"/js.rollback-20261017/detail.js",
+		"/js.rollback-20261017/app.js",
 		"/js.rollback-20261017b/app.js",
+		"/js/x.rollback-1/app.js",
 		"/static/.rollback/test.js",
 		"/path/with.rollback/file.css",
 	}
