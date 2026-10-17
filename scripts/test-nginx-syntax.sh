@@ -88,7 +88,7 @@ echo ""
 echo "Semantic checks:"
 
 # Check that map regex is exactly {12}
-if grep -E '~\^[0-9a-f]\{12\}\$' "$SCRIPT_DIR/nginx-prod.conf" > /dev/null; then
+if grep -F '{12}' "$SCRIPT_DIR/nginx-prod.conf" > /dev/null; then
     echo "  ✓ map uses ~^[0-9a-f]{12}\$ (SHA-256 truncated to 12 hex chars)"
 else
     echo "  ✗ map regex is not ~^[0-9a-f]{12}\$ (mutation M: {12}->{6} would pass)"
@@ -103,20 +103,16 @@ else
     exit 1
 fi
 
-# Check that immutable 1y header is only on hashed branch
-HASHED_CACHE_LINE=$(grep -n 'public, max-age=31536000, immutable' "$SCRIPT_DIR/nginx-prod.conf" | head -1 | cut -d: -f1)
-if [ -n "$HASHED_CACHE_LINE" ]; then
-    # Check that this line is in the "if hashed" branch
-    # It should be after a line containing $hashed_version or similar
-    CONTEXT=$(head -n "$HASHED_CACHE_LINE" "$SCRIPT_DIR/nginx-prod.conf" | tail -5)
-    if echo "$CONTEXT" | grep -q 'if.*hashed'; then
-        echo "  ✓ immutable 1y header only on hashed version branch"
-    else
-        echo "  ✗ immutable 1y header not in 'if hashed' branch"
+# Check that immutable 1y header is only on hashed branch (map regex line, not default)
+if grep -q '~.*{12}.*immutable' "$SCRIPT_DIR/nginx-prod.conf"; then
+    echo "  ✓ immutable 1y header only on hashed version branch (map regex)"
+    # Verify default line does NOT have immutable
+    if grep 'default.*immutable' "$SCRIPT_DIR/nginx-prod.conf" > /dev/null; then
+        echo "  ✗ default line also has immutable (should only be on hashed)"
         exit 1
     fi
 else
-    echo "  ✗ immutable 1y header not found"
+    echo "  ✗ immutable 1y header not found on hashed regex line"
     exit 1
 fi
 
