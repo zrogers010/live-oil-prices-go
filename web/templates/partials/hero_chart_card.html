@@ -4,9 +4,9 @@
         <div class="hero-chart-title-block">
             <div class="hero-chart-symbol">
                 {{.Title}}
-                <span class="hero-live-pill{{if .HasPrice}}{{if not .Price.IsLive}} hero-live-pill-paused{{end}}{{else}} hero-live-pill-paused{{end}}" data-role="live-pill" title="{{if .HasPrice}}{{if .Price.IsLive}}Streaming real-time exchange data{{else if eq .Price.Source "yahoo"}}15-minute delayed exchange data{{else}}Feed status loading{{end}}{{else}}Loading{{end}}"{{if not .HasPrice}} style="display:none;"{{end}}>
+                <span class="hero-live-pill{{if .HasPrice}}{{if not .Price.IsLive}} hero-live-pill-paused{{end}}{{else}} hero-live-pill-paused{{end}}" data-role="live-pill" title="{{if .HasPrice}}{{if .Price.IsLive}}Streaming real-time exchange data{{else if eq .Price.Source "yahoo"}}15-minute delayed exchange data{{else if eq .Price.Source "pyth"}}Feed temporarily paused{{else}}Feed status loading{{end}}{{else}}Loading{{end}}"{{if not .HasPrice}} style="display:none;"{{end}}>
                     <span class="hero-live-dot{{if .HasPrice}}{{if not .Price.IsLive}} hero-live-dot-paused{{end}}{{else}} hero-live-dot-paused{{end}}" data-role="live-dot"></span>
-                    {{if .HasPrice}}{{if .Price.IsLive}}LIVE{{else if eq .Price.Source "yahoo"}}DELAYED{{else}}{{end}}{{else}}{{end}}
+                    {{if .HasPrice}}{{if .Price.IsLive}}LIVE{{else if eq .Price.Source "yahoo"}}DELAYED{{else if eq .Price.Source "pyth"}}FEED PAUSED{{else}}{{end}}{{else}}{{end}}
                 </span>
             </div>
             <div class="hero-chart-contract" data-role="contract">{{if .HasPrice}}{{if .Price.Contract}}{{.Price.Contract}} &mdash; Front Month{{else}}Front month{{end}}{{end}}</div>

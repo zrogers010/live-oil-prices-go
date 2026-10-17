@@ -225,16 +225,28 @@ class HeroChartController {
 
     try {
       const payload = await getHeroChart(this.symbol, HERO_MAX_BARS);
-      this.applyPayload(payload);
-      this.backoffLevel = 0; // Reset backoff on successful initial load
+      if (payload === null) {
+        // 404 or null response - back off deliberately with short first retry
+        console.error(`Failed to load hero chart for ${this.symbol}: null response`);
+        if (!this.mode) {
+          this.mode = 'warming-up';
+        }
+        this.backoffLevel = 0; // Start at 0 for short initial retry (10s base × 2^0 = 10s)
+        // Use a shorter base for first-load retries
+        this.pollTimer = window.setTimeout(() => this.scheduleNextPoll(), 10_000);
+      } else {
+        this.applyPayload(payload);
+        this.backoffLevel = 0; // Reset backoff on successful initial load
+      }
     } catch (err) {
       console.error(`Failed to load hero chart for ${this.symbol}:`, err);
-      // Enter normal backoff schedule with a default mode
+      // Enter normal backoff schedule with short first retry
       if (!this.mode) {
         this.mode = 'warming-up';
       }
-      this.backoffLevel = 1; // Start with one backoff level
-      this.scheduleNextPoll(); // Enter polling schedule
+      this.backoffLevel = 0; // Start at 0 for short initial retry (10s base × 2^0 = 10s)
+      // Use a shorter base for first-load retries
+      this.pollTimer = window.setTimeout(() => this.scheduleNextPoll(), 10_000);
     }
   }
 
@@ -505,12 +517,30 @@ class HeroChartController {
       } catch (err: any) {
         console.error(`Hero chart poll failed for ${this.symbol}:`, err);
         
-        // Honor Retry-After header - replaces the normal interval
+        // Honor Retry-After header - execute fetch after delay instead of scheduling another poll
+        // so the gap equals Retry-After rather than Retry-After + normal interval
         if (err.retryAfter) {
           const retryAfterMs = err.retryAfter * 1000;
           // Escalate backoff for repeated 429s
           this.backoffLevel = Math.min(this.backoffLevel + 1, 5);
-          this.pollTimer = window.setTimeout(() => {
+          this.pollTimer = window.setTimeout(async () => {
+            if (document.hidden) return;
+            
+            this.inFlight = true;
+            try {
+              const payload = await getHeroChart(this.symbol, HERO_MAX_BARS);
+              if (payload === null) {
+                this.backoffLevel = Math.min(this.backoffLevel + 1, 5);
+              } else {
+                this.applyPayload(payload);
+                this.backoffLevel = 0;
+              }
+            } catch (retryErr) {
+              console.error(`Retry-After fetch failed for ${this.symbol}:`, retryErr);
+              this.backoffLevel = Math.min(this.backoffLevel + 1, 5);
+            } finally {
+              this.inFlight = false;
+            }
             this.scheduleNextPoll();
           }, retryAfterMs);
           this.inFlight = false;
