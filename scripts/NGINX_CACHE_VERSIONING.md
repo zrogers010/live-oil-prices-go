@@ -41,17 +41,11 @@ after the apex redirect change (scripts/NGINX_APEX_REDIRECT.md).
 +# deploy.sh does not install this file; apply it by hand per those docs.
 +
 +# Asset versioning: versioned requests (?v=hash) get long immutable cache,
-+# unversioned requests get short cache. If this map cannot live in a conf.d
-+# include (some nginx builds require it at http level in nginx.conf), move
-+# it there and reference it from this file.
++# unversioned requests get short cache. conf.d files are included in http
++# context, so this map is valid here.
 +map $arg_v $lop_static_cc {
 +    default "public, max-age=31536000, immutable";
 +    ""      "public, max-age=300";
-+}
-+
-+# Block any path containing .rollback (e.g. /js.rollback-20261017b/app.js)
-+location ~ \.rollback {
-+    return 404;
 +}
 +
  server {
@@ -62,6 +56,13 @@ after the apex redirect change (scripts/NGINX_APEX_REDIRECT.md).
      gzip_min_length 256;
      gzip_vary on;
 
++    # Block any path containing .rollback (e.g. /js.rollback-20261017b/app.js).
++    # Regex location beats prefix locations /css/ and /js/, so it covers
++    # /js.rollback-*/... paths.
++    location ~ \.rollback {
++        return 404;
++    }
++
      location /css/ {
          alias /home/deploy/liveoilprices/web/static/css/;
 -        expires 7d;
@@ -79,14 +80,13 @@ after the apex redirect change (scripts/NGINX_APEX_REDIRECT.md).
      }
 ```
 
-**Important:** The `map` directive may need to be placed at `http` level in
-`/etc/nginx/nginx.conf` instead of inside the conf.d include, depending on
-your nginx version. If `nginx -t` fails with "map directive is not allowed
-here," move the map block to the http context in `/etc/nginx/nginx.conf`.
+**Important:** The `map` directive is placed at the top level of the conf.d
+file, which is included in nginx's `http` context, so it's valid there.
 
-The `location ~ \.rollback` block must appear **before** the other location
-blocks (before `/css/`, `/js/`, `/robots.txt`) so it takes precedence. The
-regex `\.rollback` matches anywhere in the path, including
+The `location ~ \.rollback` block is placed inside the main server block as
+the **first** location directive, before `/css/`, `/js/`, and `/robots.txt`.
+Regex locations (using `~`) have higher precedence than prefix locations, so
+this catches any path containing `.rollback` anywhere, including
 `/js.rollback-20261017b/app.js` and `/js/x.rollback-1/app.js`.
 
 ## Apply (after Go deployment, PR #43 merged and deployed)
@@ -149,27 +149,6 @@ sudo nginx -t
 # If test passes, reload nginx
 sudo systemctl reload nginx
 ```
-
-If `nginx -t` fails with "map directive is not allowed here," edit
-`/etc/nginx/nginx.conf`, add the map block inside the `http` context
-(after other map directives if any), save, and re-test:
-
-```nginx
-http {
-    # ... existing config ...
-
-    # Asset versioning for liveoilprices.com
-    map $arg_v $lop_static_cc {
-        default "public, max-age=31536000, immutable";
-        ""      "public, max-age=300";
-    }
-
-    # ... rest of config ...
-}
-```
-
-Then remove the map from `/etc/nginx/conf.d/liveoilprices.conf`, leaving
-only the `location ~ \.rollback` block before the server blocks.
 
 ### 4. Verify the fix
 
