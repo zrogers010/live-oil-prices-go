@@ -97,9 +97,9 @@ fi
 
 # Check that rollback location uses case-insensitive ~* and \.rollback
 if grep -q 'location ~\* .*\\\.rollback' "$SCRIPT_DIR/nginx-prod.conf"; then
-    echo "  ✓ rollback location uses ~* (case-insensitive) and \\\.rollback"
+    printf "  ✓ rollback location uses ~* (case-insensitive) and \\\\\.rollback\n"
 else
-    echo "  ✗ rollback location doesn't use ~* or \\\.rollback (mutation M: ~*->~ would pass)"
+    printf "  ✗ rollback location doesn't use ~* or \\\\\.rollback (mutation M: ~*->~ would pass)\n"
     exit 1
 fi
 
