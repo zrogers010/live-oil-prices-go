@@ -705,7 +705,8 @@ function renderPriceCards(prices: Price[]): void {
   const grid = document.getElementById('priceGrid');
   if (!grid) return;
 
-  const filtered = prices.filter(p => CARD_SYMBOLS.includes(p.symbol));
+  // Filter out estimate prices
+  const filtered = prices.filter(p => CARD_SYMBOLS.includes(p.symbol) && p.source !== 'estimate');
   grid.innerHTML = filtered.map(p => {
     const positive = p.change >= 0;
     const sign = positive ? '+' : '';
@@ -753,6 +754,9 @@ function renderPriceCards(prices: Price[]): void {
 
 function updatePriceValues(prices: Price[]): void {
   prices.forEach(p => {
+    // Skip estimate prices
+    if (p.source === 'estimate') return;
+    
     const card = document.querySelector(`.price-card[data-symbol="${p.symbol}"]`) as HTMLElement;
     if (!card) return;
 

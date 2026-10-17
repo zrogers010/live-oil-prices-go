@@ -205,17 +205,6 @@ func (s *MarketDataService) GetPrices() []models.Price {
 }
 
 func (s *MarketDataService) GetChartData(symbol string, days int, interval string) models.ChartData {
-	base, ok := s.basePrices[symbol]
-	if !ok {
-		base = 72.0
-	}
-
-	if s.yahoo != nil {
-		if yp, ok := s.yahoo.GetPrices()[symbol]; ok {
-			base = yp.Price
-		}
-	}
-
 	name := symbol
 	if n, ok := commodityNames[symbol]; ok {
 		name = n
@@ -232,35 +221,17 @@ func (s *MarketDataService) GetChartData(symbol string, days int, interval strin
 		}
 	}
 
-	// Prefer REAL cached Yahoo OHLCV daily history when available. This
-	// is what the user sees on /charts and we want it to be actual market
-	// history, not a randomly regenerated series. If the cache hasn't
-	// loaded yet (cold start) or this symbol isn't tracked by Yahoo
-	// (estimates: OPEC, DUBAI, etc.), we fall through to the synthetic
-	// generator below.
+	// Only return REAL cached Yahoo OHLCV daily history when available.
+	// If the cache hasn't loaded yet (cold start) or this symbol isn't
+	// tracked by Yahoo, return empty data instead of synthetic fallback.
 	if interval == "1d" && s.yahoo != nil {
 		if bars := s.yahoo.GetDailyHistory(symbol, days); len(bars) > 0 {
 			return models.ChartData{Symbol: symbol, Name: name, Interval: interval, Data: bars}
 		}
 	}
 
-	// Synthetic fallback. We seed a per-call RNG with a hash of
-	// (symbol, days, today's UTC date) so flipping back and forth between
-	// tabs returns the SAME chart instead of a freshly randomised series.
-	// The series naturally rolls over once a day when the seed changes.
-	rng := rand.New(rand.NewSource(syntheticChartSeed(symbol, days, interval)))
-
-	var data []models.OHLCV
-	switch interval {
-	case "2h":
-		data = s.generateIntraday(rng, base, days, 2)
-	case "4h":
-		data = s.generateIntraday(rng, base, days, 4)
-	default:
-		data = s.generateDaily(rng, base, days)
-	}
-
-	return models.ChartData{Symbol: symbol, Name: name, Interval: interval, Data: data}
+	// Return empty data when no real data is available
+	return models.ChartData{Symbol: symbol, Name: name, Interval: interval, Data: []models.OHLCV{}}
 }
 
 // syntheticChartSeed produces a stable per-day seed for the synthetic

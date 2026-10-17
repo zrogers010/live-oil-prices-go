@@ -68,6 +68,12 @@ async function loadPriceHeader(): Promise<void> {
     const prices = await getPrices();
     const p = prices.find(x => x.symbol === currentSymbol);
     if (!p) return;
+    
+    // Don't render synthetic estimate prices
+    if (p.source === 'estimate') {
+      console.log('Price data unavailable (estimate only)');
+      return;
+    }
 
     const sign2 = p.change >= 0 ? '+' : '';
     document.title = `${p.name} Price Today $${p.price.toFixed(2)} (${sign2}${p.changePct.toFixed(2)}%) — Live Oil Prices`;
@@ -126,6 +132,27 @@ async function loadPriceHeader(): Promise<void> {
 async function loadChart(): Promise<void> {
   try {
     const container = document.getElementById('chartContainer')!;
+    
+    const data = await getChartData(currentSymbol, currentDays);
+    
+    // If no data available, show unavailable message
+    if (!data.data || data.data.length === 0) {
+      container.innerHTML = `
+        <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 400px; color: var(--text-secondary);">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="opacity: 0.5; margin-bottom: 16px;">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+          <div style="font-size: 16px; font-weight: 600;">Chart data unavailable</div>
+          <div style="font-size: 14px; margin-top: 8px;">No historical data for ${data.name}</div>
+        </div>
+      `;
+      document.getElementById('chartTitle')!.textContent = `${data.name} Price Chart`;
+      const statsEl = document.getElementById('chartStats')!;
+      statsEl.innerHTML = '';
+      return;
+    }
+    
     initChart(container);
 
     subscribeCrosshair((o, h, l, c, v) => {
@@ -136,7 +163,6 @@ async function loadChart(): Promise<void> {
       document.getElementById('chartVolume')!.textContent = formatVolume(v);
     });
 
-    const data = await getChartData(currentSymbol, currentDays);
     updateChartData(data.data);
     document.getElementById('chartTitle')!.textContent = `${data.name} Price Chart`;
     renderChartStats(data);
@@ -241,7 +267,10 @@ async function loadRelatedNews(): Promise<void> {
 async function loadOtherCommodities(): Promise<void> {
   try {
     const prices = await getPrices();
-    const others = prices.filter(p => p.symbol !== currentSymbol).slice(0, 6);
+    // Filter out estimate prices and the current symbol
+    const others = prices
+      .filter(p => p.symbol !== currentSymbol && p.source !== 'estimate')
+      .slice(0, 6);
 
     const grid = document.getElementById('relatedGrid')!;
     grid.innerHTML = others.map(p => {

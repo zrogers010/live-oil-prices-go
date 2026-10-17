@@ -52,6 +52,7 @@ func TestGetPricesReturnsAllCommodities(t *testing.T) {
 func TestGetChartDataDefaultsAndOverrides(t *testing.T) {
 	svc := newDeterministicMarketDataService()
 
+	// Without Yahoo data, GetChartData now returns empty data instead of synthetic
 	short := svc.GetChartData("WTI", 5, "")
 	if short.Symbol != "WTI" {
 		t.Fatalf("expected symbol WTI, got %q", short.Symbol)
@@ -62,24 +63,25 @@ func TestGetChartDataDefaultsAndOverrides(t *testing.T) {
 	if short.Interval != "2h" {
 		t.Fatalf("expected 2h interval for 5 days, got %q", short.Interval)
 	}
-	if got := len(short.Data); got == 0 || got > 60 {
-		t.Fatalf("expected short chart data length between 1 and 60, got %d", got)
+	// Expect empty data when no real Yahoo data available
+	if got := len(short.Data); got != 0 {
+		t.Fatalf("expected empty chart data without Yahoo service, got %d", got)
 	}
 
 	medium := svc.GetChartData("BRENT", 30, "")
 	if medium.Interval != "4h" {
 		t.Fatalf("expected 4h interval for 30 days, got %q", medium.Interval)
 	}
-	if len(medium.Data) == 0 {
-		t.Fatalf("expected chart data for 30 days")
+	if len(medium.Data) != 0 {
+		t.Fatalf("expected empty chart data without Yahoo service")
 	}
 
 	long := svc.GetChartData("NATGAS", 120, "")
 	if long.Interval != "1d" {
 		t.Fatalf("expected 1d interval for 120 days, got %q", long.Interval)
 	}
-	if len(long.Data) == 0 {
-		t.Fatalf("expected long chart data")
+	if len(long.Data) != 0 {
+		t.Fatalf("expected empty chart data without Yahoo service")
 	}
 
 	override := svc.GetChartData("GASOIL", 120, "2h")
@@ -102,8 +104,9 @@ func TestGetChartDataUnknownSymbolFallsBack(t *testing.T) {
 	if data.Interval != "2h" {
 		t.Fatalf("expected interval to remain valid for 7 days, got %q", data.Interval)
 	}
-	if len(data.Data) == 0 {
-		t.Fatalf("expected data for unknown symbol")
+	// Without Yahoo data, expect empty data
+	if len(data.Data) != 0 {
+		t.Fatalf("expected empty data for unknown symbol without Yahoo service")
 	}
 }
 
