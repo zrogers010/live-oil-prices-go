@@ -68,6 +68,10 @@
             <td class="hide-mobile">${{printf "%.2f" .Low}}</td>
             <td class="hide-mobile">{{.VolumeFormatted}}</td>
         </tr>
+        {{else}}
+        <tr class="market-table-empty-row">
+            <td colspan="8" class="market-table-empty">Prices are temporarily unavailable. The table fills in automatically when market data returns.</td>
+        </tr>
         {{end}}
     </tbody>
 </table>

@@ -86,7 +86,7 @@ async function loadPriceHeader(): Promise<void> {
     if (!canonical) {
       const link = document.createElement('link');
       link.rel = 'canonical';
-      link.href = `https://liveoilprices.com/commodity/${p.symbol}`;
+      link.href = `https://www.liveoilprices.com/commodity/${p.symbol}`;
       document.head.appendChild(link);
     }
 

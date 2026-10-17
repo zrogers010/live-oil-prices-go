@@ -57,6 +57,10 @@ type HeroChart struct {
 	SessionDate string       `json:"sessionDate,omitempty"` // YYYY-MM-DD ET — set for "live", "today-paused", "prior-session"
 	UpdatedAt   string       `json:"updatedAt,omitempty"`   // RFC3339, last bar's wall-clock time
 	Source      string       `json:"source"`                // "pyth" | "yahoo"
+	// Delayed is true when no real-time feed is configured (Pyth disabled),
+	// so the bars are delayed exchange data and a quiet chart means the
+	// data is delayed or the market is shut, not that a live feed paused.
+	Delayed bool `json:"delayed,omitempty"`
 	Bars        []PythCandle `json:"bars"`
 }
 
@@ -92,6 +96,12 @@ type Prediction struct {
 	Confidence    float64 `json:"confidence"`
 	Direction     string  `json:"direction"`
 	Analysis      string  `json:"analysis"`
+	// Status is "forecast" when Predicted/PredictedLow/PredictedHigh hold a
+	// real model forecast. "no-edge" (model did not beat a no-change
+	// baseline on its backtest) and "insufficient-data" (not enough
+	// history to fit and validate the model) carry no forecast: Predicted
+	// and the interval are zero and the UI shows a "no forecast" state.
+	Status        string  `json:"status"`
 	Model         string  `json:"model,omitempty"`  // e.g. "holt-damped+rsi/macd" or "fallback"
 	Source        string  `json:"source,omitempty"` // data source: "yahoo" or "estimate"
 	Disclaimer    string  `json:"disclaimer,omitempty"`

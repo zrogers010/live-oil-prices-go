@@ -40,7 +40,25 @@ type ForecastResult struct {
 	// below 1.0 mean the trend dampens out over the horizon — a classic
 	// tweak to Holt that sharply improves accuracy for h > 1.
 	Phi float64
+	// Status says whether Predicted is a publishable model forecast:
+	//   ForecastStatusOK           model beat the naive baseline out of sample
+	//   ForecastStatusNoEdge       model did not beat "no change"; Predicted
+	//                              is just Current and must not be shown as
+	//                              a forecast
+	//   ForecastStatusInsufficient backtest too short to judge the model
+	Status string
 }
+
+// Forecast status values. See ForecastResult.Status.
+const (
+	ForecastStatusOK           = "forecast"
+	ForecastStatusNoEdge       = "no-edge"
+	ForecastStatusInsufficient = "insufficient-data"
+)
+
+// minBacktestSteps is the number of held-out forecasts we need before we
+// trust the model-vs-naive comparison enough to publish a point forecast.
+const minBacktestSteps = 10
 
 // Forecast produces a point forecast `horizonDays` steps ahead from `closes`,
 // along with technical indicator readings and an empirically-derived
@@ -108,11 +126,20 @@ func Forecast(closes []float64, horizonDays int) (ForecastResult, error) {
 		skill = 1.0 - mape/naiveMape
 	}
 
-	// If the model is materially worse than naive, fall back to the naive
-	// forecast (predict no change). It would be dishonest to publish a
-	// confident-looking arrow when the model can't beat "tomorrow looks
-	// like today" on its own backtest.
-	if n >= 10 && mape > 0 && naiveMape > 0 && mape > naiveMape*1.05 {
+	// Only publish a point forecast when the model has an out-of-sample
+	// edge. If it can't beat "no change" on its own backtest, or the
+	// backtest is too short to tell, there is no honest forecast to show:
+	// mark the result so callers render a "no forecast" state instead of
+	// a fake "+0.00%" projection. Predicted is pinned to Current purely
+	// so the interval below stays centred on a real price.
+	status := ForecastStatusOK
+	switch {
+	case n < minBacktestSteps || naiveMape <= 0:
+		status = ForecastStatusInsufficient
+	case mape >= naiveMape:
+		status = ForecastStatusNoEdge
+	}
+	if status != ForecastStatusOK {
 		predicted = current
 		direction = "neutral"
 	}
@@ -150,6 +177,7 @@ func Forecast(closes []float64, horizonDays int) (ForecastResult, error) {
 		Skill:         skill,
 		BacktestSteps: n,
 		Phi:           phi,
+		Status:        status,
 	}, nil
 }
 

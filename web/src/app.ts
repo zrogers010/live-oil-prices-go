@@ -251,7 +251,7 @@ class HeroChartController {
     }
 
     if (this.contractEl) {
-      this.contractEl.textContent = p.contract ? `${p.contract} — Front Month` : '';
+      this.contractEl.textContent = p.contract ? `${p.contract} — Front Month` : 'Front month';
     }
 
     if (this.sourceEl) {
@@ -275,7 +275,7 @@ class HeroChartController {
   // gives us the settlement value directly). If we don't have a cached
   // price yet (page just loaded, /api/prices still inflight), we update
   // the price text only and leave change% to the next /api/prices tick.
-  private syncFromChart(close: number, barTimeSec: number): void {
+  private syncFromChart(close: number, barTimeSec: number, updatedAt?: string): void {
     if (!Number.isFinite(close) || close <= 0) return;
     if (this.priceEl) this.priceEl.textContent = `$${close.toFixed(2)}`;
 
@@ -293,10 +293,12 @@ class HeroChartController {
     }
 
     if (this.updatedEl && barTimeSec > 0) {
-      // barTimeSec is the bar's bucket-start. For a "freshness" badge the
-      // user cares about the last tick, not the bucket boundary, so we
-      // just use "now" here — the chart polls every 2s in live mode.
-      this.updatedEl.textContent = timeAgo(new Date().toISOString());
+      // In live mode the chart polls every 2s, so "now" is accurate. In
+      // any other mode the rightmost bar can be minutes or days old, so
+      // show the payload's real timestamp instead of claiming "just now".
+      this.updatedEl.textContent = updatedAt
+        ? timeAgo(updatedAt)
+        : timeAgo(new Date().toISOString());
     }
   }
 
@@ -336,9 +338,11 @@ class HeroChartController {
     if (!payload.bars || payload.bars.length === 0) {
       this.setEmpty(true);
       this.setLiveState('warming');
-      // When warming-up with no bars, show "Live feed unavailable"
-      // instead of "connecting to the live feed..." tagline
-      setHeroTagline(payload);
+      // Only the first card drives the shared tagline, same as below, so
+      // an empty Brent chart can't overwrite a populated WTI description.
+      if (heroControllers.values().next().value === this) {
+        setHeroTagline(payload);
+      }
       if (this.mode !== 'warming-up') {
         this.mode = 'warming-up';
         this.transitionPolling('warming-up');
@@ -382,11 +386,12 @@ class HeroChartController {
       // and the 15s /api/prices poll.
       this.syncFromChart(last.close, last.time);
     } else if (payload.mode === 'today-paused') {
-      this.setLiveState('today-paused', payload.sessionDate);
-      // today-paused = Pyth has gone quiet but the chart's last close is
-      // still the most recent real tick we have. Sync so the big price
-      // matches what the chart shows.
-      this.syncFromChart(last.close, last.time);
+      this.setLiveState(payload.delayed ? 'delayed' : 'today-paused', payload.sessionDate);
+      // today-paused = no live tick right now (Pyth quiet, or not
+      // configured at all when payload.delayed), but the chart's last close
+      // is still the most recent real price we have. Sync so the big price
+      // matches what the chart shows, stamped with the bar's real time.
+      this.syncFromChart(last.close, last.time, payload.updatedAt || new Date(last.time * 1000).toISOString());
     } else if (payload.mode === 'prior-session') {
       this.setLiveState('paused', payload.sessionDate);
       // prior-session = chart is yesterday's data, big price is today's
@@ -431,7 +436,7 @@ class HeroChartController {
   // paused / today-paused states the optional sessionDate is shown so
   // users know which trading day's data they're looking at. CSS handles
   // the visual treatment for each state.
-  private setLiveState(state: 'live' | 'today-paused' | 'paused' | 'warming', sessionDate?: string): void {
+  private setLiveState(state: 'live' | 'today-paused' | 'delayed' | 'paused' | 'warming', sessionDate?: string): void {
     const pill = this.livePillEl;
     if (!pill) return;
     const dot = this.liveDotEl;
@@ -448,6 +453,12 @@ class HeroChartController {
         pill.classList.add('hero-live-pill-paused');
         dot?.classList.add('hero-live-dot-paused');
         label.textContent = ' FEED PAUSED \u00b7 today';
+        break;
+      case 'delayed':
+        // No real-time feed configured: bars are delayed exchange data.
+        pill.classList.add('hero-live-pill-paused');
+        dot?.classList.add('hero-live-dot-paused');
+        label.textContent = ' DELAYED';
         break;
       case 'paused':
         pill.classList.add('hero-live-pill-paused');
@@ -653,6 +664,13 @@ function setHeroTagline(payload: HeroChart): void {
       accent.className = 'hero-tagline-accent hero-tagline-accent-live';
       break;
     case 'today-paused':
+      if (payload.delayed) {
+        // No real-time feed is configured, so this is simply delayed
+        // exchange data (and a flat chart means the market is shut).
+        accent.textContent = 'delayed futures quotes via Yahoo Finance';
+        accent.className = 'hero-tagline-accent hero-tagline-accent-paused';
+        break;
+      }
       // Today's bars are showing but Pyth is quiet — usually the daily
       // 5–6 PM ET CME maintenance break.
       accent.textContent = "today's session — feed paused (CME daily break)";
@@ -668,12 +686,15 @@ function setHeroTagline(payload: HeroChart): void {
       break;
     default:
       // When warming-up with no bars (offline), show "Live feed unavailable"
+      // Never leave a "connecting…" placeholder up: with no bars there
+      // is no chart data to describe; with bars we only know they're the
+      // latest we have.
       if (!payload.bars || payload.bars.length === 0) {
-        accent.textContent = 'Live feed unavailable';
+        accent.textContent = 'chart data unavailable';
         accent.className = 'hero-tagline-accent hero-tagline-accent-paused';
       } else {
-        accent.textContent = 'connecting to the live feed…';
-        accent.className = 'hero-tagline-accent hero-tagline-accent-warming';
+        accent.textContent = 'latest available quotes';
+        accent.className = 'hero-tagline-accent hero-tagline-accent-paused';
       }
   }
 }
@@ -697,6 +718,12 @@ function renderTicker(prices: Price[]): void {
 
   // Filter out unavailable prices
   const filtered = prices.filter(p => p.available);
+
+  if (!filtered.length) {
+    // Explicit empty state rather than a blank bar that looks broken.
+    track.innerHTML = '<span class="ticker-empty">Prices temporarily unavailable</span>';
+    return;
+  }
 
   const html = filtered.map(p => {
     const positive = p.change >= 0;
@@ -835,6 +862,14 @@ function renderMarketTable(prices: Price[]): void {
 
   // Filter out unavailable prices
   const filtered = prices.filter(p => p.available);
+
+  if (!filtered.length) {
+    tbody.innerHTML = `
+      <tr class="market-table-empty-row">
+        <td colspan="8" class="market-table-empty">Prices are temporarily unavailable. The table fills in automatically when market data returns.</td>
+      </tr>`;
+    return;
+  }
 
   tbody.innerHTML = filtered.map(p => {
     const positive = p.change >= 0;
@@ -1011,19 +1046,45 @@ function renderForecasts(predictions: Prediction[]): void {
   grid.innerHTML = predictions.map(forecastCardHtml).join('');
 }
 
+// hasPublishedForecast is true only when the server marked the prediction
+// as a real model forecast. "no-edge" / "insufficient-data" carry no
+// predicted price and must never render as a "+0.00%" projection.
+function hasPublishedForecast(p: Prediction): boolean {
+  const okStatus = !p.status || p.status === 'forecast';
+  return okStatus && p.predicted > 0;
+}
+
+function noForecastHtml(p: Prediction): string {
+  const title = p.status === 'no-edge'
+    ? 'No reliable forecast'
+    : 'Not enough data to forecast';
+  const text = p.status === 'no-edge'
+    ? 'On recent history the model was no more accurate than assuming no change, so no projected price is shown.'
+    : 'There is not yet enough daily price history to fit and backtest the model.';
+  return `
+      <div class="forecast-none" data-role="no-forecast">
+        <div class="forecast-none-title">${title}</div>
+        <p class="forecast-none-text">${text}</p>
+      </div>`;
+}
+
 function forecastCardHtml(p: Prediction): string {
+  const published = hasPublishedForecast(p);
   const delta = p.predicted - p.current;
   const pct = p.current ? (delta / p.current) * 100 : 0;
   const sign = delta >= 0 ? '+' : '';
   const dirClass =
+    !published ? 'neutral' :
     p.direction === 'bullish' ? 'bullish' :
     p.direction === 'bearish' ? 'bearish' :
     'neutral';
   const arrow =
+    !published ? '–' :
     p.direction === 'bullish' ? '↑' :
     p.direction === 'bearish' ? '↓' :
     '→';
   const dirLabel =
+    !published ? 'No forecast' :
     p.direction === 'bullish' ? 'Bullish bias' :
     p.direction === 'bearish' ? 'Bearish bias' :
     'Mixed signals';
@@ -1067,6 +1128,7 @@ function forecastCardHtml(p: Prediction): string {
 
       <ul class="signal-stack" aria-label="Technical signal stack">${signalChips}</ul>
 
+      ${published ? `
       <details class="forecast-projection">
         <summary class="forecast-projection-summary">
           <span>Model projection · ${p.timeframe}</span>
@@ -1088,7 +1150,7 @@ function forecastCardHtml(p: Prediction): string {
             </div>
           </div>
         </div>
-      </details>
+      </details>` : noForecastHtml(p)}
 
       ${backtestBlock}
 

@@ -3,7 +3,7 @@
     <div class="hero-bg"><div class="hero-grid-pattern"></div><div class="hero-glow"></div></div>
     <div class="container hero-content">
         <div class="hero-eyebrow">
-            <h1 class="hero-tagline" id="heroTagline">Latest WTI &amp; Brent crude oil prices — <span class="hero-tagline-accent" id="heroTaglineAccent">{{if or .HeroWTI .HeroBRENT}}connecting to the feed&hellip;{{else}}live feed unavailable{{end}}</span></h1>
+            <h1 class="hero-tagline" id="heroTagline">Latest WTI &amp; Brent crude oil prices — <span class="hero-tagline-accent" id="heroTaglineAccent">{{.HeroStatus}}</span></h1>
         </div>
 
         {{template "hero_chart_card" dict "Symbol" "WTI" "Title" "WTI Crude Oil" "AriaLabel" "WTI crude oil live 1-minute candle chart" "DetailsHref" "/commodity/WTI" "OtherHref" "/commodity/BRENT" "OtherLabel" "Brent" "Price" .HeroWTI "HasPrice" .HeroWTI}}
@@ -105,7 +105,7 @@
         <header class="section-header">
             <div class="section-label">Statistical Outlook</div>
             <h2 class="section-title" id="forecast-heading">7-Day Price Forecasts</h2>
-            <p class="section-desc">Model-driven 7-day forecasts for major energy benchmarks, combining a Holt linear trend model with RSI and MACD technical signals on 2 years of daily history.</p>
+            <p class="section-desc">Model-driven 7-day forecasts for major energy benchmarks, combining a damped Holt trend model with RSI and MACD technical signals on 2 years of daily history. A forecast is shown only when the model beats a no-change baseline on its own backtest.</p>
         </header>
         <div class="forecast-disclaimer" role="note">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>

@@ -58,6 +58,9 @@ export interface HeroChart {
   sessionDate?: string; // YYYY-MM-DD in NY-local time
   updatedAt?: string; // RFC3339 of latest bar
   source: "pyth" | "yahoo" | "";
+  /** True when no real-time feed is configured: bars are delayed exchange
+   *  data, so a quiet chart is "delayed", never "live feed paused". */
+  delayed?: boolean;
   bars: PythCandle[];
 }
 
@@ -89,6 +92,9 @@ export interface Prediction {
   model?: string;
   source?: string;
   disclaimer?: string;
+  /** "forecast" when predicted/predictedLow/predictedHigh are a real model
+   *  forecast. "no-edge" and "insufficient-data" carry no forecast. */
+  status?: 'forecast' | 'no-edge' | 'insufficient-data' | '';
 
   // Signal-stack fields backing the Outlook & Signals card.
   trendLabel?: string;

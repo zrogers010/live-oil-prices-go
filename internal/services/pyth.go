@@ -185,6 +185,13 @@ func NewPythService() *PythService {
 	return svc
 }
 
+// Enabled reports whether the Pyth stream is configured (PYTH_API_KEY set).
+// When false no Pyth data is ever fetched and nothing should be labelled
+// as coming from Pyth.
+func (s *PythService) Enabled() bool {
+	return s != nil && s.apiKey != ""
+}
+
 // SetBasis records a per-symbol additive offset (yahoo_front_month -
 // pyth_raw) that read-side accessors will apply transparently. Pass 0 to
 // disable the shift for a symbol.

@@ -43,18 +43,25 @@
         </div>
         <div class="footer-attribution">
             <span class="footer-attribution-label">Data sources:</span>
+            {{if .PythInUse}}
             <span class="footer-attribution-link">
                 <span class="footer-attribution-dot live"></span>
-                Live streaming WTI tick (when available)
+                Live streaming WTI tick via Pyth Network
             </span>
             <span class="footer-attribution-sep">&middot;</span>
             <span class="footer-attribution-link">
                 <span class="footer-attribution-dot delayed"></span>
                 Other commodities via Yahoo Finance (15&#8209;min delayed)
             </span>
+            {{else}}
+            <span class="footer-attribution-link">
+                <span class="footer-attribution-dot delayed"></span>
+                Futures prices via Yahoo Finance (15&#8209;min delayed)
+            </span>
+            {{end}}
         </div>
         <p class="footer-disclaimer">Market data is provided for informational purposes only and should not be considered as financial advice. Oil prices are indicative and may differ from exchange-quoted prices. Past performance does not guarantee future results. Trading commodities involves substantial risk of loss.</p>
-        <p class="footer-credit">Live WTI price data via <a href="https://www.pyth.network/" target="_blank" rel="noopener">Pyth Network</a> when available.</p>
+        {{if .PythInUse}}<p class="footer-credit">Live WTI price data via <a href="https://www.pyth.network/" target="_blank" rel="noopener">Pyth Network</a>.</p>{{end}}
         <p class="footer-credit">Interactive charts powered by <a href="{{.PartnerURL}}" target="_blank" rel="noopener sponsored">TradingView</a> &mdash; the world's most-used charting platform. <a href="/disclosure">Affiliate partner</a>.</p>
     </div>
 </footer>
