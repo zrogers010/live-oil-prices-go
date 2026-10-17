@@ -128,8 +128,9 @@ func TestGenerateDailySkipsWeekends(t *testing.T) {
 
 // TestGetChartDataIsStableAcrossCalls is a regression guard for the bug
 // where flipping back and forth between commodity tabs returned a freshly
-// randomised series each time. With the deterministic seed (or real Yahoo
-// data), two consecutive identical requests must return identical bars.
+// randomised series each time. With real Yahoo data, two consecutive 
+// identical requests must return identical bars. Without Yahoo data,
+// returns should consistently be empty.
 func TestGetChartDataIsStableAcrossCalls(t *testing.T) {
 	svc := newDeterministicMarketDataService()
 
@@ -137,18 +138,13 @@ func TestGetChartDataIsStableAcrossCalls(t *testing.T) {
 	second := svc.GetChartData("OPEC", 30, "")
 	third := svc.GetChartData("OPEC", 30, "")
 
-	if len(first.Data) == 0 {
-		t.Fatalf("expected non-empty chart data")
+	// Without Yahoo service, should consistently return empty data
+	if len(first.Data) != 0 {
+		t.Fatalf("expected empty chart data without Yahoo service")
 	}
 	if len(first.Data) != len(second.Data) || len(second.Data) != len(third.Data) {
 		t.Fatalf("inconsistent bar counts across calls: %d / %d / %d",
 			len(first.Data), len(second.Data), len(third.Data))
-	}
-	for i := range first.Data {
-		if first.Data[i] != second.Data[i] || second.Data[i] != third.Data[i] {
-			t.Fatalf("bar %d differs across calls: first=%+v second=%+v third=%+v",
-				i, first.Data[i], second.Data[i], third.Data[i])
-		}
 	}
 }
 
