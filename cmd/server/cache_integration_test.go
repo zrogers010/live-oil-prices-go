@@ -252,3 +252,219 @@ func TestNormalPathsWork(t *testing.T) {
 		})
 	}
 }
+
+func TestRenderedHTMLContainsVersionedAssets(t *testing.T) {
+	// Create temp directory with real assets
+	tempDir := t.TempDir()
+	jsDir := filepath.Join(tempDir, "js")
+	cssDir := filepath.Join(tempDir, "css")
+	
+	if err := os.MkdirAll(jsDir, 0755); err != nil {
+		t.Fatalf("Failed to create js dir: %v", err)
+	}
+	if err := os.MkdirAll(cssDir, 0755); err != nil {
+		t.Fatalf("Failed to create css dir: %v", err)
+	}
+	
+	// Create test files with unique content
+	if err := os.WriteFile(filepath.Join(jsDir, "app.js"), []byte("console.log('app-test');"), 0644); err != nil {
+		t.Fatalf("Failed to create app.js: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(jsDir, "detail.js"), []byte("console.log('detail-test');"), 0644); err != nil {
+		t.Fatalf("Failed to create detail.js: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(cssDir, "styles.css"), []byte("body { margin: 1px; }"), 0644); err != nil {
+		t.Fatalf("Failed to create styles.css: %v", err)
+	}
+	
+	// Initialize assets with temp directory
+	if err := assets.InitWithRoot(tempDir); err != nil {
+		t.Fatalf("Failed to init assets: %v", err)
+	}
+	
+	// Get the actual hashes
+	appHash, ok := assets.GetHash("js/app.js")
+	if !ok {
+		t.Fatal("Failed to get hash for app.js")
+	}
+	cssHash, ok := assets.GetHash("css/styles.css")
+	if !ok {
+		t.Fatal("Failed to get hash for css/styles.css")
+	}
+	detailHash, ok := assets.GetHash("js/detail.js")
+	if !ok {
+		t.Fatal("Failed to get hash for detail.js")
+	}
+
+	templatesPath := filepath.Join("..", "..", "web", "templates")
+	if err := handlers.InitPageTemplates(templatesPath); err != nil {
+		t.Fatalf("Failed to init page templates: %v", err)
+	}
+	if err := handlers.InitCommodityTemplate(filepath.Join(templatesPath, "commodity.html")); err != nil {
+		t.Fatalf("Failed to init commodity template: %v", err)
+	}
+
+	market := services.NewMarketDataService()
+	news := services.NewNewsFeedService()
+	handler := newServerHandler(market, news)
+
+	tests := []struct {
+		name         string
+		path         string
+		wantContains []string
+		description  string
+	}{
+		{
+			name: "home page layout",
+			path: "/",
+			wantContains: []string{
+				"/js/app.js?v=" + appHash,
+				"/css/styles.css?v=" + cssHash,
+			},
+			description: "Layout template should have versioned assets (M7)",
+		},
+		{
+			name: "commodity page",
+			path: "/commodity/WTI",
+			wantContains: []string{
+				"/js/detail.js?v=" + detailHash,
+				"/css/styles.css?v=" + cssHash,
+			},
+			description: "Commodity template should have versioned assets (M10)",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest("GET", tt.path, nil)
+			w := httptest.NewRecorder()
+
+			handler.ServeHTTP(w, req)
+
+			if w.Code != http.StatusOK {
+				t.Fatalf("Expected 200 for %s, got %d", tt.path, w.Code)
+			}
+
+			body := w.Body.String()
+			for _, want := range tt.wantContains {
+				if !strings.Contains(body, want) {
+					t.Errorf("%s: HTML does not contain %q\n%s", tt.description, want, tt.description)
+				}
+			}
+		})
+	}
+}
+
+func TestDirectoryListingsDisabled(t *testing.T) {
+	// Create temp directory with assets
+	tempDir := t.TempDir()
+	jsDir := filepath.Join(tempDir, "js")
+	cssDir := filepath.Join(tempDir, "css")
+	
+	if err := os.MkdirAll(jsDir, 0755); err != nil {
+		t.Fatalf("Failed to create js dir: %v", err)
+	}
+	if err := os.MkdirAll(cssDir, 0755); err != nil {
+		t.Fatalf("Failed to create css dir: %v", err)
+	}
+	
+	for _, file := range []string{"js/app.js", "js/detail.js", "css/styles.css"} {
+		fullPath := filepath.Join(tempDir, file)
+		if err := os.WriteFile(fullPath, []byte("test"), 0644); err != nil {
+			t.Fatalf("Failed to create %s: %v", file, err)
+		}
+	}
+	
+	if err := assets.InitWithRoot(tempDir); err != nil {
+		t.Fatalf("Failed to init assets: %v", err)
+	}
+	
+	templatesPath := filepath.Join("..", "..", "web", "templates")
+	if err := handlers.InitPageTemplates(templatesPath); err != nil {
+		t.Fatalf("Failed to init page templates: %v", err)
+	}
+	if err := handlers.InitCommodityTemplate(filepath.Join(templatesPath, "commodity.html")); err != nil {
+		t.Fatalf("Failed to init commodity template: %v", err)
+	}
+
+	market := services.NewMarketDataService()
+	news := services.NewNewsFeedService()
+	handler := newServerHandler(market, news)
+
+	// Create actual directories in web/static for testing
+	if err := os.MkdirAll("../../web/static/js", 0755); err != nil {
+		t.Logf("Failed to create web/static/js: %v", err)
+	}
+	if err := os.MkdirAll("../../web/static/css", 0755); err != nil {
+		t.Logf("Failed to create web/static/css: %v", err)
+	}
+
+	directoryPaths := []string{
+		"/js/",
+		"/css/",
+	}
+
+	for _, path := range directoryPaths {
+		t.Run(path, func(t *testing.T) {
+			req := httptest.NewRequest("GET", path, nil)
+			w := httptest.NewRecorder()
+
+			handler.ServeHTTP(w, req)
+
+			if w.Code != http.StatusNotFound {
+				t.Errorf("Expected 404 for directory %s, got %d (M9)", path, w.Code)
+			}
+		})
+	}
+}
+
+func TestLegacyCommodityHTMLRedirect(t *testing.T) {
+	// Create minimal temp assets
+	tempDir := t.TempDir()
+	jsDir := filepath.Join(tempDir, "js")
+	cssDir := filepath.Join(tempDir, "css")
+	
+	if err := os.MkdirAll(jsDir, 0755); err != nil {
+		t.Fatalf("Failed to create js dir: %v", err)
+	}
+	if err := os.MkdirAll(cssDir, 0755); err != nil {
+		t.Fatalf("Failed to create css dir: %v", err)
+	}
+	
+	for _, file := range []string{"js/app.js", "js/detail.js", "css/styles.css"} {
+		fullPath := filepath.Join(tempDir, file)
+		if err := os.WriteFile(fullPath, []byte("test"), 0644); err != nil {
+			t.Fatalf("Failed to create %s: %v", file, err)
+		}
+	}
+	
+	if err := assets.InitWithRoot(tempDir); err != nil {
+		t.Fatalf("Failed to init assets: %v", err)
+	}
+	
+	templatesPath := filepath.Join("..", "..", "web", "templates")
+	if err := handlers.InitPageTemplates(templatesPath); err != nil {
+		t.Fatalf("Failed to init page templates: %v", err)
+	}
+	if err := handlers.InitCommodityTemplate(filepath.Join(templatesPath, "commodity.html")); err != nil {
+		t.Fatalf("Failed to init commodity template: %v", err)
+	}
+
+	market := services.NewMarketDataService()
+	news := services.NewNewsFeedService()
+	handler := newServerHandler(market, news)
+
+	req := httptest.NewRequest("GET", "/commodity.html", nil)
+	w := httptest.NewRecorder()
+
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusMovedPermanently {
+		t.Errorf("Expected 301 for /commodity.html, got %d", w.Code)
+	}
+
+	location := w.Header().Get("Location")
+	if location != "/commodity/WTI" {
+		t.Errorf("Expected redirect to /commodity/WTI, got %s", location)
+	}
+}

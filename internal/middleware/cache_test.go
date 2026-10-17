@@ -4,6 +4,8 @@ import (
 	"live-oil-prices-go/internal/assets"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -53,9 +55,40 @@ func TestBlockRollbacks(t *testing.T) {
 }
 
 func TestCacheControlVersionedAssets(t *testing.T) {
-	// Initialize assets to get real hashes
-	if err := assets.Init(); err != nil {
-		t.Logf("Asset init warning (expected if assets not built): %v", err)
+	// Create temp directory with real assets
+	tempDir := t.TempDir()
+	jsDir := filepath.Join(tempDir, "js")
+	cssDir := filepath.Join(tempDir, "css")
+	
+	if err := os.MkdirAll(jsDir, 0755); err != nil {
+		t.Fatalf("Failed to create js dir: %v", err)
+	}
+	if err := os.MkdirAll(cssDir, 0755); err != nil {
+		t.Fatalf("Failed to create css dir: %v", err)
+	}
+	
+	// Create test files
+	testFiles := map[string]string{
+		filepath.Join(jsDir, "app.js"):       "console.log('app');",
+		filepath.Join(jsDir, "detail.js"):    "console.log('detail');",
+		filepath.Join(cssDir, "styles.css"):  "body { margin: 0; }",
+	}
+	
+	for path, content := range testFiles {
+		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+			t.Fatalf("Failed to create %s: %v", path, err)
+		}
+	}
+	
+	// Initialize assets with temp directory
+	if err := assets.InitWithRoot(tempDir); err != nil {
+		t.Fatalf("Failed to init assets: %v", err)
+	}
+	
+	// Get the real hash for app.js
+	appHash, ok := assets.GetHash("js/app.js")
+	if !ok {
+		t.Fatal("Failed to get hash for app.js")
 	}
 
 	handler := CacheControl(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -74,9 +107,9 @@ func TestCacheControlVersionedAssets(t *testing.T) {
 		{
 			name:            "versioned JS with correct hash",
 			path:            "/js/app.js",
-			query:           "?v=" + getTestHash("js/app.js"),
-			wantContains:    "public",
-			description:     "Versioned asset with matching hash gets cache",
+			query:           "?v=" + appHash,
+			wantContains:    "max-age=31536000, public, immutable",
+			description:     "Versioned asset with matching hash gets immutable cache (M1)",
 		},
 		{
 			name:            "versioned JS with wrong hash",

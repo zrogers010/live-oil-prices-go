@@ -23,6 +23,24 @@ var commoditySymbols = []string{
 }
 
 func main() {
+	// Check for --check-assets flag (used by deploy.sh to validate before swapping)
+	if len(os.Args) > 1 && os.Args[1] == "--check-assets" {
+		if err := assets.Init(); err != nil {
+			log.Fatalf("Asset check failed: %v", err)
+		}
+		
+		if err := handlers.InitCommodityTemplate("web/templates/commodity.html"); err != nil {
+			log.Fatalf("Template check failed (commodity): %v", err)
+		}
+		
+		if err := handlers.InitPageTemplates("web/templates"); err != nil {
+			log.Fatalf("Template check failed (pages): %v", err)
+		}
+		
+		fmt.Println("✓ Asset and template check passed")
+		os.Exit(0)
+	}
+	
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
@@ -119,6 +137,11 @@ func newServerHandler(market handlers.MarketDataClient, news handlers.NewsClient
 		// Extract pub ID (e.g. ca-pub-1234567890123456 -> 1234567890123456)
 		pubID := strings.TrimPrefix(client, "ca-pub-")
 		fmt.Fprintf(w, "google.com, pub-%s, DIRECT, f08c47fec0942fa0\n", pubID)
+	})
+
+	// Redirect legacy /commodity.html to /commodity/WTI
+	mux.HandleFunc("GET /commodity.html", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/commodity/WTI", http.StatusMovedPermanently)
 	})
 
 	// Serve static files, but disable directory listings (return 404 for directories)

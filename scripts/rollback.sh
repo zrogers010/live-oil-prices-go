@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 #
 # Rollback Live Oil Prices to a previous snapshot.
+# 
+# IMPORTANT: Snapshot <timestamp> contains the state BEFORE deploy <timestamp>.
+# When you rollback to a snapshot, you restore the state that existed before
+# that deploy ran.
+#
 # Usage: scripts/rollback.sh <timestamp>
 # Example: scripts/rollback.sh 20261017-143022
 #
@@ -101,10 +106,12 @@ find "$ROLLBACK_DIR" -mindepth 1 -maxdepth 1 -type d -name 'pre-rollback-*' -pri
 echo ""
 echo "[3/4] Restoring from snapshot..."
 
-# Restore binary
+# Restore binary (copy to temp then mv to avoid "Text file busy" if service is running)
 mkdir -p "$(dirname "$BIN")"
-cp "$ROLLBACK_PATH/server" "$BIN"
-chmod +x "$BIN"
+TEMP_BIN="$(dirname "$BIN")/.server.tmp.$$"
+cp "$ROLLBACK_PATH/server" "$TEMP_BIN"
+chmod +x "$TEMP_BIN"
+mv -f "$TEMP_BIN" "$BIN"
 echo "  ✓ Restored binary"
 
 # Restore templates
@@ -124,6 +131,25 @@ if [ -d "$ROLLBACK_PATH/css" ]; then
     echo "  ✓ Restored css"
 fi
 
+# Restore git commit if recorded
+if [ -f "$ROLLBACK_PATH/COMMIT" ]; then
+    SNAPSHOT_COMMIT=$(cat "$ROLLBACK_PATH/COMMIT")
+    echo "  Snapshot commit: $SNAPSHOT_COMMIT"
+    
+    if git rev-parse --is-inside-work-tree &>/dev/null 2>&1; then
+        if git rev-parse --verify "$SNAPSHOT_COMMIT" &>/dev/null 2>&1; then
+            echo "  Checking out tracked files from commit $SNAPSHOT_COMMIT..."
+            git checkout "$SNAPSHOT_COMMIT" -- web/templates/ 2>/dev/null || true
+            echo "  ✓ Restored tracked files from git"
+        else
+            echo "  WARNING: Commit $SNAPSHOT_COMMIT not found in git history"
+            echo "           Tracked files restored from snapshot only"
+        fi
+    else
+        echo "  WARNING: Not a git repo, tracked files restored from snapshot only"
+    fi
+fi
+
 # Restart service
 echo ""
 echo "[4/4] Restarting service..."
@@ -138,7 +164,11 @@ else
     echo ""
     echo "Attempting to restore from backup..."
     if [ -f "$BACKUP_PATH/server" ]; then
-        cp "$BACKUP_PATH/server" "$BIN"
+        TEMP_BIN="$(dirname "$BIN")/.server.tmp.$$"
+        cp "$BACKUP_PATH/server" "$TEMP_BIN"
+        chmod +x "$TEMP_BIN"
+        mv -f "$TEMP_BIN" "$BIN"
+        
         if [ -d "$BACKUP_PATH/templates" ]; then
             rm -rf web/templates
             cp -r "$BACKUP_PATH/templates" web/

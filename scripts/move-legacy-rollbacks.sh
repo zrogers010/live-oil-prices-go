@@ -60,19 +60,20 @@ done
 # Find and move any other *.rollback-* files/directories under web/static
 # Use process substitution to avoid subshell issues with MOVED/SKIPPED/ERRORS
 echo ""
-echo "Searching for other rollback files..."
+echo "Searching for other rollback files (case-insensitive)..."
 while IFS= read -r -d '' item; do
     BASENAME=$(basename "$item")
-    # Try to extract timestamp or use basename
-    TEMP="${BASENAME##*rollback-}"
+    # Try to extract timestamp or use full basename for uniqueness
+    TEMP="${BASENAME##*[Rr][Oo][Ll][Ll][Bb][Aa][Cc][Kk]-}"
     TIMESTAMP="${TEMP%%[^0-9a-zA-Z-]*}"
     
-    # If no timestamp in name, use current date plus basename
+    # If no timestamp extracted, use the full basename for uniqueness
     if [ -z "$TIMESTAMP" ] || [ "$TIMESTAMP" = "$BASENAME" ]; then
-        TIMESTAMP="$(date +%Y%m%d)-${BASENAME}"
+        # Use full basename to avoid collisions
+        DEST="$ROLLBACK_DIR/legacy-$(date +%Y%m%d)-${BASENAME}"
+    else
+        DEST="$ROLLBACK_DIR/legacy-${TIMESTAMP}"
     fi
-    
-    DEST="$ROLLBACK_DIR/legacy-${TIMESTAMP}"
     
     # Refuse to overwrite - just skip
     if [ -e "$DEST" ]; then
@@ -89,7 +90,7 @@ while IFS= read -r -d '' item; do
             ERRORS=$((ERRORS + 1))
         fi
     fi
-done < <(find web/static/js web/static/css -name "*.rollback-*" -print0 2>/dev/null)
+done < <(find web/static/js web/static/css -iname "*.rollback-*" -print0 2>/dev/null)
 
 echo ""
 echo "=== Summary ==="

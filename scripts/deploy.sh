@@ -38,6 +38,44 @@ if ! command -v node &>/dev/null; then
     exit 1
 fi
 
+# Check git status - refuse to deploy from a dirty tree
+if git rev-parse --is-inside-work-tree &>/dev/null 2>&1; then
+    # Allow a dirty tree only if we're in detached HEAD at a snapshot commit
+    # (i.e., after a rollback that restored tracked files)
+    if ! git diff --quiet || ! git diff --cached --quiet; then
+        CURRENT_COMMIT=$(git rev-parse HEAD 2>/dev/null)
+        DETACHED=false
+        git symbolic-ref HEAD &>/dev/null || DETACHED=true
+        
+        # Check if this is a rollback state (detached at a recorded snapshot commit)
+        ROLLBACK_STATE=false
+        if [ "$DETACHED" = true ] && [ -n "$CURRENT_COMMIT" ]; then
+            # Look for a snapshot with this commit
+            for snapshot in "$ROLLBACK_DIR"/20*/COMMIT 2>/dev/null; do
+                if [ -f "$snapshot" ]; then
+                    SNAPSHOT_COMMIT=$(cat "$snapshot" 2>/dev/null || echo "")
+                    if [ "$SNAPSHOT_COMMIT" = "$CURRENT_COMMIT" ]; then
+                        ROLLBACK_STATE=true
+                        break
+                    fi
+                fi
+            done
+        fi
+        
+        if [ "$ROLLBACK_STATE" = true ]; then
+            echo "  Detected rollback state (detached at snapshot commit $CURRENT_COMMIT)"
+            echo "  Resetting to clean state and returning to branch..."
+            # Get the branch name from the most recent snapshot
+            git checkout - 2>/dev/null || git checkout main 2>/dev/null || true
+            git reset --hard HEAD
+        else
+            echo "ERROR: Working tree is dirty. Commit or stash changes before deploying."
+            git status --short
+            exit 1
+        fi
+    fi
+fi
+
 # ---------- Create rollback snapshot BEFORE git pull ----------
 echo "[1/6] Creating rollback snapshot..."
 TIMESTAMP=$(date +%Y%m%d-%H%M%S)
@@ -79,6 +117,14 @@ if [ -f "$BIN" ] || [ -f "web/static/js/app.js" ]; then
         }
     fi
     
+    # Record the git commit so rollback can restore the matching tree
+    if git rev-parse HEAD &>/dev/null 2>&1; then
+        git rev-parse HEAD > "$ROLLBACK_PATH/COMMIT" || {
+            echo "ERROR: Failed to record git commit"
+            exit 1
+        }
+    fi
+    
     echo "  Rollback snapshot saved to $ROLLBACK_PATH"
     
     # Keep only the 10 most recent rollbacks (sort by name, not mtime)
@@ -89,14 +135,16 @@ if [ -f "$BIN" ] || [ -f "web/static/js/app.js" ]; then
         | xargs -0r rm -rf --
 else
     echo "  No existing binary or assets to back up (first deploy or clean build)."
+    ROLLBACK_PATH=""
 fi
 
 # ---------- Pull latest code ----------
 if git rev-parse --is-inside-work-tree &>/dev/null 2>&1; then
     echo "[2/6] Pulling latest code..."
-    git pull --ff-only || {
-        echo "  WARNING: git pull failed (maybe not on a tracked branch). Continuing..."
-    }
+    if ! git pull --ff-only; then
+        echo "ERROR: git pull failed. Aborting deploy."
+        exit 1
+    fi
 else
     echo "[2/6] Not a git repo, skipping pull."
 fi
@@ -108,16 +156,20 @@ rm -rf node_modules
 npm ci
 
 # Build into temp directory to avoid the old server hash pointing at new bytes
+# This includes CSS (git-tracked) to ensure the swap is atomic
 rm -rf "$FRONTEND_BUILD_TEMP"
 mkdir -p "$FRONTEND_BUILD_TEMP/js" "$FRONTEND_BUILD_TEMP/css"
 
+# Copy CSS BEFORE building JS, so we have the post-pull CSS ready for swap
+if [ -f "web/static/css/styles.css" ]; then
+    cp web/static/css/styles.css "$FRONTEND_BUILD_TEMP/css/" || {
+        echo "ERROR: Failed to copy CSS to temp directory"
+        exit 1
+    }
+fi
+
 # Build JS bundles using package.json scripts (single source of truth for build flags)
 OUTDIR="$FRONTEND_BUILD_TEMP" npm run build:to
-
-# Copy CSS (if built separately, or if it's static)
-if [ -f "web/static/css/styles.css" ]; then
-    cp web/static/css/styles.css "$FRONTEND_BUILD_TEMP/css/"
-fi
 
 echo "  Frontend built in temp directory."
 
@@ -131,6 +183,16 @@ echo "  Tests passed."
 echo "[5/6] Building backend..."
 CGO_ENABLED=0 go build -ldflags="-s -w" -o "$BIN" ./cmd/server
 echo "  Backend built ($(du -h "$BIN" | cut -f1))."
+
+# Validate assets and templates before swapping (fail-fast)
+echo "  Validating assets and templates..."
+if ! "$BIN" --check-assets 2>&1; then
+    echo "ERROR: Asset validation failed. Not swapping files."
+    if [ -n "$ROLLBACK_PATH" ]; then
+        echo "  To rollback: scripts/rollback.sh $TIMESTAMP"
+    fi
+    exit 1
+fi
 
 # ---------- Swap frontend assets and restart ----------
 echo "[6/6] Swapping frontend assets and restarting service..."
@@ -153,27 +215,75 @@ rm -rf "$FRONTEND_BUILD_TEMP"
 sudo systemctl restart "$SERVICE"
 sleep 2
 
-if sudo systemctl is-active --quiet "$SERVICE"; then
-    echo "  Service is running."
-else
+# Check if service started
+if ! sudo systemctl is-active --quiet "$SERVICE"; then
     echo "  ERROR: Service failed to start!"
     sudo systemctl status "$SERVICE" --no-pager
+    
+    # Auto-rollback on failed start
+    if [ -n "$ROLLBACK_PATH" ] && [ -d "$ROLLBACK_PATH" ]; then
+        echo ""
+        echo "  Attempting automatic rollback to $TIMESTAMP..."
+        if "$SCRIPT_DIR/rollback.sh" "$TIMESTAMP"; then
+            echo "  Rollback successful, but deploy failed."
+        else
+            echo "  ERROR: Rollback also failed!"
+        fi
+    fi
     exit 1
 fi
 
-# Health check
-RETRIES=5
-for i in $(seq 1 $RETRIES); do
+# Health check with increased timeout
+echo "  Service started. Running health checks..."
+HEALTH_CHECK_TIMEOUT=30
+HEALTH_CHECK_INTERVAL=3
+HEALTH_CHECKS=0
+MAX_HEALTH_CHECKS=$((HEALTH_CHECK_TIMEOUT / HEALTH_CHECK_INTERVAL))
+
+for i in $(seq 1 $MAX_HEALTH_CHECKS); do
     STATUS=$(curl -sf -o /dev/null -w "%{http_code}" "http://127.0.0.1:8080/api/health" 2>/dev/null || echo "000")
     if [ "$STATUS" = "200" ]; then
-        echo "  Health check passed."
+        echo "  ✓ Health check passed after $((i * HEALTH_CHECK_INTERVAL))s."
+        HEALTH_CHECKS=$i
         break
     fi
-    if [ "$i" = "$RETRIES" ]; then
-        echo "  WARNING: Health check failed after $RETRIES attempts (HTTP $STATUS)."
-        echo "  Check logs: sudo journalctl -u $SERVICE --no-pager -n 50"
+    
+    # Check if service crashed
+    if ! sudo systemctl is-active --quiet "$SERVICE"; then
+        echo "  ERROR: Service crashed during health check!"
+        sudo systemctl status "$SERVICE" --no-pager
+        
+        # Auto-rollback on crash
+        if [ -n "$ROLLBACK_PATH" ] && [ -d "$ROLLBACK_PATH" ]; then
+            echo ""
+            echo "  Attempting automatic rollback to $TIMESTAMP..."
+            if "$SCRIPT_DIR/rollback.sh" "$TIMESTAMP"; then
+                echo "  Rollback successful, but deploy failed."
+            else
+                echo "  ERROR: Rollback also failed!"
+            fi
+        fi
+        exit 1
     fi
-    sleep 3
+    
+    if [ "$i" = "$MAX_HEALTH_CHECKS" ]; then
+        echo "  ERROR: Health check failed after ${HEALTH_CHECK_TIMEOUT}s (HTTP $STATUS)."
+        echo "  Service is running but not responding correctly."
+        sudo journalctl -u "$SERVICE" --no-pager -n 50
+        
+        # Auto-rollback on failed health check
+        if [ -n "$ROLLBACK_PATH" ] && [ -d "$ROLLBACK_PATH" ]; then
+            echo ""
+            echo "  Attempting automatic rollback to $TIMESTAMP..."
+            if "$SCRIPT_DIR/rollback.sh" "$TIMESTAMP"; then
+                echo "  Rollback successful, but deploy failed."
+            else
+                echo "  ERROR: Rollback also failed!"
+            fi
+        fi
+        exit 1
+    fi
+    sleep $HEALTH_CHECK_INTERVAL
 done
 
 echo ""

@@ -33,16 +33,50 @@ echo "new-template" > "$TEST_DIR/project/web/templates/test.html"
 echo "new-js" > "$TEST_DIR/project/web/static/js/app.js"
 echo "new-css" > "$TEST_DIR/project/web/static/css/styles.css"
 
-# Mock systemctl - handle is-active and restart
-cat > "$TEST_DIR/systemctl" <<'EOF'
+# Create a long-lived mock process to simulate a running service
+cat > "$TEST_DIR/mock-service" <<'EOF'
 #!/usr/bin/env bash
-echo "systemctl $@" >&2
-case "$1" in
+# Simulate a long-running service binary
+while true; do
+    sleep 1
+done
+EOF
+chmod +x "$TEST_DIR/mock-service"
+
+# Mock systemctl - handle is-active, restart, and stop
+# Also manages the mock service process
+cat > "$TEST_DIR/systemctl" <<EOF
+#!/usr/bin/env bash
+SERVICE_PID_FILE="$TEST_DIR/service.pid"
+
+case "\$1" in
     is-active)
+        # Check if service is running
+        if [ -f "\$SERVICE_PID_FILE" ] && kill -0 \$(cat "\$SERVICE_PID_FILE") 2>/dev/null; then
+            exit 0
+        else
+            exit 3
+        fi
+        ;;
+    restart|start)
+        # Stop old process if running
+        if [ -f "\$SERVICE_PID_FILE" ]; then
+            OLD_PID=\$(cat "\$SERVICE_PID_FILE")
+            kill "\$OLD_PID" 2>/dev/null || true
+            rm -f "\$SERVICE_PID_FILE"
+        fi
+        # Start new process in background
+        "$TEST_DIR/mock-service" &
+        echo \$! > "\$SERVICE_PID_FILE"
+        echo "Mock restart/start: \$2" >&2
         exit 0
         ;;
-    restart)
-        echo "Mock restart: $2"
+    stop)
+        if [ -f "\$SERVICE_PID_FILE" ]; then
+            PID=\$(cat "\$SERVICE_PID_FILE")
+            kill "\$PID" 2>/dev/null || true
+            rm -f "\$SERVICE_PID_FILE"
+        fi
         exit 0
         ;;
     status)
@@ -86,11 +120,37 @@ cd "$TEST_DIR/project"
 export PATH="$TEST_DIR:$PATH"
 
 echo ""
-echo "Running rollback to 20261017-120000..."
+echo "Running rollback with service stopped..."
 bash "$TEST_DIR/rollback-test.sh" 20261017-120000
 
 echo ""
+echo "Simulating a running service for rollback test..."
+# Start the mock service
+"$TEST_DIR/systemctl" start liveoilprices
+
+# Give it a moment to start
+sleep 0.5
+
+# Copy a "new" binary content to test the replacement
+echo "new-binary-content" > "$TEST_DIR/project/bin/server"
+
+# Now try rollback while service is "running"
+echo "Attempting rollback while service is running..."
+if bash "$TEST_DIR/rollback-test.sh" 20261017-120000 2>&1 | grep -q "pre-rollback"; then
+    echo "✓ Rollback succeeded even with service running (temp + mv)"
+else
+    echo "✗ Rollback failed with service running"
+    exit 1
+fi
+
+echo ""
 echo "Verifying restored files..."
+
+# Clean up any running mock service
+if [ -f "$TEST_DIR/service.pid" ]; then
+    kill $(cat "$TEST_DIR/service.pid") 2>/dev/null || true
+    rm -f "$TEST_DIR/service.pid"
+fi
 
 # Check that old content was restored
 if grep -q "old-binary" "$TEST_DIR/project/bin/server"; then
