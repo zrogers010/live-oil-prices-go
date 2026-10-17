@@ -156,7 +156,7 @@ BEGIN {
                 }
             }
             
-            # Look for first return or deny directive
+            # Look for first return/deny/allow directive
             if (!found_first && depth > 0) {
                 if (token == "return") {
                     # Next token should be the status code
@@ -177,6 +177,11 @@ BEGIN {
                         print "BAD: deny " next_token
                         found_first = 1
                     }
+                } else if (token == "allow") {
+                    # Allow directive before deny/return 404 is wrong
+                    next_token = tokens[i+1]
+                    print "BAD: allow " next_token
+                    found_first = 1
                 }
             }
         }

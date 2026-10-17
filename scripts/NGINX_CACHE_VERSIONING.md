@@ -306,13 +306,15 @@ Copy `scripts/nginx-prod.conf` from the repo to the server.
 
 **Step A: Review the changes**
 
-Paste this first to back up and review the diff:
+Paste this first to back up and review the diff (wrapped in subshell for paste safety):
 
 ```bash
 # On the EC2 host - Step A: backup and review
+(
 BACKUP="/root/liveoilprices.conf.bak-$(date +%Y%m%d-%H%M%S)"
 sudo cp -a /etc/nginx/conf.d/liveoilprices.conf "$BACKUP"
 echo "Backup saved to $BACKUP"
+echo "$BACKUP" > /tmp/.nginx-backup-path
 
 # Copy candidate: scp scripts/nginx-prod.conf to /tmp/liveoilprices.conf first
 
@@ -322,6 +324,7 @@ echo "=== Reviewing changes ==="
 diff -u /etc/nginx/conf.d/liveoilprices.conf /tmp/liveoilprices.conf || true
 echo ""
 echo "Review complete. If changes look good, proceed to Step B."
+)
 ```
 
 **Step B: Install, test, and reload**
@@ -334,9 +337,13 @@ After reviewing the diff, paste this to install (runs in a guarded subshell):
 set -euo pipefail
 
 # Restore the backup path from Step A
-BACKUP=$(ls -t /root/liveoilprices.conf.bak-* 2>/dev/null | head -1)
-if [ -z "$BACKUP" ]; then
-    echo "ERROR: No backup found. Run Step A first." >&2
+if [ ! -f /tmp/.nginx-backup-path ]; then
+    echo "ERROR: No backup path found. Run Step A first." >&2
+    exit 1
+fi
+BACKUP=$(cat /tmp/.nginx-backup-path)
+if [ ! -f "$BACKUP" ]; then
+    echo "ERROR: Backup file $BACKUP not found" >&2
     exit 1
 fi
 echo "Using backup: $BACKUP"
@@ -355,6 +362,9 @@ fi
 # Reload nginx
 sudo systemctl reload nginx
 echo "nginx reloaded successfully"
+
+# Clean up backup path marker
+rm -f /tmp/.nginx-backup-path
 )
 ```
 
