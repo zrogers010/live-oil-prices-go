@@ -74,7 +74,7 @@ async function loadPriceHeader(): Promise<void> {
 
     const metaDesc = document.querySelector('meta[name="description"]');
     if (metaDesc) metaDesc.setAttribute('content',
-      `${p.name} price today is $${p.price.toFixed(2)} (${sign2}${p.changePct.toFixed(2)}%). Live ${p.symbol} chart, real-time data, day high $${p.high.toFixed(2)}, day low $${p.low.toFixed(2)}. Updated every 15 seconds.`);
+      `${p.name} price today is $${p.price.toFixed(2)} (${sign2}${p.changePct.toFixed(2)}%). Live ${p.symbol} chart, latest data, day high $${p.high.toFixed(2)}, day low $${p.low.toFixed(2)}.`);
 
     const canonical = document.querySelector('link[rel="canonical"]');
     if (!canonical) {

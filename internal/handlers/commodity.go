@@ -27,7 +27,7 @@ var commodities = map[string]CommodityMeta{
 		ShortName: "WTI",
 		Unit:      "USD/barrel",
 		Exchange:  "NYMEX",
-		Description: "Track the live WTI crude oil price per barrel with real-time NYMEX data, " +
+		Description: "Track the live WTI crude oil price per barrel with latest NYMEX data, " +
 			"interactive candlestick charts, historical trends, and breaking energy market news. " +
 			"West Texas Intermediate is the primary U.S. oil benchmark.",
 		Keywords: "WTI crude oil price, WTI price today, West Texas Intermediate, crude oil price per barrel, " +
@@ -50,7 +50,7 @@ var commodities = map[string]CommodityMeta{
 		ShortName: "Brent",
 		Unit:      "USD/barrel",
 		Exchange:  "ICE",
-		Description: "Track the live Brent crude oil price per barrel with real-time ICE data, " +
+		Description: "Track the live Brent crude oil price per barrel with latest ICE data, " +
 			"interactive candlestick charts, historical trends, and breaking energy market news. " +
 			"Brent crude is the global oil price benchmark.",
 		Keywords: "Brent crude oil price, Brent price today, Brent crude chart, ICE Brent, " +
@@ -73,7 +73,7 @@ var commodities = map[string]CommodityMeta{
 		ShortName: "Natural Gas",
 		Unit:      "USD/MMBtu",
 		Exchange:  "NYMEX",
-		Description: "Track the live natural gas price with real-time NYMEX Henry Hub data, " +
+		Description: "Track the live natural gas price with latest NYMEX Henry Hub data, " +
 			"interactive charts, historical trends, and breaking energy market news. " +
 			"Natural gas is a key energy commodity for power generation and heating.",
 		Keywords: "natural gas price, natural gas price today, Henry Hub natural gas, NYMEX natural gas, " +
@@ -96,7 +96,7 @@ var commodities = map[string]CommodityMeta{
 		ShortName: "Heating Oil",
 		Unit:      "USD/gallon",
 		Exchange:  "NYMEX",
-		Description: "Track the live heating oil price with real-time NYMEX data, " +
+		Description: "Track the live heating oil price with latest NYMEX data, " +
 			"interactive candlestick charts, historical trends, and breaking energy market news. " +
 			"Heating oil futures are a key indicator for distillate demand.",
 		Keywords: "heating oil price, heating oil price today, NYMEX heating oil, heating oil futures, " +
@@ -119,7 +119,7 @@ var commodities = map[string]CommodityMeta{
 		ShortName: "RBOB",
 		Unit:      "USD/gallon",
 		Exchange:  "NYMEX",
-		Description: "Track the live RBOB gasoline futures price with real-time NYMEX data, " +
+		Description: "Track the live RBOB gasoline futures price with latest NYMEX data, " +
 			"interactive candlestick charts, historical trends, and breaking energy market news. " +
 			"RBOB is the benchmark for U.S. gasoline prices.",
 		Keywords: "RBOB gasoline price, RBOB price today, gasoline futures, NYMEX gasoline, " +
@@ -165,7 +165,7 @@ var commodities = map[string]CommodityMeta{
 		ShortName: "Dubai",
 		Unit:      "USD/barrel",
 		Exchange:  "DME",
-		Description: "Track the live Dubai crude oil price with real-time data, " +
+		Description: "Track the live Dubai crude oil price with latest data, " +
 			"interactive charts, historical trends, and breaking energy market news. " +
 			"Dubai crude is the key pricing benchmark for Middle Eastern oil exports to Asia.",
 		Keywords: "Dubai crude oil price, Dubai crude price today, Dubai crude chart, DME crude, " +
@@ -188,7 +188,7 @@ var commodities = map[string]CommodityMeta{
 		ShortName: "Murban",
 		Unit:      "USD/barrel",
 		Exchange:  "ICE",
-		Description: "Track the live Murban crude oil price with real-time ICE Futures Abu Dhabi data, " +
+		Description: "Track the live Murban crude oil price with latest ICE Futures Abu Dhabi data, " +
 			"interactive charts, historical trends, and breaking energy market news. " +
 			"Murban is Abu Dhabi's flagship crude grade and a growing Asian benchmark.",
 		Keywords: "Murban crude price, Murban oil price today, ICE Murban futures, Abu Dhabi crude, " +
@@ -211,7 +211,7 @@ var commodities = map[string]CommodityMeta{
 		ShortName: "WCS",
 		Unit:      "USD/barrel",
 		Exchange:  "CME",
-		Description: "Track the live Western Canadian Select price with real-time data, " +
+		Description: "Track the live Western Canadian Select price with latest data, " +
 			"interactive charts, historical trends, and breaking energy market news. " +
 			"WCS is the benchmark for Canadian heavy crude oil.",
 		Keywords: "Western Canadian Select price, WCS price today, Canadian crude oil price, WCS crude chart, " +
@@ -234,7 +234,7 @@ var commodities = map[string]CommodityMeta{
 		ShortName: "Gasoil",
 		Unit:      "USD/tonne",
 		Exchange:  "ICE",
-		Description: "Track the live ICE Gasoil futures price with real-time data, " +
+		Description: "Track the live ICE Gasoil futures price with latest data, " +
 			"interactive charts, historical trends, and breaking energy market news. " +
 			"ICE Gasoil is the European benchmark for diesel and middle distillate prices.",
 		Keywords: "ICE Gasoil price, gasoil price today, gasoil futures, ICE gasoil chart, " +
@@ -299,6 +299,19 @@ func (a *API) ServeCommodityPage(w http.ResponseWriter, r *http.Request) {
 	prices := a.market.GetPrices()
 	for _, p := range prices {
 		if p.Symbol == symbol {
+			// Don't show synthetic/estimate prices in SSR title or price display
+			if p.Source == "estimate" {
+				data.Price = "—"
+				data.Change = "—"
+				data.ChangePct = "—"
+				data.High = "—"
+				data.Low = "—"
+				data.Contract = "—"
+				data.Volume = "—"
+				// Keep generic title without price when data is unavailable
+				break
+			}
+			
 			data.Price = fmt.Sprintf("%.2f", p.Price)
 			data.Change = fmt.Sprintf("%.2f", p.Change)
 			data.ChangePct = fmt.Sprintf("%.2f", p.ChangePct)

@@ -229,16 +229,14 @@ main {
   left: 0;
   right: 0;
   height: var(--nav-height);
-  background: rgba(6, 8, 15, 0.85);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  background: var(--bg-primary);
   border-bottom: 1px solid var(--border);
   z-index: 1003;
   transition: background 0.3s;
 }
 
 .navbar.scrolled {
-  background: rgba(6, 8, 15, 0.95);
+  background: var(--bg-primary);
 }
 
 .nav-container {
@@ -451,12 +449,8 @@ a.ticker-item:hover .ticker-symbol {
 .hero-grid-pattern {
   position: absolute;
   inset: 0;
-  background-image:
-    linear-gradient(rgba(59, 130, 246, 0.03) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(59, 130, 246, 0.03) 1px, transparent 1px);
-  background-size: 60px 60px;
-  mask-image: radial-gradient(ellipse 80% 60% at 50% 40%, black 20%, transparent 70%);
-  -webkit-mask-image: radial-gradient(ellipse 80% 60% at 50% 40%, black 20%, transparent 70%);
+  opacity: 0.03;
+  background: var(--accent);
 }
 
 .hero-glow {
@@ -466,7 +460,9 @@ a.ticker-item:hover .ticker-symbol {
   transform: translateX(-50%);
   width: 800px;
   height: 600px;
-  background: radial-gradient(ellipse, rgba(59, 130, 246, 0.08) 0%, transparent 70%);
+  opacity: 0.08;
+  background: var(--accent);
+  border-radius: 50%;
 }
 
 .hero-content {
@@ -512,12 +508,7 @@ a.ticker-item:hover .ticker-symbol {
 }
 
 .gradient-text {
-  background: linear-gradient(135deg, var(--accent) 0%, #818cf8 40%, #c084fc 70%, var(--accent) 100%);
-  background-size: 200% auto;
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  animation: gradient-shift 6s ease-in-out infinite;
+  color: var(--accent);
 }
 
 @keyframes gradient-shift {
@@ -3232,17 +3223,13 @@ a.footer-attribution-link:hover {
 
 .hero-chart-card {
   position: relative;
-  background: linear-gradient(180deg, rgba(15, 23, 42, 0.65) 0%, rgba(11, 17, 32, 0.4) 100%);
+  background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   padding: 24px 24px 18px;
   margin: 0 auto 28px;
   max-width: 1080px;
-  box-shadow:
-    0 24px 60px -20px rgba(0, 0, 0, 0.55),
-    0 0 0 1px rgba(59, 130, 246, 0.04) inset;
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
+  box-shadow: 0 24px 60px -20px rgba(0, 0, 0, 0.55);
 }
 
 .hero-chart-header {
@@ -3374,7 +3361,7 @@ a.footer-attribution-link:hover {
   text-align: center;
   padding: 24px;
   pointer-events: none;
-  background: linear-gradient(180deg, rgba(15, 23, 42, 0.4), rgba(15, 23, 42, 0.6));
+  background: var(--bg-card);
   border-radius: 8px;
   z-index: 2;
 }
@@ -3582,7 +3569,7 @@ a.footer-attribution-link:hover {
 
 .page-hero {
   padding: calc(var(--nav-height) + var(--ticker-height) + 32px) 0 32px;
-  background: linear-gradient(180deg, rgba(59, 130, 246, 0.06) 0%, transparent 100%);
+  background: var(--bg-primary);
   border-bottom: 1px solid var(--border);
 }
 
@@ -3940,7 +3927,7 @@ a.footer-attribution-link:hover {
   border-radius: 10px;
   padding: 14px;
   margin: 0 0 16px;
-  background: linear-gradient(180deg, rgba(59, 130, 246, 0.06) 0%, transparent 100%);
+  background: var(--bg-card);
 }
 .backtest-verdict {
   display: flex;

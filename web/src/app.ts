@@ -641,7 +641,7 @@ function setHeroTagline(payload: HeroChart): void {
   if (!accent) return;
   switch (payload.mode) {
     case 'live':
-      accent.textContent = 'Streaming Real-time';
+      accent.textContent = 'Streaming Live';
       accent.className = 'hero-tagline-accent hero-tagline-accent-live';
       break;
     case 'today-paused':

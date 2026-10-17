@@ -9,6 +9,7 @@ import (
 	"math"
 	"net/http"
 	"net/url"
+	"os"
 	"strconv"
 	"sync"
 	"time"
@@ -16,7 +17,7 @@ import (
 
 // Pyth Network (Hermes) integration — WTI + Brent.
 //
-// We use Pyth as a real-time tick source for the two crude benchmarks:
+// We use Pyth as a live tick source for the two crude benchmarks:
 //   - WTI:   USOILSPOT/USD CFD (continuous spot, ~$0–1 basis to CL=F)
 //   - BRENT: UKOILSPOT/USD CFD (continuous spot, $2–4 basis to BZ=F)
 // For every other commodity on the site we rely on Yahoo Finance, which
@@ -39,23 +40,23 @@ import (
 // Read-side accessors (GetQuote, GetBucketBar, GetQuotes) apply the basis
 // transparently so consumers always see prices at the front-month level.
 //
-// Hermes is the off-chain price API operated by the Pyth Data Association.
-// It exposes parsed prices over a free, unauthenticated REST endpoint:
+// Hermes is the off-chain price API operated by Douro Labs (Pyth Data Association).
+// A valid Pyth Pro subscription and API key are required for production use.
+// Set PYTH_API_KEY environment variable with your API key.
+// Optionally set PYTH_HERMES_BASE_URL (defaults to https://pyth.dourolabs.app/hermes).
 //
-//   https://hermes.pyth.network/v2/updates/price/latest?ids[]=<feed_id>
-//
-// Pyth price data is licensed under CC-BY-4.0 / CC0 for off-chain reads,
-// which means we can legally surface the live values on a public website
-// as long as we attribute the source ("Powered by Pyth Network").
+// If PYTH_API_KEY is not set, Pyth integration is disabled and the service
+// falls back to Yahoo Finance exclusively.
 
 const (
-	hermesEndpoint = "https://hermes.pyth.network/v2/updates/price/latest"
+	// hermesDefaultEndpoint is the default Hermes base URL.
+	// Can be overridden with PYTH_HERMES_BASE_URL environment variable.
+	hermesDefaultEndpoint = "https://pyth.dourolabs.app/hermes"
 
 	// pythPollEvery is how often we hit Hermes for the latest tick. Hermes
 	// publishes new aggregates ~every 400ms during market hours and the
-	// public endpoint comfortably handles >1 req/s; we run at 2s as a
-	// compromise between candle-update responsiveness on the homepage chart
-	// and being a polite citizen on a free, unauthenticated API.
+	// endpoint handles >1 req/s; we run at 2s as a compromise between
+	// candle-update responsiveness on the homepage chart and being polite.
 	pythPollEvery = 2 * time.Second
 
 	// pythCacheRetention is how long we keep a Pyth quote in the cache after
@@ -142,22 +143,39 @@ func (q PythQuote) IsLive() bool {
 // MarketDataService keeps `basis` fresh via SetBasis whenever Yahoo's
 // price cache updates. Default 0 is a safe no-op.
 type PythService struct {
-	client  *http.Client
-	mu      sync.RWMutex
-	quotes  map[string]PythQuote
-	candles map[string][]models.PythCandle // keyed by internal symbol
-	basis   map[string]float64             // additive shift, applied on read
-	stop    chan struct{}
+	client   *http.Client
+	apiKey   string // PYTH_API_KEY from environment
+	endpoint string // Hermes base URL
+	mu       sync.RWMutex
+	quotes   map[string]PythQuote
+	candles  map[string][]models.PythCandle // keyed by internal symbol
+	basis    map[string]float64             // additive shift, applied on read
+	stop     chan struct{}
 }
 
 func NewPythService() *PythService {
-	svc := &PythService{
-		client:  &http.Client{Timeout: 8 * time.Second},
-		quotes:  make(map[string]PythQuote),
-		candles: make(map[string][]models.PythCandle),
-		basis:   make(map[string]float64),
-		stop:    make(chan struct{}),
+	apiKey := os.Getenv("PYTH_API_KEY")
+	endpoint := os.Getenv("PYTH_HERMES_BASE_URL")
+	if endpoint == "" {
+		endpoint = hermesDefaultEndpoint
 	}
+	
+	svc := &PythService{
+		client:   &http.Client{Timeout: 8 * time.Second},
+		apiKey:   apiKey,
+		endpoint: endpoint,
+		quotes:   make(map[string]PythQuote),
+		candles:  make(map[string][]models.PythCandle),
+		basis:    make(map[string]float64),
+		stop:     make(chan struct{}),
+	}
+	
+	// If no API key, disable Pyth integration
+	if apiKey == "" {
+		log.Printf("[pyth] PYTH_API_KEY not set — Pyth integration disabled, using Yahoo Finance exclusively")
+		return svc
+	}
+	
 	// Prime once synchronously so the very first /api/prices call after
 	// startup already has Pyth data when the server is healthy.
 	if err := svc.refresh(); err != nil {
@@ -215,6 +233,11 @@ func (s *PythService) loop() {
 // refresh issues a single batched call to Hermes for all configured feeds
 // and updates the cache atomically.
 func (s *PythService) refresh() error {
+	// Skip if no API key configured
+	if s.apiKey == "" {
+		return nil
+	}
+	
 	if len(pythFeeds) == 0 {
 		return nil
 	}
@@ -226,12 +249,14 @@ func (s *PythService) refresh() error {
 	q.Set("parsed", "true")
 	q.Set("encoding", "hex")
 
-	req, err := http.NewRequest("GET", hermesEndpoint+"?"+q.Encode(), nil)
+	apiURL := s.endpoint + "/v2/updates/price/latest?" + q.Encode()
+	req, err := http.NewRequest("GET", apiURL, nil)
 	if err != nil {
 		return fmt.Errorf("build request: %w", err)
 	}
 	req.Header.Set("User-Agent", "live-oil-prices-go/1.0 (+https://liveoilprices.com)")
 	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Authorization", "Bearer "+s.apiKey)
 
 	resp, err := s.client.Do(req)
 	if err != nil {
