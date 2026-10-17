@@ -270,6 +270,7 @@ func (s *YahooFinanceService) fetchQuote(sym yahooSymbol) (models.Price, error) 
 		UpdatedAt: time.Unix(meta.RegularMarketTime, 0).UTC().Format(time.RFC3339),
 		Contract:  contract,
 		Source:    "yahoo",
+		Available: true,
 	}, nil
 }
 

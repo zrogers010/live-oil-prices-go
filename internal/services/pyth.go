@@ -556,5 +556,6 @@ func applyPyth(yahoo models.Price, q PythQuote) models.Price {
 
 	merged.UpdatedAt = q.PublishedAt.Format(time.RFC3339)
 	merged.Source = "pyth"
+	merged.Available = true
 	return merged
 }
