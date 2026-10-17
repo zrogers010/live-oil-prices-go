@@ -465,13 +465,20 @@ func (s *MarketDataService) computePredictions() []models.Prediction {
 	prices := s.GetPrices()
 	pm := make(map[string]float64)
 	sources := make(map[string]string)
+	availMap := make(map[string]bool)
 	for _, p := range prices {
 		pm[p.Symbol] = p.Price
 		sources[p.Symbol] = p.Source
+		availMap[p.Symbol] = p.Available
 	}
 
 	out := make([]models.Prediction, 0, len(predictionSymbols))
 	for _, ps := range predictionSymbols {
+		// Skip if price is unavailable
+		if !availMap[ps.symbol] {
+			continue
+		}
+		
 		current := pm[ps.symbol]
 		var history []float64
 		if s.yahoo != nil {
