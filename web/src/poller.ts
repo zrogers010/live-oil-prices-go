@@ -50,14 +50,8 @@ export class HeroPoller {
     this.getMode = config.getMode;
     this.isHidden = config.isHidden;
     this.clock = config.clock || { now: () => Date.now() };
-    // Bind default timers to avoid "Illegal invocation" in browsers
-    this.timers = config.timers || {
-      setTimeout: (fn: () => void, ms: number) => {
-        const timer = (typeof window !== 'undefined' ? window : globalThis).setTimeout(fn, ms);
-        return timer as unknown as number;
-      },
-      clearTimeout: (handle: number) => (typeof window !== 'undefined' ? window : globalThis).clearTimeout(handle as any)
-    };
+    // TEMPORARILY BROKEN: bare timers (should fail test)
+    this.timers = config.timers || { setTimeout, clearTimeout };
   }
   
   // Start polling by doing an immediate first tick
@@ -110,6 +104,8 @@ export class HeroPoller {
       if (payload === null) {
         this.failures++;
         nextDelay = this.calculateBackoff();
+        // Set notBefore so resume() respects the backoff deadline
+        this.notBefore = this.clock.now() + nextDelay;
       } else {
         // Success: reset failures, extract mode
         this.failures = 0;

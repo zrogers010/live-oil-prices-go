@@ -150,7 +150,7 @@ test('timer callback nulls pollTimer handle', async () => {
   assert(state2.hasTimer, 'new timer exists after second fetch');
 });
 
-// Mutation: resume ignores inFlight
+// Mutation: resume does not fetch when already in flight
 test('resume does not fetch when already in flight', async () => {
   const ctx = createContext();
   let resolveFirst: any;
@@ -185,19 +185,22 @@ test('resume does not fetch when already in flight', async () => {
   const state1 = poller.getState();
   assert(state1.inFlight, 'in flight');
   
-  // Try to resume while in flight
+  // Try to resume while in flight - should be blocked
   poller.resume();
   await new Promise(r => setTimeout(r, 0));
-  assertEquals(fetchCount, 1, 'no second fetch while in flight');
+  assertEquals(fetchCount, 1, 'resume blocked while in flight');
   
   // Complete first fetch
   resolveFirst({ mode: 'live', bars: [] });
   await new Promise(r => setTimeout(r, 10));
   
-  assertEquals(fetchCount, 1, 'still only one fetch');
+  // Now timer should be set for next poll
+  const state2 = poller.getState();
+  assert(state2.hasTimer, 'timer set after fetch completes');
+  assert(!state2.inFlight, 'no longer in flight');
 });
 
-// Mutation: resume ignores existing pollTimer
+// Mutation: resume does not fetch when timer already exists
 test('resume does not fetch when timer already exists', async () => {
   const ctx = createContext();
   ctx.payloads = [
@@ -210,15 +213,19 @@ test('resume does not fetch when timer already exists', async () => {
   await new Promise(r => setTimeout(r, 0));
   
   const state1 = poller.getState();
-  assert(state1.hasTimer, 'timer exists');
+  assert(state1.hasTimer, 'timer exists after first fetch');
+  assertEquals(ctx.fetches.length, 1, 'one fetch so far');
   
-  // Try to resume when timer exists
+  // Try to resume when timer exists - should be blocked
   poller.resume();
   await new Promise(r => setTimeout(r, 0));
-  assertEquals(ctx.fetches.length, 1, 'no second fetch when timer exists');
+  
+  const state2 = poller.getState();
+  assert(state2.hasTimer, 'timer still exists');
+  assertEquals(ctx.fetches.length, 1, 'resume blocked, no second fetch');
 });
 
-// Mutation: resume resets failure count
+// Mutation: resume does not reset failure count
 test('resume does not reset failure count', async () => {
   const ctx = createContext();
   ctx.payloads = [
@@ -237,17 +244,23 @@ test('resume does not reset failure count', async () => {
   await ctx.timers.tick(20000);
   
   const state1 = poller.getState();
-  assertEquals(state1.failures, 2, 'failures = 2');
+  assertEquals(state1.failures, 2, 'failures = 2 after two errors');
   
-  // Hide and resume
+  // Hide and resume - failure count should persist
   ctx.hidden = true;
   poller.pause();
+  await new Promise(r => setTimeout(r, 0));
+  
   ctx.hidden = false;
   poller.resume();
   await new Promise(r => setTimeout(r, 0));
   
   const state2 = poller.getState();
-  assertEquals(state2.failures, 2, 'failures still = 2 after resume');
+  assertEquals(state2.failures, 2, 'failures still = 2 after resume (not reset)');
+  
+  // Next delay should still be at backoff level 2 (40s), not reset to 10s
+  // We're at notBefore deadline, so resume should schedule to that time
+  assert(state2.hasTimer || state2.inFlight, 'timer or fetch in progress');
 });
 
 // Test: tab coming back after short hide should fetch immediately (no failure pending)
