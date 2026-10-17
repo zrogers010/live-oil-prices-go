@@ -28,7 +28,7 @@ git config user.email "test@example.com"
 git config user.name "Test User"
 
 # Create project structure
-mkdir -p bin web/templates web/static/js web/static/css frontend/src
+mkdir -p bin cmd/server web/templates web/static/js web/static/css frontend/src
 mkdir -p "$TEST_DIR/rollbacks"
 
 # Create initial files
