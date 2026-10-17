@@ -14,38 +14,12 @@ export PATH=$PATH:/usr/local/go/bin
 SERVICE="liveoilprices"
 BIN="$PROJECT_DIR/bin/server"
 ROLLBACK_DIR="/home/deploy/liveoilprices-rollbacks"
-FRONTEND_BUILD_TEMP="$PROJECT_DIR/.build-tmp"
-DEPLOY_BRANCH="${DEPLOY_BRANCH:-main}"
-SNAPSHOT_COMMIT=""
-DEPLOY_FAILED=0
 
-# Safety check: ROLLBACK_DIR must be absolute and non-empty
-if [ -z "$ROLLBACK_DIR" ] || [[ ! "$ROLLBACK_DIR" = /* ]]; then
-    echo "ERROR: ROLLBACK_DIR must be a non-empty absolute path"
+# Guard against accidental rm -rf in empty ROLLBACK_DIR
+if [ -z "$ROLLBACK_DIR" ] || [ "$ROLLBACK_DIR" = "/" ]; then
+    echo "ERROR: ROLLBACK_DIR is empty or root"
     exit 1
 fi
-
-# Cleanup function to restore state on failure
-cleanup_on_failure() {
-    if [ "$DEPLOY_FAILED" -eq 1 ]; then
-        echo ""
-        echo "=== Deploy failed, cleaning up ==="
-        
-        # Restore git tree to snapshot commit if we have one
-        if [ -n "$SNAPSHOT_COMMIT" ] && git rev-parse --verify "$SNAPSHOT_COMMIT" &>/dev/null 2>&1; then
-            echo "  Restoring git tree to $SNAPSHOT_COMMIT..."
-            git checkout -f "$SNAPSHOT_COMMIT" 2>/dev/null || true
-        fi
-        
-        # Remove temp files
-        rm -f "$BIN.new"
-        rm -rf "$FRONTEND_BUILD_TEMP"
-        
-        echo "  Cleanup complete. Service unchanged."
-    fi
-}
-
-trap cleanup_on_failure EXIT
 
 echo ""
 echo "=== Live Oil Prices Deploy ==="
@@ -63,271 +37,108 @@ if ! command -v node &>/dev/null; then
     exit 1
 fi
 
-# Check git status and handle detached HEAD from rollback
-if git rev-parse --is-inside-work-tree &>/dev/null 2>&1; then
-    CURRENT_COMMIT=$(git rev-parse HEAD 2>/dev/null)
-    DETACHED=false
-    git symbolic-ref HEAD &>/dev/null || DETACHED=true
-    
-    # Check if we're at a recorded snapshot commit (rollback state)
-    ROLLBACK_STATE=false
-    if [ "$DETACHED" = true ] && [ -n "$CURRENT_COMMIT" ]; then
-        # Look in regular snapshots and legacy/manual snapshots
-        for snapshot in "$ROLLBACK_DIR"/*/COMMIT; do
-            if [ -f "$snapshot" ]; then
-                SNAP_COMMIT=$(cat "$snapshot" 2>/dev/null || echo "")
-                if [ "$SNAP_COMMIT" = "$CURRENT_COMMIT" ]; then
-                    ROLLBACK_STATE=true
-                    break
-                fi
-            fi
-        done 2>/dev/null || true
-    fi
-    
-    if [ "$DETACHED" = true ]; then
-        if [ "$ROLLBACK_STATE" = true ]; then
-            echo "  Detected rollback state (detached at snapshot commit $CURRENT_COMMIT)"
-            echo "  Returning to branch $DEPLOY_BRANCH..."
-            git checkout -f "$DEPLOY_BRANCH" || {
-                echo "ERROR: Failed to checkout $DEPLOY_BRANCH"
-                DEPLOY_FAILED=1
-                exit 1
-            }
-        else
-            echo "ERROR: Detached HEAD at unknown commit $CURRENT_COMMIT"
-            echo "       Either checkout a branch or rollback to a known snapshot"
-            DEPLOY_FAILED=1
-            exit 1
-        fi
-    elif ! git diff --quiet || ! git diff --cached --quiet; then
-        echo "ERROR: Working tree is dirty. Commit or stash changes before deploying."
-        git status --short
-        DEPLOY_FAILED=1
-        exit 1
-    fi
+# ---------- Create rollback snapshot ----------
+echo "[1/5] Creating rollback snapshot..."
+TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+ROLLBACK_PATH="$ROLLBACK_DIR/$TIMESTAMP"
+mkdir -p "$ROLLBACK_PATH"
+
+# Snapshot current state BEFORE git pull
+if [ -f "$BIN" ]; then
+    cp "$BIN" "$ROLLBACK_PATH/server"
+    echo "  Snapshotted binary"
+else
+    echo "  No existing binary to snapshot"
 fi
 
-# ---------- Create rollback snapshot BEFORE git pull ----------
-echo "[1/6] Creating rollback snapshot..."
-TIMESTAMP=$(date +%Y%m%d-%H%M%S)
-mkdir -p "$ROLLBACK_DIR"
+if [ -d "web/templates" ]; then
+    cp -r web/templates "$ROLLBACK_PATH/templates"
+    echo "  Snapshotted templates"
+fi
 
-# Back up current state (binary, templates, and built assets) if they exist
-if [ -f "$BIN" ] || [ -f "web/static/js/app.js" ]; then
-    ROLLBACK_PATH="$ROLLBACK_DIR/$TIMESTAMP"
-    mkdir -p "$ROLLBACK_PATH"
-    
-    # Copy binary if it exists
-    if [ -f "$BIN" ]; then
-        cp "$BIN" "$ROLLBACK_PATH/server" || {
-            echo "ERROR: Failed to back up binary"
-            exit 1
-        }
-    fi
-    
-    # Copy templates (tracked in git, needed for restore)
-    if [ -d "web/templates" ]; then
-        cp -r web/templates "$ROLLBACK_PATH/" || {
-            echo "ERROR: Failed to back up templates"
-            exit 1
-        }
-    fi
-    
-    # Copy built static assets if they exist
-    if [ -d "web/static/js" ]; then
-        cp -r web/static/js "$ROLLBACK_PATH/" || {
-            echo "ERROR: Failed to back up js"
-            exit 1
-        }
-    fi
-    
-    if [ -d "web/static/css" ]; then
-        cp -r web/static/css "$ROLLBACK_PATH/" || {
-            echo "ERROR: Failed to back up css"
-            exit 1
-        }
-    fi
-    
-    # Record the git commit so rollback can restore the matching tree
-    if git rev-parse HEAD &>/dev/null 2>&1; then
-        SNAPSHOT_COMMIT=$(git rev-parse HEAD)
-        echo "$SNAPSHOT_COMMIT" > "$ROLLBACK_PATH/COMMIT" || {
-            echo "ERROR: Failed to record git commit"
-            DEPLOY_FAILED=1
-            exit 1
-        }
-    fi
-    
-    echo "  Rollback snapshot saved to $ROLLBACK_PATH"
-    
-    # Keep only the 10 most recent rollbacks (sort by name, not mtime)
-    # Using find with -print0 for safety against spaces in names
-    find "$ROLLBACK_DIR" -mindepth 1 -maxdepth 1 -type d -name '20*' -print0 \
-        | sort -zr \
-        | tail -zn +11 \
-        | xargs -0r rm -rf --
-else
-    echo "  No existing binary or assets to back up (first deploy or clean build)."
-    ROLLBACK_PATH=""
+if [ -d "web/static/js" ]; then
+    cp -r web/static/js "$ROLLBACK_PATH/js"
+    echo "  Snapshotted js"
+fi
+
+if [ -d "web/static/css" ]; then
+    cp -r web/static/css "$ROLLBACK_PATH/css"
+    echo "  Snapshotted css"
+fi
+
+# Record git commit
+if git rev-parse --is-inside-work-tree &>/dev/null 2>&1; then
+    git rev-parse HEAD > "$ROLLBACK_PATH/COMMIT"
+    echo "  Recorded commit: $(cat "$ROLLBACK_PATH/COMMIT")"
+fi
+
+echo "  Rollback snapshot saved to $ROLLBACK_PATH"
+
+# Prune old rollbacks (keep 10 newest by name sort)
+if [ -d "$ROLLBACK_DIR" ]; then
+    find "$ROLLBACK_DIR" -mindepth 1 -maxdepth 1 -type d -name '20*' -print0 | \
+        sort -zr | tail -zn +11 | xargs -0r rm -rf --
 fi
 
 # ---------- Pull latest code ----------
 if git rev-parse --is-inside-work-tree &>/dev/null 2>&1; then
-    echo "[2/6] Pulling latest code..."
+    echo "[2/5] Pulling latest code..."
     if ! git pull --ff-only; then
         echo "ERROR: git pull failed. Aborting deploy."
-        DEPLOY_FAILED=1
         exit 1
     fi
 else
-    echo "[2/6] Not a git repo, skipping pull."
+    echo "[2/5] Not a git repo, skipping pull."
 fi
 
-# ---------- Build frontend into temp directory ----------
-echo "[3/6] Building frontend..."
+# ---------- Build frontend ----------
+echo "[3/5] Building frontend..."
 npm cache clean --force 2>/dev/null || true
 rm -rf node_modules
 npm ci
-
-# Build into temp directory to avoid the old server hash pointing at new bytes
-# This includes CSS (git-tracked) to ensure the swap is atomic
-rm -rf "$FRONTEND_BUILD_TEMP"
-mkdir -p "$FRONTEND_BUILD_TEMP/js" "$FRONTEND_BUILD_TEMP/css"
-
-# Copy CSS BEFORE building JS, so we have the post-pull CSS ready for swap
-if [ -f "web/static/css/styles.css" ]; then
-    cp web/static/css/styles.css "$FRONTEND_BUILD_TEMP/css/" || {
-        echo "ERROR: Failed to copy CSS to temp directory"
-        exit 1
-    }
-fi
-
-# Build JS bundles using package.json scripts (single source of truth for build flags)
-OUTDIR="$FRONTEND_BUILD_TEMP" npm run build:to
-
-echo "  Frontend built in temp directory."
+npm run build
+echo "  Frontend built."
 
 # ---------- Lint and test ----------
-echo "[4/6] Running go vet and tests..."
+echo "[4/5] Running go vet and tests..."
 go vet ./...
 go test ./...
 echo "  Tests passed."
 
-# ---------- Build backend to temporary location ----------
-echo "[5/6] Building backend..."
-CGO_ENABLED=0 go build -ldflags="-s -w" -o "$BIN.new" ./cmd/server
-echo "  Backend built ($(du -h "$BIN.new" | cut -f1))."
+# ---------- Build backend ----------
+echo "[5/5] Building backend..."
+CGO_ENABLED=0 go build -ldflags="-s -w" -o "$BIN" ./cmd/server
+echo "  Backend built ($(du -h "$BIN" | cut -f1))."
 
-# Validate assets and templates against the NEW build before swapping
-echo "  Validating new binary against new assets and templates..."
-if ! "$BIN.new" --check-assets --static-root="$FRONTEND_BUILD_TEMP" --templates="web/templates" 2>&1; then
-    echo "ERROR: Asset validation failed. Nothing swapped."
-    if [ -n "$ROLLBACK_PATH" ]; then
-        echo "  To rollback: scripts/rollback.sh $TIMESTAMP"
-    fi
-    DEPLOY_FAILED=1
-    exit 1
-fi
-
-# ---------- Swap binary and frontend assets, then restart ----------
-echo "[6/6] Swapping binary and frontend assets, then restarting service..."
-
-# Atomically swap the new binary into place
-mv -f "$BIN.new" "$BIN"
-echo "  ✓ Binary swapped"
-
-# Atomically swap the new frontend into place
-mkdir -p web/static
-if [ -d "$FRONTEND_BUILD_TEMP/js" ]; then
-    rm -rf web/static/js
-    mv "$FRONTEND_BUILD_TEMP/js" web/static/
-fi
-
-if [ -d "$FRONTEND_BUILD_TEMP/css" ]; then
-    rm -rf web/static/css
-    mv "$FRONTEND_BUILD_TEMP/css" web/static/
-fi
-
-# Clean up temp directory
-rm -rf "$FRONTEND_BUILD_TEMP"
-
+# ---------- Restart & verify ----------
+echo "Restarting service..."
 sudo systemctl restart "$SERVICE"
 sleep 2
 
-# Check if service started
-if ! sudo systemctl is-active --quiet "$SERVICE"; then
+if sudo systemctl is-active --quiet "$SERVICE"; then
+    echo "  Service is running."
+else
     echo "  ERROR: Service failed to start!"
     sudo systemctl status "$SERVICE" --no-pager
-    
-    # Auto-rollback on failed start
-    if [ -n "$ROLLBACK_PATH" ] && [ -d "$ROLLBACK_PATH" ]; then
-        echo ""
-        echo "  Attempting automatic rollback to $TIMESTAMP..."
-        if "$SCRIPT_DIR/rollback.sh" "$TIMESTAMP"; then
-            echo "  Rollback successful, but deploy failed."
-        else
-            echo "  ERROR: Rollback also failed!"
-        fi
-    fi
-    DEPLOY_FAILED=1
     exit 1
 fi
 
-# Health check with increased timeout (overridable for tests)
-echo "  Service started. Running health checks..."
-HEALTH_CHECK_TIMEOUT="${HEALTH_CHECK_TIMEOUT:-30}"
-HEALTH_CHECK_INTERVAL=3
-MAX_HEALTH_CHECKS=$((HEALTH_CHECK_TIMEOUT / HEALTH_CHECK_INTERVAL))
-
-for i in $(seq 1 $MAX_HEALTH_CHECKS); do
+# Health check
+RETRIES=5
+for i in $(seq 1 $RETRIES); do
     STATUS=$(curl -sf -o /dev/null -w "%{http_code}" "http://127.0.0.1:8080/api/health" 2>/dev/null || echo "000")
     if [ "$STATUS" = "200" ]; then
-        echo "  ✓ Health check passed after $((i * HEALTH_CHECK_INTERVAL))s."
+        echo "  Health check passed."
         break
     fi
-    
-    # Check if service crashed
-    if ! sudo systemctl is-active --quiet "$SERVICE"; then
-        echo "  ERROR: Service crashed during health check!"
-        sudo systemctl status "$SERVICE" --no-pager
-        
-        # Auto-rollback on crash
-        if [ -n "$ROLLBACK_PATH" ] && [ -d "$ROLLBACK_PATH" ]; then
-            echo ""
-            echo "  Attempting automatic rollback to $TIMESTAMP..."
-            if "$SCRIPT_DIR/rollback.sh" "$TIMESTAMP"; then
-                echo "  Rollback successful, but deploy failed."
-            else
-                echo "  ERROR: Rollback also failed!"
-            fi
-        fi
-        exit 1
+    if [ "$i" = "$RETRIES" ]; then
+        echo "  WARNING: Health check failed after $RETRIES attempts (HTTP $STATUS)."
+        echo "  Check logs: sudo journalctl -u $SERVICE --no-pager -n 50"
     fi
-    
-    if [ "$i" = "$MAX_HEALTH_CHECKS" ]; then
-        echo "  ERROR: Health check failed after ${HEALTH_CHECK_TIMEOUT}s (HTTP $STATUS)."
-        echo "  Service is running but not responding correctly."
-        sudo journalctl -u "$SERVICE" --no-pager -n 50
-        
-        # Auto-rollback on failed health check
-        if [ -n "$ROLLBACK_PATH" ] && [ -d "$ROLLBACK_PATH" ]; then
-            echo ""
-            echo "  Attempting automatic rollback to $TIMESTAMP..."
-            if "$SCRIPT_DIR/rollback.sh" "$TIMESTAMP"; then
-                echo "  Rollback successful, but deploy failed."
-            else
-                echo "  ERROR: Rollback also failed!"
-            fi
-        fi
-        DEPLOY_FAILED=1
-        exit 1
-    fi
-    sleep $HEALTH_CHECK_INTERVAL
+    sleep 3
 done
-
-# Success - disable cleanup trap
-DEPLOY_FAILED=0
 
 echo ""
 echo "=== Deploy complete ==="
+echo "  To rollback: restore from $ROLLBACK_PATH manually"
 echo ""

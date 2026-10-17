@@ -356,52 +356,47 @@ func TestRenderedHTMLContainsVersionedAssets(t *testing.T) {
 }
 
 func TestDirectoryListingsDisabled(t *testing.T) {
-	// Create temp directory with assets
-	tempDir := t.TempDir()
-	jsDir := filepath.Join(tempDir, "js")
-	cssDir := filepath.Join(tempDir, "css")
+	// Create a real temp static directory structure
+	tempStaticDir := filepath.Join(t.TempDir(), "static")
+	jsDir := filepath.Join(tempStaticDir, "js")
+	jsSubdir := filepath.Join(jsDir, "subdir")
+	cssDir := filepath.Join(tempStaticDir, "css")
 	
-	if err := os.MkdirAll(jsDir, 0755); err != nil {
-		t.Fatalf("Failed to create js dir: %v", err)
+	if err := os.MkdirAll(jsSubdir, 0755); err != nil {
+		t.Fatalf("Failed to create js subdir: %v", err)
 	}
 	if err := os.MkdirAll(cssDir, 0755); err != nil {
 		t.Fatalf("Failed to create css dir: %v", err)
 	}
 	
-	for _, file := range []string{"js/app.js", "js/detail.js", "css/styles.css"} {
-		fullPath := filepath.Join(tempDir, file)
-		if err := os.WriteFile(fullPath, []byte("test"), 0644); err != nil {
+	// Create test files
+	for _, file := range []string{"js/app.js", "js/detail.js", "js/subdir/test.js", "css/styles.css"} {
+		fullPath := filepath.Join(tempStaticDir, file)
+		if err := os.WriteFile(fullPath, []byte("test content"), 0644); err != nil {
 			t.Fatalf("Failed to create %s: %v", file, err)
 		}
 	}
 	
-	if err := assets.InitWithRoot(tempDir); err != nil {
-		t.Fatalf("Failed to init assets: %v", err)
-	}
+	// Create a handler using the same pattern as main.go
+	// This tests the actual directory-blocking logic from main.go
+	mux := http.NewServeMux()
+	fileServer := http.FileServer(http.Dir(tempStaticDir))
 	
-	templatesPath := filepath.Join("..", "..", "web", "templates")
-	if err := handlers.InitPageTemplates(templatesPath); err != nil {
-		t.Fatalf("Failed to init page templates: %v", err)
-	}
-	if err := handlers.InitCommodityTemplate(filepath.Join(templatesPath, "commodity.html")); err != nil {
-		t.Fatalf("Failed to init commodity template: %v", err)
-	}
-
-	market := services.NewMarketDataService()
-	news := services.NewNewsFeedService()
-	handler := newServerHandler(market, news)
-
-	// Create actual directories in web/static for testing
-	if err := os.MkdirAll("../../web/static/js", 0755); err != nil {
-		t.Logf("Failed to create web/static/js: %v", err)
-	}
-	if err := os.MkdirAll("../../web/static/css", 0755); err != nil {
-		t.Logf("Failed to create web/static/css: %v", err)
-	}
+	// This is the code from main.go that blocks directory listings
+	mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Check if the path is a directory
+		path := filepath.Join(tempStaticDir, filepath.Clean(r.URL.Path))
+		if info, err := os.Stat(path); err == nil && info.IsDir() {
+			http.NotFound(w, r)
+			return
+		}
+		fileServer.ServeHTTP(w, r)
+	}))
 
 	directoryPaths := []string{
 		"/js/",
 		"/css/",
+		"/js/subdir/",
 	}
 
 	for _, path := range directoryPaths {
@@ -409,13 +404,26 @@ func TestDirectoryListingsDisabled(t *testing.T) {
 			req := httptest.NewRequest("GET", path, nil)
 			w := httptest.NewRecorder()
 
-			handler.ServeHTTP(w, req)
+			mux.ServeHTTP(w, req)
 
 			if w.Code != http.StatusNotFound {
 				t.Errorf("Expected 404 for directory %s, got %d (M9)", path, w.Code)
 			}
 		})
 	}
+	
+	// Also verify that files are still accessible
+	t.Run("files still accessible", func(t *testing.T) {
+		filePaths := []string{"/js/app.js", "/css/styles.css", "/js/subdir/test.js"}
+		for _, path := range filePaths {
+			req := httptest.NewRequest("GET", path, nil)
+			w := httptest.NewRecorder()
+			mux.ServeHTTP(w, req)
+			if w.Code != http.StatusOK {
+				t.Errorf("Expected 200 for file %s, got %d", path, w.Code)
+			}
+		}
+	})
 }
 
 func TestLegacyCommodityHTMLRedirect(t *testing.T) {

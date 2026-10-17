@@ -114,5 +114,11 @@ if [ $ERRORS -gt 0 ]; then
     exit 1
 fi
 
+if [ $SKIPPED -gt 0 ]; then
+    echo ""
+    echo "Migration completed with skipped files (destination collisions)."
+    exit 1
+fi
+
 echo "Done."
 echo ""

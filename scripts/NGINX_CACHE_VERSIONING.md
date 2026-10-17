@@ -81,14 +81,62 @@ after the apex redirect change (scripts/NGINX_APEX_REDIRECT.md).
      }
 ```
 
-**Important:** 
-
 - The `map` directive validates that `$arg_v` is exactly 12 hexadecimal characters (matching the Go asset hasher's output). Only valid hashes get the long immutable cache; everything else (including empty, garbage, or wrong-length values) gets the short 300-second cache.
 - The `map` is placed at the top level of the conf.d file, which is included in nginx's `http` context, so it's valid there.
 - The `add_header` directive no longer has `always`, so 404 responses don't get cached for a year.
 - The `location ~* \.rollback` block uses `~*` for case-insensitive matching and is placed inside the main server block as the **first** location directive. Regex locations have higher precedence than prefix locations, so this catches any path containing `.rollback` anywhere (case-insensitive), including `/js.rollback-20261017b/app.js`, `/js/x.rollback-1/app.js`, and `/css/styles.ROLLBACK-2`.
 
 ## Apply (after Go deployment, PR #43 merged and deployed)
+
+### 0. Create manual snapshot of 268dd9b (before first deploy with new deploy.sh)
+
+**Important:** The first deploy with the new `deploy.sh` (from PR #43) needs a baseline snapshot to roll back to. Create this manually **before** running the new deploy.sh:
+
+```bash
+# On the EC2 host, as deploy user
+cd /home/deploy/liveoilprices
+ROLLBACK_DIR="/home/deploy/liveoilprices-rollbacks"
+TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+SNAPSHOT="$ROLLBACK_DIR/$TIMESTAMP"
+
+# Create the snapshot directory
+mkdir -p "$SNAPSHOT"
+
+# Snapshot the current running state (from 268dd9b)
+cp bin/server "$SNAPSHOT/server"
+cp -r web/templates "$SNAPSHOT/templates"
+cp -r web/static/js "$SNAPSHOT/js"
+cp -r web/static/css "$SNAPSHOT/css"
+
+# Record the git commit (268dd9b is the base)
+echo "268dd9b73a5395090b11c02335b3539711bd2c6e" > "$SNAPSHOT/COMMIT"
+
+echo "Manual snapshot created at $SNAPSHOT"
+ls -lh "$SNAPSHOT"
+```
+
+**To restore this manual snapshot:**
+
+```bash
+# Stop the service
+sudo systemctl stop liveoilprices
+
+# Restore the files
+cd /home/deploy/liveoilprices
+cp "$SNAPSHOT/server" bin/server
+cp -r "$SNAPSHOT/templates" web/templates
+cp -r "$SNAPSHOT/js" web/static/js
+cp -r "$SNAPSHOT/css" web/static/css
+
+# Restore the git commit
+git checkout -f 268dd9b73a5395090b11c02335b3539711bd2c6e
+
+# Restart the service
+sudo systemctl start liveoilprices
+
+# Verify health
+curl http://127.0.0.1:8080/api/health
+```
 
 ### 1. Move existing rollback directories out of web/static/
 
@@ -103,41 +151,47 @@ bash scripts/move-legacy-rollbacks.sh
 ```
 
 The script moves:
-- `web/static/js.rollback-20261016` → `/home/deploy/liveoilprices-rollbacks/20261016-manual`
-- `web/static/js.rollback-20261017` → `/home/deploy/liveoilprices-rollbacks/20261017-manual`
-- `web/static/js.rollback-20261017b` → `/home/deploy/liveoilprices-rollbacks/20261017b-manual`
+- `web/static/js.rollback-20261016` → `/home/deploy/liveoilprices-rollbacks/legacy-20261016`
+- `web/static/js.rollback-20261017` → `/home/deploy/liveoilprices-rollbacks/legacy-20261017`
+- `web/static/js.rollback-20261017b` → `/home/deploy/liveoilprices-rollbacks/legacy-20261017b`
 - Any other `*.rollback-*` files under `web/static/js` or `web/static/css`
 
 The script will not overwrite existing destinations and reports a summary of moved/skipped/error items.
 
-### 2. Back up current nginx config
-
-```bash
-# On the EC2 host
-sudo cp -a /etc/nginx/conf.d/liveoilprices.conf /root/liveoilprices.conf.rollback-$(date +%Y%m%d-%H%M%S)
-```
-
-The backup is saved outside `web/static/` so it's not served.
-
-### 3. Apply the new config
+### 2. Back up and apply nginx config
 
 Copy `scripts/nginx-prod.conf` from the repo to the server, then:
 
 ```bash
-# Copy to temp location first
+# On the EC2 host
+# 1. Back up the live config
+BACKUP="/root/liveoilprices.conf.bak-$(date +%Y%m%d-%H%M%S)"
+sudo cp -a /etc/nginx/conf.d/liveoilprices.conf "$BACKUP"
+echo "Backup saved to $BACKUP"
+
+# 2. Copy candidate config to temp location
 # (manually scp or copy scripts/nginx-prod.conf to /tmp/liveoilprices.conf)
 
-# Install the new config
+# 3. Diff the candidate against the live certbot-managed config
+diff -u /etc/nginx/conf.d/liveoilprices.conf /tmp/liveoilprices.conf | less
+# Review the diff to ensure only the expected changes are present
+
+# 4. Install the candidate config
 sudo install -m 0644 -o root -g root /tmp/liveoilprices.conf /etc/nginx/conf.d/liveoilprices.conf
 
-# Test the configuration
-sudo nginx -t
+# 5. Test and automatically restore on failure
+if ! sudo nginx -t; then
+    echo "nginx -t failed, restoring backup"
+    sudo cp "$BACKUP" /etc/nginx/conf.d/liveoilprices.conf
+    exit 1
+fi
 
-# If test passes, reload nginx
+# 6. Reload nginx
 sudo systemctl reload nginx
+echo "nginx reloaded successfully"
 ```
 
-### 4. Verify the fix
+### 3. Verify the fix
 
 ```bash
 # Test rollback paths return 404
@@ -147,8 +201,8 @@ curl -I https://www.liveoilprices.com/js.rollback-20261017b/app.js
 curl -I https://www.liveoilprices.com/js.rollback-20261016/app.js
 # Expected: HTTP/1.1 404 Not Found
 
-# Test versioned assets get long immutable cache
-curl -I "https://www.liveoilprices.com/js/app.js?v=abc123"
+# Test versioned assets get long immutable cache (use a real 12-hex hash)
+curl -I "https://www.liveoilprices.com/js/app.js?v=067f895cae30"
 # Expected: Cache-Control: public, max-age=31536000, immutable
 
 # Test unversioned assets get short cache
@@ -171,11 +225,11 @@ curl -sI https://www.liveoilprices.com/js/app.js | grep -i expires
 # Should return nothing (no Expires header)
 ```
 
-### 5. Verify the rollback directories moved correctly
+### 4. Verify the rollback directories moved correctly
 
 ```bash
 ls -lh /home/deploy/liveoilprices-rollbacks/
-# Should show: 20261016-manual, 20261017-manual, 20261017b-manual
+# Should show: legacy-20261016, legacy-20261017, legacy-20261017b
 
 # Verify they are not in web/static anymore
 ls web/static/ | grep rollback

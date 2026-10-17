@@ -108,11 +108,14 @@ done
 if [ -n "$NGINX_BIN" ]; then
     echo ""
     echo "nginx found at $NGINX_BIN, testing syntax..."
-    if "$NGINX_BIN" -t -c "$TEMP_DIR/nginx.conf" 2>&1 | grep -q "syntax is ok"; then
+    # Capture output to avoid SIGPIPE with grep -q under pipefail
+    NGINX_OUTPUT=$("$NGINX_BIN" -t -c "$TEMP_DIR/nginx.conf" 2>&1)
+    NGINX_EXIT=$?
+    if [ "$NGINX_EXIT" = 0 ] && echo "$NGINX_OUTPUT" | grep -q "syntax is ok"; then
         echo "  ✓ nginx -t passed"
     else
         echo "  ✗ nginx -t failed:"
-        "$NGINX_BIN" -t -c "$TEMP_DIR/nginx.conf" 2>&1 || true
+        echo "$NGINX_OUTPUT"
         exit 1
     fi
 else
