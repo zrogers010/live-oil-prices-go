@@ -690,7 +690,7 @@ func (a *API) ServeHome(w http.ResponseWriter, r *http.Request) {
 	} else if wtiPrice != "" {
 		data.Title = fmt.Sprintf("Live Oil Prices — WTI %s | %s Crude Oil & Energy Market Data", wtiPrice, dataLabel)
 	}
-	// If no real prices, keep the generic static title
+	// If no real prices, keep the generic static title with "Latest"
 
 	data.StructuredData = []any{
 		map[string]any{
