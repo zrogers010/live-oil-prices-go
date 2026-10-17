@@ -216,8 +216,8 @@ class HeroChartController {
   applyPriceRecord(p: Price): void {
     if (!this.priceEl) return;
     
-    // Don't render estimate prices - keep SSR dashes
-    if (p.source === 'estimate') {
+    // Don't render unavailable prices - keep SSR dashes
+    if (!p.available) {
       return;
     }
     
@@ -695,8 +695,8 @@ function renderTicker(prices: Price[]): void {
   const track = document.getElementById('tickerTrack');
   if (!track) return;
 
-  // Filter out estimate prices
-  const filtered = prices.filter(p => p.source !== 'estimate');
+  // Filter out unavailable prices
+  const filtered = prices.filter(p => p.available);
 
   const html = filtered.map(p => {
     const positive = p.change >= 0;
@@ -722,8 +722,8 @@ function renderPriceCards(prices: Price[]): void {
   const grid = document.getElementById('priceGrid');
   if (!grid) return;
 
-  // Filter out estimate prices
-  const filtered = prices.filter(p => CARD_SYMBOLS.includes(p.symbol) && p.source !== 'estimate');
+  // Filter out unavailable prices
+  const filtered = prices.filter(p => CARD_SYMBOLS.includes(p.symbol) && p.available);
   grid.innerHTML = filtered.map(p => {
     const positive = p.change >= 0;
     const sign = positive ? '+' : '';
@@ -771,8 +771,8 @@ function renderPriceCards(prices: Price[]): void {
 
 function updatePriceValues(prices: Price[]): void {
   prices.forEach(p => {
-    // Skip estimate prices
-    if (p.source === 'estimate') return;
+    // Skip unavailable prices
+    if (!p.available) return;
     
     const card = document.querySelector(`.price-card[data-symbol="${p.symbol}"]`) as HTMLElement;
     if (!card) return;
@@ -833,8 +833,8 @@ function renderMarketTable(prices: Price[]): void {
   const tbody = document.getElementById('marketTableBody');
   if (!tbody) return;
 
-  // Filter out estimate prices
-  const filtered = prices.filter(p => p.source !== 'estimate');
+  // Filter out unavailable prices
+  const filtered = prices.filter(p => p.available);
 
   tbody.innerHTML = filtered.map(p => {
     const positive = p.change >= 0;

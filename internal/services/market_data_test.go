@@ -153,7 +153,7 @@ func TestGetChartDataIntervalSelection(t *testing.T) {
 		days             int
 		expectedInterval string
 	}{
-		{1, "1h"},
+		{1, "2h"},   // days=1 falls under days<=7, so 2h
 		{5, "2h"},
 		{7, "2h"},
 		{20, "4h"},
