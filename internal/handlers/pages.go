@@ -660,25 +660,28 @@ func (a *API) ServeHome(w http.ResponseWriter, r *http.Request) {
 	// Update title/description with real prices if available and not synthetic
 	wtiPrice := ""
 	brentPrice := ""
-	hasLiveData := false
+	allLiveData := true
+	anyRealData := false
 	for _, p := range data.Prices {
 		if p.Symbol == "WTI" && p.Price > 0 && p.Source != "estimate" {
 			wtiPrice = fmt.Sprintf("$%.2f", p.Price)
-			if p.IsLive {
-				hasLiveData = true
+			anyRealData = true
+			if !p.IsLive {
+				allLiveData = false
 			}
 		}
 		if p.Symbol == "BRENT" && p.Price > 0 && p.Source != "estimate" {
 			brentPrice = fmt.Sprintf("$%.2f", p.Price)
-			if p.IsLive {
-				hasLiveData = true
+			anyRealData = true
+			if !p.IsLive {
+				allLiveData = false
 			}
 		}
 	}
 	
 	dataLabel := "Latest"
-	if hasLiveData {
-		dataLabel = "Real-Time"
+	if anyRealData && allLiveData {
+		dataLabel = "Live"
 	}
 	
 	if wtiPrice != "" && brentPrice != "" {

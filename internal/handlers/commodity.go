@@ -289,7 +289,7 @@ func (a *API) ServeCommodityPage(w http.ResponseWriter, r *http.Request) {
 
 	data := commodityPageData{
 		Meta:       meta,
-		PageTitle:  fmt.Sprintf("%s Price Today — Live Chart & Real-Time Data | Live Oil Prices", meta.Name),
+		PageTitle:  fmt.Sprintf("%s Price Today — Live Chart & Latest Data | Live Oil Prices", meta.Name),
 		OGTitle:    fmt.Sprintf("%s Price Today — Live Chart & Market Data", meta.Name),
 		Canonical:  fmt.Sprintf("https://liveoilprices.com/commodity/%s", meta.Symbol),
 		HasFactors: len(meta.PriceFactors) > 0,
