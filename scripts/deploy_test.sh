@@ -46,6 +46,7 @@ echo "old-template" > web/templates/index.html
 echo "old-js" > web/static/js/app.js
 echo "old-css" > web/static/css/styles.css
 echo "console.log('frontend')" > frontend/src/index.js
+# shellcheck disable=SC2016
 echo '{"scripts":{"build:to":"mkdir -p \$OUTDIR/js \$OUTDIR/css && echo new-js > \$OUTDIR/js/app.js && echo new-css > \$OUTDIR/css/styles.css"}}' > frontend/package.json
 mkdir -p frontend/node_modules
 
