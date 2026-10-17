@@ -128,6 +128,7 @@ export class HeroPoller {
       // Check for Retry-After on 429/503
       if (err.retryAfter) {
         // Retry-After replaces the normal interval
+        // Note: 429 errors still increment failures, raising the backoff level
         this.failures++;
         nextDelay = err.retryAfter * 1000;
       } else {
@@ -136,13 +137,13 @@ export class HeroPoller {
         nextDelay = this.calculateBackoff();
       }
       
+      // Set notBefore for resume() to respect failure/Retry-After deadlines
+      this.notBefore = this.clock.now() + nextDelay;
+      
       console.error(`Hero chart poll failed for ${this.symbol}:`, err);
     } finally {
       this.inFlight = false;
     }
-    
-    // Set notBefore for resume() to respect
-    this.notBefore = this.clock.now() + nextDelay;
     
     // Schedule next tick
     this.schedule(nextDelay);

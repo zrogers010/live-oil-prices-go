@@ -33,20 +33,22 @@ class FakeTimers implements Timers {
     this.timers.delete(handle);
   }
   
-  // Test helper: advance time and fire ready timers
+  // Test helper: advance time and fire ready timers AT THEIR SCHEDULED TIME
   async tick(ms: number): Promise<void> {
-    this.clock.advance(ms);
-    const now = this.clock.now();
+    const targetTime = this.clock.now() + ms;
     
-    // Fire all timers that are ready (async-safe)
+    // Process timers in chronological order, advancing clock to each timer's exact fire time
     while (true) {
+      // Find the next timer to fire that's before targetTime
       const ready = Array.from(this.timers.entries())
-        .filter(([_, t]) => t.fireAt <= now)
+        .filter(([_, t]) => t.fireAt <= targetTime)
         .sort((a, b) => a[1].fireAt - b[1].fireAt);
       
       if (ready.length === 0) break;
       
       for (const [id, timer] of ready) {
+        // Advance clock to this timer's exact fire time
+        this.clock.setTime(timer.fireAt);
         this.timers.delete(id);
         const result = timer.fn();
         if (result instanceof Promise) {
@@ -54,6 +56,9 @@ class FakeTimers implements Timers {
         }
       }
     }
+    
+    // Finally advance to the target time
+    this.clock.setTime(targetTime);
   }
   
   hasTimer(): boolean {

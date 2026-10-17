@@ -38,3 +38,15 @@ test-commodity-pages.js
 
 # Logs
 *.log
+
+# QA and test artifacts
+/harness/
+/PR42-REVIEW.md
+/*-mutations.txt
+out*.txt
+out*.json
+results*.json
+ssr*-*.png
+ssr*-*.html
+test-results/
+playwright-report/
