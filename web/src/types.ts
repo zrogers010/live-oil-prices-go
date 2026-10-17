@@ -124,21 +124,3 @@ export interface ConsensusForecast {
   unit: string;
   months: ConsensusMonthly[];
 }
-
-export interface TechnicalSignals {
-  rsi: number;
-  macd: string;
-  signal: string;
-  movingAvg50: number;
-  movingAvg200: number;
-  trend: string;
-}
-
-export interface MarketAnalysis {
-  sentiment: string;
-  score: number;
-  summary: string;
-  keyPoints: string[];
-  technical: TechnicalSignals;
-  updatedAt: string;
-}

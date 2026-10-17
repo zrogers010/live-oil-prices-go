@@ -1,6 +1,7 @@
 import { getPrices, getChartData, getNews, getPredictions, getHeroChart, getConsensus } from './api';
 import { initChart, updateChartData, subscribeCrosshair, createCandleChart, type CandleChartHandle, type SessionMarker, type SessionBand } from './charts';
 import type { Price, ChartData, NewsArticle, OHLCV, Prediction, HeroChart, ConsensusForecast } from './types';
+import { HeroPoller } from './poller';
 
 let currentSymbol = 'WTI';
 let currentDays = 90;
@@ -14,10 +15,13 @@ let currentCategory = 'all';
 // ignores it and always returns the full session.
 const HERO_MAX_BARS = 600;
 // HERO_LIVE_POLL_MS is how often we re-fetch the candle buffer in LIVE
-// mode. 2s lines up with the Pyth poll cadence on the server, so each
-// request typically picks up at least one new tick on the in-progress
-// candle.
-const HERO_LIVE_POLL_MS = 2000;
+// mode. 10s provides a good balance: frequent enough to keep the chart
+// feeling responsive, slow enough to avoid hammering the API.
+const HERO_LIVE_POLL_MS = 10_000;
+// HERO_DELAYED_POLL_MS is how often we poll when the feed is delayed
+// (Yahoo 15-min delayed quotes). 60s is sufficient since the underlying
+// data only updates every 15 minutes.
+const HERO_DELAYED_POLL_MS = 60_000;
 // HERO_PAUSED_POLL_MS is how often we re-fetch in prior-session mode. We
 // poll much less aggressively because the data only changes when markets
 // reopen — at which point we want to catch the transition within a minute.
@@ -47,6 +51,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initHeroControllers();
   loadAllData();
   setInterval(refreshPrices, 15000);
+  setupVisibilityHandling();
 });
 
 // initHeroControllers wires up one HeroChartController per .hero-chart-card
@@ -59,6 +64,21 @@ function initHeroControllers(): void {
     const symbol = card.dataset.symbol;
     if (!symbol || heroControllers.has(symbol)) return;
     heroControllers.set(symbol, new HeroChartController(symbol, card));
+  });
+}
+
+// setupVisibilityHandling pauses all hero chart polling when the tab is
+// hidden and resumes when visible, preventing wasted API calls in
+// background tabs.
+function setupVisibilityHandling(): void {
+  document.addEventListener('visibilitychange', () => {
+    heroControllers.forEach(controller => {
+      if (document.hidden) {
+        controller.pausePolling();
+      } else {
+        controller.resumePolling();
+      }
+    });
   });
 }
 
@@ -165,7 +185,7 @@ class HeroChartController {
   // Live state.
   private chart: CandleChartHandle | null = null;
   private mode: HeroMode | null = null;
-  private pollTimer: number | null = null;
+  private poller: HeroPoller | null = null;
   private visibleDurationSec: number = HERO_DEFAULT_RANGE_SEC;
   private latestPrice: Price | null = null;
   private lastSeenBarTime = 0;
@@ -202,12 +222,17 @@ class HeroChartController {
       this.setupRangeTabs();
     }
 
-    try {
-      const payload = await getHeroChart(this.symbol, HERO_MAX_BARS);
-      this.applyPayload(payload);
-    } catch (err) {
-      console.error(`Failed to load hero chart for ${this.symbol}:`, err);
-    }
+    // Initialize the poller
+    this.poller = new HeroPoller({
+      symbol: this.symbol,
+      fetch: () => getHeroChart(this.symbol, HERO_MAX_BARS),
+      onSuccess: (payload) => this.applyPayload(payload),
+      getMode: () => this.mode,
+      isHidden: () => document.hidden
+    });
+    
+    // Start polling (does immediate first fetch)
+    this.poller.start();
   }
 
   // applyPriceRecord absorbs a /api/prices entry for this symbol, syncing
@@ -345,7 +370,6 @@ class HeroChartController {
       }
       if (this.mode !== 'warming-up') {
         this.mode = 'warming-up';
-        this.transitionPolling('warming-up');
       }
       return;
     }
@@ -360,7 +384,6 @@ class HeroChartController {
       this.chart.setData(payload.bars);
       this.chart.setVisibleDuration(this.visibleDurationSec);
       this.mode = payload.mode;
-      this.transitionPolling(payload.mode);
       this.applySessionOverlay(payload);
     } else if (payload.mode === 'live' || payload.mode === 'today-paused') {
       // Same intraday mode — only mutate the last bar so existing pan/zoom
@@ -413,61 +436,59 @@ class HeroChartController {
     applyHeroSessionOverlayOnChart(this.chart, payload);
   }
 
-  private transitionPolling(mode: HeroMode): void {
-    if (this.pollTimer != null) {
-      window.clearInterval(this.pollTimer);
-      this.pollTimer = null;
+  // pausePolling stops the polling timer when the tab is hidden.
+  pausePolling(): void {
+    if (this.poller) {
+      this.poller.pause();
     }
-    // Fast-poll in every mode that's "intra-session" so we resume
-    // ticking the moment Pyth wakes up. Only true prior-session
-    // (markets fully closed) drops to slow polling.
-    const interval = mode === 'prior-session' ? HERO_PAUSED_POLL_MS : HERO_LIVE_POLL_MS;
-    this.pollTimer = window.setInterval(async () => {
-      try {
-        const payload = await getHeroChart(this.symbol, HERO_MAX_BARS);
-        this.applyPayload(payload);
-      } catch {
-        // Transient network error — next tick will recover.
-      }
-    }, interval);
   }
 
-  // setLiveState toggles this card's pill between four appearances. In
-  // paused / today-paused states the optional sessionDate is shown so
-  // users know which trading day's data they're looking at. CSS handles
-  // the visual treatment for each state.
+  // resumePolling restarts polling when the tab becomes visible again.
+  async resumePolling(): Promise<void> {
+    if (this.poller) {
+      this.poller.resume();
+    }
+  }
+
+  // setLiveState updates the pill's text and styling for the current
+  // feed state. The pill is always visible; CSS varies the appearance.
   private setLiveState(state: 'live' | 'today-paused' | 'delayed' | 'paused' | 'warming', sessionDate?: string): void {
     const pill = this.livePillEl;
     if (!pill) return;
+    
+    pill.style.display = ''; // Always visible
     const dot = this.liveDotEl;
     const label = pill.lastChild!;
     pill.classList.remove('hero-live-pill-paused', 'hero-live-pill-warming');
-    dot?.classList.remove('hero-live-dot-paused', 'hero-live-dot-warming');
+    dot?.classList.remove('hero-live-dot-paused', 'hero-live-dot-warming', 'pulse-flash');
+    
     switch (state) {
       case 'live':
+        pill.title = 'Streaming real-time exchange data';
         label.textContent = ' LIVE';
         break;
       case 'today-paused':
-        // Today's session is on screen but the live tick is paused —
-        // typically the daily 5–6 PM ET CME maintenance break.
+        pill.title = 'Feed temporarily paused';
+        label.textContent = ' FEED PAUSED · today';
         pill.classList.add('hero-live-pill-paused');
         dot?.classList.add('hero-live-dot-paused');
-        label.textContent = ' FEED PAUSED \u00b7 today';
         break;
       case 'delayed':
-        // No real-time feed configured: bars are delayed exchange data.
+        pill.title = '15-minute delayed exchange data';
+        label.textContent = ' DELAYED';
         pill.classList.add('hero-live-pill-paused');
         dot?.classList.add('hero-live-dot-paused');
-        label.textContent = ' DELAYED';
         break;
       case 'paused':
+        pill.title = 'Market is closed';
         pill.classList.add('hero-live-pill-paused');
         dot?.classList.add('hero-live-dot-paused');
         label.textContent = sessionDate
-          ? ' MARKET CLOSED \u00b7 ' + formatSessionDate(sessionDate)
+          ? ' MARKET CLOSED · ' + formatSessionDate(sessionDate)
           : ' MARKET CLOSED';
         break;
       case 'warming':
+        pill.title = 'Loading chart data';
         pill.classList.add('hero-live-pill-warming');
         dot?.classList.add('hero-live-dot-warming');
         label.textContent = ' WARMING UP';
@@ -479,12 +500,12 @@ class HeroChartController {
     if (this.emptyEl) this.emptyEl.style.display = isEmpty ? 'flex' : 'none';
   }
 
-  // pulseLiveIndicator briefly flashes the green dot in this card's pill
-  // each time we receive a fresh candle update. The CSS handles the
-  // actual pulse animation; we just toggle a class for one frame.
+  // pulseLiveIndicator briefly flashes the green dot ONLY in live mode.
   private pulseLiveIndicator(): void {
     const dot = this.liveDotEl;
     if (!dot) return;
+    // Only pulse in true live mode
+    if (this.mode !== 'live') return;
     dot.classList.remove('pulse-flash');
     void dot.offsetWidth;
     dot.classList.add('pulse-flash');
@@ -1572,3 +1593,4 @@ function timeAgo(dateStr: string): string {
   if (hours < 24) return `${hours}h ago`;
   return `${Math.floor(hours / 24)}d ago`;
 }
+

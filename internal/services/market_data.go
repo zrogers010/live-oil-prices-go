@@ -6,17 +6,14 @@ import (
 	"io"
 	"live-oil-prices-go/internal/models"
 	"math"
-	"math/rand"
 	"sync"
 	"time"
 )
 
 type MarketDataService struct {
-	rng        *rand.Rand
-	basePrices map[string]float64
-	yahoo      *YahooFinanceService
-	pyth       *PythService
-	eia        *EIAService
+	yahoo *YahooFinanceService
+	pyth  *PythService
+	eia   *EIAService
 
 	// Predictions are computed with a damped-Holt fit + 30-step rolling-origin
 	// backtest per symbol, which is heavy enough that we don't want to do it
@@ -32,24 +29,10 @@ type MarketDataService struct {
 const predictionTTL = 60 * time.Second
 
 func NewMarketDataService() *MarketDataService {
-	bases := map[string]float64{
-		"WTI":     72.45,
-		"BRENT":   76.82,
-		"NATGAS":  3.24,
-		"HEATING": 2.35,
-		"RBOB":    2.18,
-		"OPEC":    74.50,
-		"DUBAI":   75.10,
-		"MURBAN":  76.30,
-		"WCS":     58.20,
-		"GASOIL":  685.50,
-	}
 	svc := &MarketDataService{
-		rng:        rand.New(rand.NewSource(time.Now().UnixNano())),
-		basePrices: bases,
-		yahoo:      NewYahooFinanceService(),
-		pyth:       NewPythService(),
-		eia:        NewEIAService(),
+		yahoo: NewYahooFinanceService(),
+		pyth:  NewPythService(),
+		eia:   NewEIAService(),
 	}
 	// Compute the spot/front-month basis once synchronously so the very
 	// first /api/prices call is already basis-corrected, then keep it
@@ -345,80 +328,7 @@ func syntheticChartSeed(symbol string, days int, interval string) int64 {
 	return int64(h.Sum64())
 }
 
-func (s *MarketDataService) generateDaily(rng *rand.Rand, base float64, days int) []models.OHLCV {
-	allData := make([]models.OHLCV, 0, days+50)
-	price := base - (base * 0.05)
-	calendarDays := int(float64(days)*1.5) + 20
-	startTime := time.Now().AddDate(0, 0, -calendarDays)
-	now := time.Now()
 
-	for i := 0; i <= calendarDays; i++ {
-		t := startTime.AddDate(0, 0, i)
-		if t.Weekday() == time.Saturday || t.Weekday() == time.Sunday {
-			continue
-		}
-		if t.After(now) {
-			break
-		}
-		vol := price * 0.015
-		change := (rng.Float64() - 0.47) * vol
-		price += change
-		open := price
-		cl := open + (rng.Float64()-0.5)*vol
-		high := math.Max(open, cl) + rng.Float64()*vol*0.5
-		low := math.Min(open, cl) - rng.Float64()*vol*0.5
-		v := int64(800000 + rng.Intn(1500000))
-		allData = append(allData, models.OHLCV{
-			Time: t.Unix(), Open: r2(open), High: r2(high), Low: r2(low), Close: r2(cl), Volume: v,
-		})
-		price = cl
-	}
-	if len(allData) > days {
-		return allData[len(allData)-days:]
-	}
-	return allData
-}
-
-func (s *MarketDataService) generateIntraday(rng *rand.Rand, base float64, days int, hoursPerCandle int) []models.OHLCV {
-	candlesPerDay := 24 / hoursPerCandle
-	data := make([]models.OHLCV, 0, days*candlesPerDay)
-	price := base - (base * 0.03)
-	calendarDays := int(float64(days)*1.5) + 5
-	startTime := time.Now().AddDate(0, 0, -calendarDays)
-	now := time.Now()
-
-	for d := 0; d <= calendarDays; d++ {
-		dayStart := startTime.AddDate(0, 0, d)
-		if dayStart.Weekday() == time.Saturday || dayStart.Weekday() == time.Sunday {
-			continue
-		}
-		dayStart = time.Date(dayStart.Year(), dayStart.Month(), dayStart.Day(), 0, 0, 0, 0, time.UTC)
-
-		for c := 0; c < candlesPerDay; c++ {
-			t := dayStart.Add(time.Duration(c*hoursPerCandle) * time.Hour)
-			if t.After(now) {
-				break
-			}
-			vol := price * 0.004
-			change := (rng.Float64() - 0.48) * vol
-			price += change
-			open := price
-			cl := open + (rng.Float64()-0.5)*vol
-			high := math.Max(open, cl) + rng.Float64()*vol*0.3
-			low := math.Min(open, cl) - rng.Float64()*vol*0.3
-			v := int64(50000 + rng.Intn(200000))
-			data = append(data, models.OHLCV{
-				Time: t.Unix(), Open: r2(open), High: r2(high), Low: r2(low), Close: r2(cl), Volume: v,
-			})
-			price = cl
-		}
-	}
-	targetCount := days * candlesPerDay
-	if len(data) > targetCount {
-		return data[len(data)-targetCount:]
-	}
-	return data
-}
 
 func r2(v float64) float64 { return math.Round(v*100) / 100 }
 
@@ -894,31 +804,4 @@ func mergeLiveBucket(series []models.PythCandle, live models.PythCandle) []model
 	// Pyth (rare, only happens right after a Yahoo refresh lands a future
 	// timestamp). Trust Yahoo, drop the stale Pyth bucket.
 	return series
-}
-
-func (s *MarketDataService) GetAnalysis() models.MarketAnalysis {
-	now := time.Now().UTC().Format(time.RFC3339)
-	wtiPrice := s.basePrices["WTI"]
-	if s.yahoo != nil {
-		if yp, ok := s.yahoo.GetPrices()["WTI"]; ok {
-			wtiPrice = yp.Price
-		}
-	}
-	return models.MarketAnalysis{
-		Sentiment: "bullish", Score: 72,
-		Summary: fmt.Sprintf("The crude oil market is displaying bullish momentum with WTI trading near $%.2f. Technical indicators are aligned with an upward bias as the 50-day moving average has crossed above the 200-day MA, forming a golden cross pattern. Fundamental drivers including OPEC+ supply discipline, declining US inventories, and resilient global demand support the constructive outlook. Key risk factors include potential demand slowdown from economic headwinds and the possibility of OPEC+ policy changes.", wtiPrice),
-		KeyPoints: []string{
-			"OPEC+ production cuts extended through Q3 2026, removing ~2.2 million bpd from market",
-			"US crude inventories fell 4.2 million barrels, 3rd consecutive weekly draw",
-			"China crude imports at record 12.4 million bpd supporting global demand",
-			"Technical golden cross pattern on WTI daily chart signals bullish trend",
-			"Geopolitical risk premium elevated due to Middle East tensions",
-			"IEA raised 2026 demand growth forecast to 1.4 million bpd",
-		},
-		Technical: models.TechnicalSignals{
-			RSI: 58.4, MACD: "bullish crossover", Signal: "buy",
-			MovingAvg50: r2(wtiPrice - 1.20), MovingAvg200: r2(wtiPrice - 3.50), Trend: "uptrend",
-		},
-		UpdatedAt: now,
-	}
 }

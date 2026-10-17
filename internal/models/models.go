@@ -141,26 +141,7 @@ type ConsensusMonthly struct {
 	Value  float64 `json:"value"`
 }
 
-type TechnicalSignals struct {
-	RSI          float64 `json:"rsi"`
-	MACD         string  `json:"macd"`
-	Signal       string  `json:"signal"`
-	MovingAvg50  float64 `json:"movingAvg50"`
-	MovingAvg200 float64 `json:"movingAvg200"`
-	Trend        string  `json:"trend"`
-}
-
-type MarketAnalysis struct {
-	Sentiment  string           `json:"sentiment"`
-	Score      float64          `json:"score"`
-	Summary    string           `json:"summary"`
-	KeyPoints  []string         `json:"keyPoints"`
-	Technical  TechnicalSignals `json:"technical"`
-	UpdatedAt  string           `json:"updatedAt"`
-}
-
 type MarketOverview struct {
-	Prices      []Price        `json:"prices"`
-	Analysis    MarketAnalysis `json:"analysis"`
-	Predictions []Prediction   `json:"predictions"`
+	Prices      []Price      `json:"prices"`
+	Predictions []Prediction `json:"predictions"`
 }

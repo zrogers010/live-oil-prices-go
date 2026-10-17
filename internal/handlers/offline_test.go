@@ -35,10 +35,6 @@ func (m *mockMarketService) GetPredictions() []models.Prediction {
 	return []models.Prediction{}
 }
 
-func (m *mockMarketService) GetAnalysis() models.MarketAnalysis {
-	return models.MarketAnalysis{}
-}
-
 func (m *mockMarketService) GetHeroChart(symbol string, maxLiveBars int) models.HeroChart {
 	return models.HeroChart{}
 }

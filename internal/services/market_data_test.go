@@ -3,31 +3,15 @@ package services
 import (
 	"fmt"
 	"live-oil-prices-go/internal/models"
-	"math/rand"
 	"testing"
 	"time"
 )
 
 func newDeterministicMarketDataService() *MarketDataService {
-	bases := map[string]float64{
-		"WTI":     72.45,
-		"BRENT":   76.82,
-		"NATGAS":  3.24,
-		"HEATING": 2.35,
-		"RBOB":    2.18,
-		"OPEC":    74.50,
-		"DUBAI":   75.10,
-		"MURBAN":  76.30,
-		"WCS":     58.20,
-		"GASOIL":  685.50,
-	}
-
 	svc := &MarketDataService{
-		rng:        rand.New(rand.NewSource(42)),
-		basePrices: bases,
-		yahoo:      nil,
-		pyth:       nil,
-		eia:        nil,
+		yahoo: nil,
+		pyth:  nil,
+		eia:   nil,
 	}
 	return svc
 }
@@ -103,22 +87,6 @@ func TestGetChartDataUnknownSymbolFallsBack(t *testing.T) {
 	// Without Yahoo data, expect empty data
 	if len(data.Data) != 0 {
 		t.Fatalf("expected empty data for unknown symbol without Yahoo service")
-	}
-}
-
-func TestGenerateDailySkipsWeekends(t *testing.T) {
-	svc := newDeterministicMarketDataService()
-	data := svc.generateDaily(rand.New(rand.NewSource(42)), 100, 30)
-
-	if len(data) == 0 || len(data) > 30 {
-		t.Fatalf("expected 1..30 daily points, got %d", len(data))
-	}
-
-	for _, candle := range data {
-		wd := time.Unix(candle.Time, 0).Weekday()
-		if wd == time.Saturday || wd == time.Sunday {
-			t.Fatalf("did not expect weekend candle at %v", wd)
-		}
 	}
 }
 
@@ -256,24 +224,4 @@ func TestGetPredictionsTrackCurrentPrices(t *testing.T) {
 	}
 }
 
-func TestGetAnalysisIncludesCoreFields(t *testing.T) {
-	svc := newDeterministicMarketDataService()
-	analysis := svc.GetAnalysis()
-
-	if analysis.Sentiment != "bullish" {
-		t.Fatalf("expected bullish sentiment, got %q", analysis.Sentiment)
-	}
-	if analysis.Score < 0 || analysis.Score > 100 {
-		t.Fatalf("expected score between 0 and 100, got %.2f", analysis.Score)
-	}
-	if len(analysis.KeyPoints) == 0 {
-		t.Fatalf("expected analysis key points")
-	}
-	if analysis.Technical.Trend == "" {
-		t.Fatalf("expected technical trend")
-	}
-	if analysis.UpdatedAt == "" {
-		t.Fatalf("expected updatedAt")
-	}
-}
 

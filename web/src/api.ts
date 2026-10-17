@@ -1,4 +1,4 @@
-import type { Price, ChartData, NewsArticle, Prediction, MarketAnalysis, HeroChart, ConsensusForecast } from './types';
+import type { Price, ChartData, NewsArticle, Prediction, HeroChart, ConsensusForecast } from './types';
 
 const BASE = '';
 
@@ -15,13 +15,24 @@ async function fetchJSON<T>(url: string): Promise<T> {
         return null as unknown as T;
       }
       
-      // Add retry-after header logging for rate limiting transparency
-      // const retryAfter = res.headers.get('retry-after');
-      // if (retryAfter) {
-      //   console.warn(`API rate limited, retry after: ${retryAfter} seconds`);
-      // }
-
-      const err = new Error(`API error: ${res.status} - ${redactedErrorText}`);
+      // Honor retry-after for 429 and 503
+      const retryAfter = res.headers.get('retry-after');
+      const err = new Error(`API error: ${res.status} - ${redactedErrorText}`) as any;
+      if (retryAfter && (res.status === 429 || res.status === 503)) {
+        // Parse Retry-After: can be seconds (integer) or HTTP-date
+        const secondsMatch = /^\d+$/.test(retryAfter);
+        if (secondsMatch) {
+          err.retryAfter = parseInt(retryAfter, 10);
+        } else {
+          // HTTP-date format - calculate seconds from now
+          const retryDate = new Date(retryAfter);
+          if (!isNaN(retryDate.getTime())) {
+            err.retryAfter = Math.max(1, Math.floor((retryDate.getTime() - Date.now()) / 1000));
+          } else {
+            err.retryAfter = 60; // Fallback to 60s if unparseable
+          }
+        }
+      }
       throw err;
     }
     return res.json();
@@ -58,10 +69,6 @@ export function getNewsArticle(id: string): Promise<NewsArticle> {
 
 export function getPredictions(): Promise<Prediction[]> {
   return fetchJSON<Prediction[]>('/api/predictions');
-}
-
-export function getAnalysis(): Promise<MarketAnalysis> {
-  return fetchJSON<MarketAnalysis>('/api/analysis');
 }
 
 /** getConsensus fetches the institutional outlook (EIA STEO) for every
