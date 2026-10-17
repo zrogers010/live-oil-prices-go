@@ -299,8 +299,8 @@ func (a *API) ServeCommodityPage(w http.ResponseWriter, r *http.Request) {
 	prices := a.market.GetPrices()
 	for _, p := range prices {
 		if p.Symbol == symbol {
-			// Don't show synthetic/estimate prices in SSR title or price display
-			if p.Source == "estimate" {
+			// Don't show unavailable prices in SSR title or price display
+			if !p.Available {
 				// Leave all fields empty so template renders dashes without "$"
 				// Keep generic title without price when data is unavailable
 				break

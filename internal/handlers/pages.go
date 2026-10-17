@@ -261,6 +261,10 @@ func (a *API) populateMarketData(data *PageData) {
 	prices := a.market.GetPrices()
 	views := make([]priceView, 0, len(prices))
 	for _, p := range prices {
+		// Skip unavailable prices - don't add to views at all
+		if !p.Available {
+			continue
+		}
 		views = append(views, toPriceView(p))
 	}
 	data.Prices = views
@@ -288,6 +292,10 @@ func (a *API) populateMarketData(data *PageData) {
 	preds := a.market.GetPredictions()
 	fviews := make([]forecastView, 0, len(preds))
 	for _, p := range preds {
+		// Skip unavailable predictions (current price <= 0 or no source)
+		if p.Current <= 0 || p.Source == "" {
+			continue
+		}
 		fviews = append(fviews, toForecastView(p))
 	}
 	data.Forecasts = fviews
@@ -400,9 +408,9 @@ func formatUpdatedLabel(updatedAt string, isLive bool, source string) string {
 		return ""
 	}
 
-	// Synthetic/estimate data
-	if source == "estimate" {
-		return "Data temporarily unavailable"
+	// Unavailable data
+	if source == "" {
+		return "Data unavailable"
 	}
 
 	t, err := time.Parse(time.RFC3339, updatedAt)
@@ -494,10 +502,10 @@ func toForecastView(p models.Prediction) forecastView {
 		deltaSign = "+"
 	}
 	srcLabel := "Statistical model"
-	if p.Source == "yahoo" {
+	if p.Source == "yahoo" || p.Source == "pyth" {
 		srcLabel = "Yahoo Finance history"
-	} else if p.Source == "estimate" {
-		srcLabel = "Estimated baseline"
+	} else if p.Source == "" {
+		srcLabel = "Data unavailable"
 	}
 
 	signals := buildSignalChips(p)

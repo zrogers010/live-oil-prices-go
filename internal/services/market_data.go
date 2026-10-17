@@ -532,9 +532,26 @@ func (s *MarketDataService) computePredictions() []models.Prediction {
 }
 
 // fallbackPrediction is returned when we don't yet have enough history loaded
-// (e.g. cold start, or Yahoo unreachable). The "predicted" value mirrors the
-// current price so the UI doesn't show a misleading move.
+// (e.g. cold start, or Yahoo unreachable). Returns an unavailable prediction
+// that won't render $0.00 in the UI.
 func fallbackPrediction(symbol, name string, current float64, horizon int) models.Prediction {
+	// If current price is unavailable/zero, mark prediction as unavailable
+	if current <= 0 {
+		return models.Prediction{
+			Symbol:     symbol,
+			Name:       name,
+			Current:    0,
+			Predicted:  0,
+			Timeframe:  fmt.Sprintf("%d days", horizon),
+			Confidence: 0.0,
+			Direction:  "neutral",
+			Analysis:   "Forecast unavailable — insufficient data.",
+			Model:      "fallback",
+			Source:     "", // Empty source signals unavailable
+			Disclaimer: predictionDisclaimer,
+		}
+	}
+	
 	return models.Prediction{
 		Symbol:     symbol,
 		Name:       name,
