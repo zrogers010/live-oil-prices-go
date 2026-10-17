@@ -148,7 +148,8 @@ echo "Verifying restored files..."
 
 # Clean up any running mock service
 if [ -f "$TEST_DIR/service.pid" ]; then
-    kill $(cat "$TEST_DIR/service.pid") 2>/dev/null || true
+    SERVICE_PID=$(cat "$TEST_DIR/service.pid")
+    kill "$SERVICE_PID" 2>/dev/null || true
     rm -f "$TEST_DIR/service.pid"
 fi
 

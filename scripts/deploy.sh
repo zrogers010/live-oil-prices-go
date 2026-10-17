@@ -51,7 +51,7 @@ if git rev-parse --is-inside-work-tree &>/dev/null 2>&1; then
         ROLLBACK_STATE=false
         if [ "$DETACHED" = true ] && [ -n "$CURRENT_COMMIT" ]; then
             # Look for a snapshot with this commit
-            for snapshot in "$ROLLBACK_DIR"/20*/COMMIT 2>/dev/null; do
+            for snapshot in "$ROLLBACK_DIR"/20*/COMMIT; do
                 if [ -f "$snapshot" ]; then
                     SNAPSHOT_COMMIT=$(cat "$snapshot" 2>/dev/null || echo "")
                     if [ "$SNAPSHOT_COMMIT" = "$CURRENT_COMMIT" ]; then
@@ -59,7 +59,7 @@ if git rev-parse --is-inside-work-tree &>/dev/null 2>&1; then
                         break
                     fi
                 fi
-            done
+            done 2>/dev/null || true
         fi
         
         if [ "$ROLLBACK_STATE" = true ]; then
@@ -237,14 +237,12 @@ fi
 echo "  Service started. Running health checks..."
 HEALTH_CHECK_TIMEOUT=30
 HEALTH_CHECK_INTERVAL=3
-HEALTH_CHECKS=0
 MAX_HEALTH_CHECKS=$((HEALTH_CHECK_TIMEOUT / HEALTH_CHECK_INTERVAL))
 
 for i in $(seq 1 $MAX_HEALTH_CHECKS); do
     STATUS=$(curl -sf -o /dev/null -w "%{http_code}" "http://127.0.0.1:8080/api/health" 2>/dev/null || echo "000")
     if [ "$STATUS" = "200" ]; then
         echo "  ✓ Health check passed after $((i * HEALTH_CHECK_INTERVAL))s."
-        HEALTH_CHECKS=$i
         break
     fi
     
