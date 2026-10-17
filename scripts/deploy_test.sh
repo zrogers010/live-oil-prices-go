@@ -50,29 +50,29 @@ echo "old-binary" > bin/server
 chmod +x bin/server
 
 # Mock binaries
-cat > "$TEST_DIR/go" <<'EOF'
+cat > "$TEST_DIR/go" <<EOF
 #!/usr/bin/env bash
 # Mock go compiler
-case "$1" in
+case "\$1" in
     build)
         # Find the -o flag
         OUTPUT=""
-        for ((i=1; i<=$#; i++)); do
-            if [ "${!i}" = "-o" ]; then
+        for ((i=1; i<=\$#; i++)); do
+            if [ "\${!i}" = "-o" ]; then
                 ((i++))
-                OUTPUT="${!i}"
+                OUTPUT="\${!i}"
                 break
             fi
         done
         
-        if [ -n "$OUTPUT" ]; then
+        if [ -n "\$OUTPUT" ]; then
             # Check if we should fail (for asset check failure test)
             if [ -f "$TEST_DIR/fail_asset_check" ]; then
-                echo "binary-with-missing-assets" > "$OUTPUT"
+                echo "binary-with-missing-assets" > "\$OUTPUT"
             else
-                echo "new-binary" > "$OUTPUT"
+                echo "new-binary" > "\$OUTPUT"
             fi
-            chmod +x "$OUTPUT"
+            chmod +x "\$OUTPUT"
         fi
         exit 0
         ;;
@@ -86,18 +86,16 @@ esac
 EOF
 chmod +x "$TEST_DIR/go"
 
-cat > "$TEST_DIR/npm" <<'EOF'
+cat > "$TEST_DIR/npm" <<EOF
 #!/usr/bin/env bash
-case "$1" in
+case "\$1" in
     ci)
         exit 0
         ;;
     run)
-        if [ "$2" = "build" ]; then
-            # Build to .build-tmp (deploy.sh's temp location)
-            mkdir -p .build-tmp/js .build-tmp/css
-            echo "new-js" > .build-tmp/js/app.js
-            echo "new-css" > .build-tmp/css/styles.css
+        if [ "\$2" = "build:to" ]; then
+            # Build to OUTDIR (deploy.sh's temp location)
+            [ -n "\$OUTDIR" ] && mkdir -p "\$OUTDIR/js" "\$OUTDIR/css" && echo "new-js" > "\$OUTDIR/js/app.js" && echo "new-css" > "\$OUTDIR/css/styles.css"
         fi
         exit 0
         ;;
@@ -105,7 +103,7 @@ esac
 EOF
 chmod +x "$TEST_DIR/npm"
 
-cat > "$TEST_DIR/sudo" <<EOF
+cat > "$TEST_DIR/sudo" <<SUDOEOF
 #!/usr/bin/env bash
 if [ "\$1" = "systemctl" ]; then
     shift
@@ -113,10 +111,10 @@ if [ "\$1" = "systemctl" ]; then
 else
     "\$@"
 fi
-EOF
+SUDOEOF
 chmod +x "$TEST_DIR/sudo"
 
-cat > "$TEST_DIR/systemctl" <<EOF
+cat > "$TEST_DIR/systemctl" <<SYSTEMEOF
 #!/usr/bin/env bash
 SERVICE_PID_FILE="$TEST_DIR/service.pid"
 
@@ -158,10 +156,10 @@ case "\$1" in
         exit 0
         ;;
 esac
-EOF
+SYSTEMEOF
 chmod +x "$TEST_DIR/systemctl"
 
-cat > "$TEST_DIR/curl" <<'EOF'
+cat > "$TEST_DIR/curl" <<CURLEOF
 #!/usr/bin/env bash
 # Check for health check failure marker
 if [ -f "$TEST_DIR/health_fail" ]; then
@@ -170,7 +168,7 @@ if [ -f "$TEST_DIR/health_fail" ]; then
 fi
 echo "200"
 exit 0
-EOF
+CURLEOF
 chmod +x "$TEST_DIR/curl"
 
 cat > "$TEST_DIR/journalctl" <<'EOF'
@@ -181,8 +179,10 @@ EOF
 chmod +x "$TEST_DIR/journalctl"
 
 # Create deploy script with test paths
+# Note: Use a marker to replace PROJECT_DIR since the original has special chars
 sed -e "s|ROLLBACK_DIR=\"/home/deploy/liveoilprices-rollbacks\"|ROLLBACK_DIR=\"$TEST_DIR/rollbacks\"|g" \
-    -e "s|PROJECT_DIR=\$(cd \"\$SCRIPT_DIR/..\" && pwd)|PROJECT_DIR=\"$TEST_DIR/repo\"|g" \
+    -e "9s|.*|PROJECT_DIR=\"$TEST_DIR/repo\"|" \
+    -e "10s|^cd .*|# cd suppressed|" \
     "$SCRIPT_DIR/deploy.sh" > "$TEST_DIR/deploy-test.sh"
 chmod +x "$TEST_DIR/deploy-test.sh"
 
