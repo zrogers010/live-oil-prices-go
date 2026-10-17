@@ -230,6 +230,7 @@ BEGIN {
 
 if [ -n "$EXPIRES_VIOLATIONS" ]; then
     echo "  ✗ Disallowed 'expires' directive(s) found:"
+    # shellcheck disable=SC2001
     echo "$EXPIRES_VIOLATIONS" | sed 's/^/      /'
     echo "     Only /robots.txt location may use 'expires' (use add_header Cache-Control elsewhere)"
     exit 1
