@@ -118,7 +118,30 @@ else
 fi
 
 # Check that .rollback location contains return 404 or deny all (blocks access)
-if echo "$STRIPPED" | grep -A2 'location ~\* .*\\\.rollback' | grep -Eq '(return 404|deny all)'; then
+# Use awk to extract the entire location block and check for the blocking directive
+ROLLBACK_BLOCK=$(awk '
+    /location ~\* .*\.rollback/ { in_block=1; depth=0; block="" }
+    in_block {
+        block = block "\n" $0
+        gsub(/#.*/, "", $0)  # strip comments
+        for (i=1; i<=length($0); i++) {
+            c = substr($0, i, 1)
+            if (c == "{") depth++
+            if (c == "}") depth--
+        }
+        if (depth == 0 && in_block) {
+            print block
+            exit
+        }
+    }
+' "$SCRIPT_DIR/nginx-prod.conf")
+
+if echo "$ROLLBACK_BLOCK" | grep -Eq '(return 404|deny all)'; then
+    # Also check that return 404/deny all is NOT followed by return 200
+    if echo "$ROLLBACK_BLOCK" | grep -q 'return 404' && echo "$ROLLBACK_BLOCK" | sed -n '/return 404/,$p' | grep -q 'return 200'; then
+        echo "  ✗ .rollback location has 'return 200' after 'return 404' (bypasses block)"
+        exit 1
+    fi
     echo "  ✓ .rollback location blocks access with return 404 or deny all"
 else
     echo "  ✗ .rollback location must contain 'return 404' or 'deny all' to block access"
@@ -143,17 +166,75 @@ else
     exit 1
 fi
 
-# Verify /css/ and /js/ locations do NOT use expires directive
-if echo "$STRIPPED" | grep -A5 'location /css/' | grep -qw 'expires'; then
-    echo "  ✗ /css/ location uses expires (should only use add_header Cache-Control)"
-    exit 1
-fi
+# Check for ANY expires directive in server blocks, except in allowlisted locations
+# Allowlist: /robots.txt (can use expires for simple static files)
+# Use awk to parse brace depth and track location context
+EXPIRES_VIOLATIONS=$(awk '
+BEGIN { 
+    server_depth=0
+    location_depth=0
+    current_location=""
+    in_server=0
+}
+{
+    # Strip comments
+    line_no_comment = $0
+    gsub(/#.*/, "", line_no_comment)
+    
+    # Track server block
+    if (line_no_comment ~ /server[[:space:]]*\{/) {
+        in_server = 1
+        server_depth = 0
+    }
+    
+    # Track location blocks - extract the path
+    if (line_no_comment ~ /location[[:space:]]/) {
+        # Simple extraction: get the path after "location" and optional modifiers
+        loc_line = line_no_comment
+        sub(/^.*location[[:space:]]+/, "", loc_line)
+        sub(/^[~*]+[[:space:]]*/, "", loc_line)
+        sub(/[[:space:]]*\{.*$/, "", loc_line)
+        current_location = loc_line
+        location_depth = 0
+    }
+    
+    # Count braces for depth tracking
+    brace_count = gsub(/\{/, "{", line_no_comment)
+    close_count = gsub(/\}/, "}", line_no_comment)
+    
+    if (in_server) {
+        server_depth += brace_count
+        server_depth -= close_count
+        if (server_depth == 0) in_server = 0
+    }
+    
+    if (current_location != "") {
+        location_depth += brace_count
+        location_depth -= close_count
+        if (location_depth == 0) current_location = ""
+    }
+    
+    # Check for expires directive
+    if (line_no_comment ~ /[[:space:]]expires[[:space:]]/ && in_server) {
+        # Allowlist: /robots.txt and any location containing "robots"
+        if (current_location !~ /robots/) {
+            if (current_location == "") {
+                print "Server-level expires found at line " NR
+            } else {
+                print "Disallowed expires in location \"" current_location "\" at line " NR
+            }
+        }
+    }
+}
+' "$SCRIPT_DIR/nginx-prod.conf")
 
-if echo "$STRIPPED" | grep -A5 'location /js/' | grep -qw 'expires'; then
-    echo "  ✗ /js/ location uses expires (should only use add_header Cache-Control)"
+if [ -n "$EXPIRES_VIOLATIONS" ]; then
+    echo "  ✗ Disallowed 'expires' directive(s) found:"
+    echo "$EXPIRES_VIOLATIONS" | sed 's/^/      /'
+    echo "     Only /robots.txt location may use 'expires' (use add_header Cache-Control elsewhere)"
     exit 1
 fi
-echo "  ✓ /css/ and /js/ locations do not use expires directive"
+echo "  ✓ No disallowed 'expires' directives (only /robots.txt allowed)"
 
 # Check that immutable 1y header is only on hashed branch (map regex line, not default)
 if echo "$STRIPPED" | grep -q '~.*{12}.*immutable'; then

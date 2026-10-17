@@ -100,16 +100,14 @@ set -euo pipefail
 
 cd /home/deploy/liveoilprices
 
-# Verify current commit is 268dd9b
+# Verify current commit is exactly 268dd9b
 COMMIT=$(git rev-parse HEAD)
-if [ "$COMMIT" != "268dd9b73a5395090b11c02335b3539711bd2c6e" ]; then
-    echo "WARNING: Current commit $COMMIT is not 268dd9b"
-    echo "Continue anyway? (y/N)"
-    read -r confirm
-    if [ "$confirm" != "y" ]; then
-        echo "Aborted" >&2
-        exit 1
-    fi
+EXPECTED_COMMIT="268dd9b73a5395090b11c02335b3539711bd2c6e"
+if [ "$COMMIT" != "$EXPECTED_COMMIT" ]; then
+    echo "ERROR: Current commit $COMMIT is not the baseline 268dd9b" >&2
+    echo "This snapshot would be unfindable by the restore procedure." >&2
+    echo "Checkout 268dd9b first: git checkout $EXPECTED_COMMIT" >&2
+    exit 1
 fi
 
 ROLLBACK_DIR="/home/deploy/liveoilprices-rollbacks"
@@ -117,6 +115,15 @@ mkdir -p "$ROLLBACK_DIR"
 TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 TEMP_SNAPSHOT="$ROLLBACK_DIR/.snapshot-$TIMESTAMP.tmp"
 FINAL_SNAPSHOT="$ROLLBACK_DIR/$TIMESTAMP"
+
+# Set up cleanup trap for temp directory
+cleanup() {
+    if [ -d "$TEMP_SNAPSHOT" ]; then
+        echo "Cleaning up temp snapshot..." >&2
+        rm -rf "$TEMP_SNAPSHOT"
+    fi
+}
+trap cleanup EXIT
 
 # Create temp snapshot directory
 mkdir -p "$TEMP_SNAPSHOT"
@@ -135,7 +142,6 @@ echo "$COMMIT" > "$TEMP_SNAPSHOT/COMMIT"
 for file in server templates js css COMMIT; do
     if [ ! -e "$TEMP_SNAPSHOT/$file" ]; then
         echo "ERROR: Failed to copy $file" >&2
-        rm -rf "$TEMP_SNAPSHOT"
         exit 1
     fi
 done
@@ -261,9 +267,16 @@ echo "=== Restore complete ==="
 echo "  Restored to snapshot: $SNAPSHOT"
 echo "  Git HEAD: detached at $SNAPSHOT_COMMIT"
 echo ""
-echo "CRITICAL: You are in detached HEAD state with the OLD binary and templates."
-echo "Run 'git checkout main && bash scripts/deploy.sh' IMMEDIATELY to deploy the new version."
-echo "Do NOT restart the service manually - the old binary will crash-loop with new templates."
+echo "You are now in detached HEAD state at the old working version."
+echo "The service is running the OLD binary with OLD templates - this is SAFE."
+echo "You can restart the service freely while detached (systemctl restart liveoilprices)."
+echo ""
+echo "To deploy a fixed version:"
+echo "  1. Ensure 'main' has a working fix"
+echo "  2. Run: git checkout main && bash scripts/deploy.sh"
+echo "     (Run both commands together with no manual restart in between)"
+echo ""
+echo "DO NOT run 'git checkout main' alone - that would leave the old binary with new templates (crash-loop)."
 )
 ```
 
@@ -293,9 +306,6 @@ Copy `scripts/nginx-prod.conf` from the repo to the server, then:
 
 ```bash
 # On the EC2 host
-# Run in a subshell so any error aborts
-(
-set -euo pipefail
 
 # 1. Back up the live config
 BACKUP="/root/liveoilprices.conf.bak-$(date +%Y%m%d-%H%M%S)"
@@ -305,9 +315,18 @@ echo "Backup saved to $BACKUP"
 # 2. Copy candidate config to temp location
 # (manually scp or copy scripts/nginx-prod.conf to /tmp/liveoilprices.conf)
 
-# 3. Diff the candidate against the live certbot-managed config
-diff -u /etc/nginx/conf.d/liveoilprices.conf /tmp/liveoilprices.conf | less
-# Review the diff to ensure only the expected changes are present
+# 3. Review the diff BEFORE installing
+echo "Reviewing changes..."
+diff -u /etc/nginx/conf.d/liveoilprices.conf /tmp/liveoilprices.conf || true
+read -p "Proceed with installation? (y/N) " confirm
+if [ "$confirm" != "y" ]; then
+    echo "Aborted"
+    exit 0
+fi
+
+# 4-6. Install, test, and reload (in a guarded subshell)
+(
+set -euo pipefail
 
 # 4. Install the candidate config
 sudo install -m 0644 -o root -g root /tmp/liveoilprices.conf /etc/nginx/conf.d/liveoilprices.conf
