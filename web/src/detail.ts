@@ -69,9 +69,9 @@ async function loadPriceHeader(): Promise<void> {
     const p = prices.find(x => x.symbol === currentSymbol);
     if (!p) return;
     
-    // Don't render synthetic estimate prices
-    if (p.source === 'estimate') {
-      console.log('Price data unavailable (estimate only)');
+    // Don't update DOM if price unavailable - leave server-rendered '—'
+    if (!p.available) {
+      console.log('Price unavailable, keeping server-rendered content');
       return;
     }
 

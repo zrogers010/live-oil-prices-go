@@ -126,9 +126,36 @@ func TestOfflineHomePageNoZeroPrices(t *testing.T) {
 // TestOfflineCommodityPageNoZeroPrices verifies that with unavailable price,
 // the commodity page renders no $0.00 or 0.00% and no price in title/JSON-LD.
 func TestOfflineCommodityPageNoZeroPrices(t *testing.T) {
-	// This test requires the commodity template to be initialized with the correct path
-	// Skip for now as it's tested via Playwright
-	t.Skip("Tested via Playwright browser test instead")
+	api := NewAPI(&mockMarketService{}, &mockNewsService{})
+	if err := InitCommodityTemplate("../../web/templates/commodity.html"); err != nil {
+		t.Fatalf("failed to init commodity template: %v", err)
+	}
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /commodity/{symbol}", api.ServeCommodityPage)
+
+	for _, sym := range []string{"WTI", "BRENT", "OPEC"} {
+		req := httptest.NewRequest("GET", "/commodity/"+sym, nil)
+		w := httptest.NewRecorder()
+		mux.ServeHTTP(w, req)
+		body := w.Body.String()
+		if w.Code != http.StatusOK {
+			t.Fatalf("%s: expected 200, got %d", sym, w.Code)
+		}
+		if !strings.Contains(body, "</html>") || strings.Contains(body, "Internal Server Error") {
+			t.Fatalf("%s: page did not render completely", sym)
+		}
+		for _, bad := range []string{"$0.00", "0.00%", "\"offers\""} {
+			if strings.Contains(body, bad) {
+				t.Errorf("%s: offline page contains %q", sym, bad)
+			}
+		}
+		if i, j := strings.Index(body, "<title>"), strings.Index(body, "</title>"); i < 0 || j < i || strings.Contains(body[i:j], "$") {
+			t.Errorf("%s: title missing or contains a price", sym)
+		}
+		if !strings.Contains(body, `id="detailPrice">—<`) {
+			t.Errorf("%s: expected dash placeholder for unavailable price", sym)
+		}
+	}
 }
 
 // TestOfflineChartDataUnavailable verifies the hero shows 'Chart data unavailable'
