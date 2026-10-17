@@ -174,7 +174,7 @@
                     <div class="detail-change {{if .IsPositive}}positive{{else}}negative{{end}}" id="detailChange">{{.Sign}}{{.Change}} ({{.Sign}}{{.ChangePct}}%)</div>
                     {{- else -}}
                     <div class="detail-price" id="detailPrice">—</div>
-                    <div class="detail-change" id="detailChange">—</div>
+                    <div class="detail-change" id="detailChange" style="display: none;"></div>
                     {{- end}}
                 </div>
             </header>
@@ -201,7 +201,7 @@
                 </div>
             </div>
             {{- else -}}
-            <div class="detail-stats" id="detailStats" role="list" aria-label="Price statistics"></div>
+            <div class="detail-stats" id="detailStats" role="list" aria-label="Price statistics" style="display: none;"></div>
             {{- end}}
         </div>
 

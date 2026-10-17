@@ -52,7 +52,7 @@ func TestGetPricesReturnsAllCommodities(t *testing.T) {
 func TestGetChartDataDefaultsAndOverrides(t *testing.T) {
 	svc := newDeterministicMarketDataService()
 
-	// Without Yahoo data, GetChartData now returns empty data instead of synthetic
+	// Without Yahoo data, GetChartData returns empty data
 	short := svc.GetChartData("WTI", 5, "")
 	if short.Symbol != "WTI" {
 		t.Fatalf("expected symbol WTI, got %q", short.Symbol)
@@ -89,7 +89,6 @@ func TestGetChartDataDefaultsAndOverrides(t *testing.T) {
 		t.Fatalf("expected explicit interval override to win, got %q", override.Interval)
 	}
 }
-
 func TestGetChartDataUnknownSymbolFallsBack(t *testing.T) {
 	svc := newDeterministicMarketDataService()
 	data := svc.GetChartData("UNKNOWN", 7, "")

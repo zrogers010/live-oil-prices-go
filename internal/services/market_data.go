@@ -221,17 +221,98 @@ func (s *MarketDataService) GetChartData(symbol string, days int, interval strin
 		}
 	}
 
-	// Only return REAL cached Yahoo OHLCV daily history when available.
-	// If the cache hasn't loaded yet (cold start) or this symbol isn't
-	// tracked by Yahoo, return empty data instead of synthetic fallback.
-	if interval == "1d" && s.yahoo != nil {
+	if s.yahoo == nil {
+		return models.ChartData{Symbol: symbol, Name: name, Interval: interval, Data: []models.OHLCV{}}
+	}
+
+	// For daily intervals, return real Yahoo daily history
+	if interval == "1d" {
 		if bars := s.yahoo.GetDailyHistory(symbol, days); len(bars) > 0 {
 			return models.ChartData{Symbol: symbol, Name: name, Interval: interval, Data: bars}
 		}
+		// No daily history - return empty
+		return models.ChartData{Symbol: symbol, Name: name, Interval: interval, Data: []models.OHLCV{}}
 	}
 
-	// Return empty data when no real data is available
-	return models.ChartData{Symbol: symbol, Name: name, Interval: interval, Data: []models.OHLCV{}}
+	// For intraday intervals (2h, 4h), try to get intraday bars from Yahoo
+	// Yahoo provides 5-min bars for ~5 trading days
+	intradayBars, intradayInterval := s.yahoo.GetRolling24hIntraday(symbol)
+	if len(intradayBars) == 0 {
+		// Fall back to daily bars if available, sliced to the requested range
+		if bars := s.yahoo.GetDailyHistory(symbol, days); len(bars) > 0 {
+			return models.ChartData{Symbol: symbol, Name: name, Interval: "1d", Data: bars}
+		}
+		return models.ChartData{Symbol: symbol, Name: name, Interval: interval, Data: []models.OHLCV{}}
+	}
+
+	// Aggregate 5-min bars to requested interval
+	var hoursPerCandle int
+	if interval == "2h" {
+		hoursPerCandle = 2
+	} else {
+		hoursPerCandle = 4
+	}
+
+	aggregated := aggregateBars(intradayBars, hoursPerCandle)
+	
+	// Slice to requested days
+	if days > 0 && days < 100 {
+		cutoff := time.Now().UTC().Add(-time.Duration(days) * 24 * time.Hour).Unix()
+		filtered := make([]models.OHLCV, 0, len(aggregated))
+		for _, bar := range aggregated {
+			if bar.Time >= cutoff {
+				filtered = append(filtered, bar)
+			}
+		}
+		aggregated = filtered
+	}
+
+	return models.ChartData{Symbol: symbol, Name: name, Interval: intradayInterval, Data: aggregated}
+}
+
+// aggregateBars aggregates 5-min (or similar) bars into larger hourly candles
+func aggregateBars(bars []models.OHLCV, hoursPerCandle int) []models.OHLCV {
+	if len(bars) == 0 || hoursPerCandle <= 0 {
+		return bars
+	}
+
+	bucketSize := int64(hoursPerCandle * 3600)
+	var result []models.OHLCV
+	var currentBucket *models.OHLCV
+
+	for _, bar := range bars {
+		bucketStart := (bar.Time / bucketSize) * bucketSize
+
+		if currentBucket == nil || currentBucket.Time != bucketStart {
+			if currentBucket != nil {
+				result = append(result, *currentBucket)
+			}
+			currentBucket = &models.OHLCV{
+				Time:   bucketStart,
+				Open:   bar.Open,
+				High:   bar.High,
+				Low:    bar.Low,
+				Close:  bar.Close,
+				Volume: bar.Volume,
+			}
+		} else {
+			// Update the current bucket
+			if bar.High > currentBucket.High {
+				currentBucket.High = bar.High
+			}
+			if bar.Low < currentBucket.Low {
+				currentBucket.Low = bar.Low
+			}
+			currentBucket.Close = bar.Close
+			currentBucket.Volume += bar.Volume
+		}
+	}
+
+	if currentBucket != nil {
+		result = append(result, *currentBucket)
+	}
+
+	return result
 }
 
 // syntheticChartSeed produces a stable per-day seed for the synthetic

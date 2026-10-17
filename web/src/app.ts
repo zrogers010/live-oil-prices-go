@@ -215,6 +215,12 @@ class HeroChartController {
   // price/change text.
   applyPriceRecord(p: Price): void {
     if (!this.priceEl) return;
+    
+    // Don't render estimate prices - keep SSR dashes
+    if (p.source === 'estimate') {
+      return;
+    }
+    
     // Stash the latest Price so syncFromChart() can derive previous-close
     // (= p.price - p.change) without an extra fetch.
     this.latestPrice = p;
@@ -330,6 +336,8 @@ class HeroChartController {
     if (!payload.bars || payload.bars.length === 0) {
       this.setEmpty(true);
       this.setLiveState('warming');
+      // When warming-up with no bars, show "Live feed unavailable"
+      // instead of "connecting to the live feed..." tagline
       setHeroTagline(payload);
       if (this.mode !== 'warming-up') {
         this.mode = 'warming-up';
@@ -659,8 +667,14 @@ function setHeroTagline(payload: HeroChart): void {
       accent.className = 'hero-tagline-accent hero-tagline-accent-paused';
       break;
     default:
-      accent.textContent = 'connecting to the live feed…';
-      accent.className = 'hero-tagline-accent hero-tagline-accent-warming';
+      // When warming-up with no bars (offline), show "Live feed unavailable"
+      if (!payload.bars || payload.bars.length === 0) {
+        accent.textContent = 'Live feed unavailable';
+        accent.className = 'hero-tagline-accent hero-tagline-accent-paused';
+      } else {
+        accent.textContent = 'connecting to the live feed…';
+        accent.className = 'hero-tagline-accent hero-tagline-accent-warming';
+      }
   }
 }
 
@@ -681,7 +695,10 @@ function renderTicker(prices: Price[]): void {
   const track = document.getElementById('tickerTrack');
   if (!track) return;
 
-  const html = prices.map(p => {
+  // Filter out estimate prices
+  const filtered = prices.filter(p => p.source !== 'estimate');
+
+  const html = filtered.map(p => {
     const positive = p.change >= 0;
     const sign = positive ? '+' : '';
     return `
@@ -816,7 +833,10 @@ function renderMarketTable(prices: Price[]): void {
   const tbody = document.getElementById('marketTableBody');
   if (!tbody) return;
 
-  tbody.innerHTML = prices.map(p => {
+  // Filter out estimate prices
+  const filtered = prices.filter(p => p.source !== 'estimate');
+
+  tbody.innerHTML = filtered.map(p => {
     const positive = p.change >= 0;
     const sign = positive ? '+' : '';
     const cls = positive ? 'positive' : 'negative';
