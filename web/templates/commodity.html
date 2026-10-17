@@ -68,7 +68,7 @@
         "@type": "Organization",
         "name": "{{.Meta.Exchange}}"
       },
-      "category": "Commodity Futures"{{if .Price}}{{if ne .Price ""}}{{if ne .Available false}},
+      "category": "Commodity Futures"{{if .Price}},
       "offers": {
         "@type": "Offer",
         "price": "{{.Price}}",
@@ -79,7 +79,7 @@
           "priceCurrency": "USD",
           "unitText": "{{.Meta.Unit}}"
         }
-      }{{end}}{{end}}{{end}}
+      }{{end}}
     }
     </script>
 

@@ -267,12 +267,18 @@ async function loadRelatedNews(): Promise<void> {
 async function loadOtherCommodities(): Promise<void> {
   try {
     const prices = await getPrices();
-    // Filter out estimate prices and the current symbol
+    // Filter out unavailable prices and the current symbol
     const others = prices
-      .filter(p => p.symbol !== currentSymbol && p.source !== 'estimate')
+      .filter(p => p.symbol !== currentSymbol && p.available)
       .slice(0, 6);
 
     const grid = document.getElementById('relatedGrid')!;
+    
+    if (others.length === 0) {
+      grid.innerHTML = '<p class="text-muted" style="padding: 2rem; text-align: center;">Market data temporarily unavailable</p>';
+      return;
+    }
+    
     grid.innerHTML = others.map(p => {
       const isPos = p.change >= 0;
       const sign = isPos ? '+' : '';

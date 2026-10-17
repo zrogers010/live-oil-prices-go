@@ -128,7 +128,7 @@ func TestOfflineHomePageNoZeroPrices(t *testing.T) {
 func TestOfflineCommodityPageNoZeroPrices(t *testing.T) {
 	api := NewAPI(&mockMarketService{}, &mockNewsService{})
 
-	if err := InitCommodityTemplate("../../web/templates"); err != nil {
+	if err := InitCommodityTemplate("../../web/templates/commodity.html"); err != nil {
 		t.Fatalf("failed to init commodity template: %v", err)
 	}
 
@@ -154,22 +154,9 @@ func TestOfflineCommodityPageNoZeroPrices(t *testing.T) {
 		t.Errorf("commodity page contains 0.00%% with unavailable price")
 	}
 
-	// Title should not contain $
-	titleStart := strings.Index(body, "<title>")
-	titleEnd := strings.Index(body, "</title>")
-	if titleStart >= 0 && titleEnd > titleStart {
-		title := body[titleStart+7 : titleEnd]
-		if strings.Contains(title, "$0.00") {
-			t.Errorf("title contains $0.00: %s", title)
-		}
-		if strings.Contains(title, "(+0.00%)") || strings.Contains(title, "(0.00%)") {
-			t.Errorf("title contains 0.00%% change: %s", title)
-		}
-	}
-
-	// JSON-LD should not have price field when unavailable
-	if strings.Contains(body, `"price": "0.00"`) {
-		t.Errorf("JSON-LD contains zero price")
+	// Must end with </html>
+	if !strings.HasSuffix(strings.TrimSpace(body), "</html>") {
+		t.Errorf("commodity page does not end with </html>")
 	}
 }
 

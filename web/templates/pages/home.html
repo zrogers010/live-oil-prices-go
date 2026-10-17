@@ -3,12 +3,12 @@
     <div class="hero-bg"><div class="hero-grid-pattern"></div><div class="hero-glow"></div></div>
     <div class="container hero-content">
         <div class="hero-eyebrow">
-            <h1 class="hero-tagline" id="heroTagline">Latest WTI &amp; Brent crude oil prices — <span class="hero-tagline-accent" id="heroTaglineAccent">connecting to the feed&hellip;</span></h1>
+            <h1 class="hero-tagline" id="heroTagline">Latest WTI &amp; Brent crude oil prices — <span class="hero-tagline-accent" id="heroTaglineAccent">{{if or .HeroWTI .HeroBRENT}}connecting to the feed&hellip;{{else}}live feed unavailable{{end}}</span></h1>
         </div>
 
-        {{template "hero_chart_card" dict "Symbol" "WTI" "Title" "WTI Crude Oil" "AriaLabel" "WTI crude oil live 1-minute candle chart" "DetailsHref" "/commodity/WTI" "OtherHref" "/commodity/BRENT" "OtherLabel" "Brent" "Price" .HeroWTI}}
+        {{template "hero_chart_card" dict "Symbol" "WTI" "Title" "WTI Crude Oil" "AriaLabel" "WTI crude oil live 1-minute candle chart" "DetailsHref" "/commodity/WTI" "OtherHref" "/commodity/BRENT" "OtherLabel" "Brent" "Price" .HeroWTI "HasPrice" .HeroWTI}}
 
-        {{template "hero_chart_card" dict "Symbol" "BRENT" "Title" "Brent Crude Oil" "AriaLabel" "Brent crude oil live 1-minute candle chart" "DetailsHref" "/commodity/BRENT" "OtherHref" "/commodity/WTI" "OtherLabel" "WTI" "Price" .HeroBRENT}}
+        {{template "hero_chart_card" dict "Symbol" "BRENT" "Title" "Brent Crude Oil" "AriaLabel" "Brent crude oil live 1-minute candle chart" "DetailsHref" "/commodity/BRENT" "OtherHref" "/commodity/WTI" "OtherLabel" "WTI" "Price" .HeroBRENT "HasPrice" .HeroBRENT}}
 
         <div class="hero-cta">
             <a href="#markets" class="btn btn-primary">
