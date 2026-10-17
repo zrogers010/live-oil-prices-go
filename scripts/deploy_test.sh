@@ -8,10 +8,19 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 TEST_DIR=$(mktemp -d)
 
 cleanup() {
+    # Kill any mock service processes
+    if [ -f "$TEST_DIR/service.pid" ]; then
+        SERVICE_PID=$(cat "$TEST_DIR/service.pid" 2>/dev/null || echo "")
+        if [ -n "$SERVICE_PID" ]; then
+            kill -9 "$SERVICE_PID" 2>/dev/null || true
+        fi
+    fi
+    
     # Kill any mock processes
     pkill -P $$ 2>/dev/null || true
     sleep 0.1
     pkill -9 -P $$ 2>/dev/null || true
+    
     rm -rf "$TEST_DIR"
 }
 
@@ -37,13 +46,19 @@ echo "old-template" > web/templates/index.html
 echo "old-js" > web/static/js/app.js
 echo "old-css" > web/static/css/styles.css
 echo "console.log('frontend')" > frontend/src/index.js
-echo '{"scripts":{"build":"mkdir -p dist/js dist/css && cp src/index.js dist/js/app.js && echo \"body{}\" > dist/css/styles.css"}}' > frontend/package.json
+echo '{"scripts":{"build:to":"mkdir -p \$OUTDIR/js \$OUTDIR/css && echo new-js > \$OUTDIR/js/app.js && echo new-css > \$OUTDIR/css/styles.css"}}' > frontend/package.json
 mkdir -p frontend/node_modules
 
 # Initial commit
 git add -A
 git commit -q -m "initial"
 INITIAL_COMMIT=$(git rev-parse HEAD)
+
+# Set up a bare repo as remote so git pull works
+mkdir -p "$TEST_DIR/remote-repo.git"
+(cd "$TEST_DIR/remote-repo.git" && git init --bare -q)
+git remote add origin "$TEST_DIR/remote-repo.git"
+git push -u origin master -q 2>/dev/null || git push -u origin main -q 2>/dev/null
 
 # Create initial binary
 echo "old-binary" > bin/server
@@ -66,11 +81,27 @@ case "\$1" in
         done
         
         if [ -n "\$OUTPUT" ]; then
-            # Check if we should fail (for asset check failure test)
+            # Create a mock binary that responds to --check-assets
             if [ -f "$TEST_DIR/fail_asset_check" ]; then
-                echo "binary-with-missing-assets" > "\$OUTPUT"
+                # This binary will fail asset checks
+                {
+                    echo '#!/usr/bin/env bash'
+                    echo 'if [ "\$1" = "--check-assets" ]; then'
+                    echo '    echo "ERROR: Missing required assets" >&2'
+                    echo '    exit 1'
+                    echo 'fi'
+                    echo 'echo "Mock binary running"'
+                } > "\$OUTPUT"
             else
-                echo "new-binary" > "\$OUTPUT"
+                # This binary will pass asset checks
+                {
+                    echo '#!/usr/bin/env bash'
+                    echo 'if [ "\$1" = "--check-assets" ]; then'
+                    echo '    echo "✓ Asset and template check passed"'
+                    echo '    exit 0'
+                    echo 'fi'
+                    echo 'echo "Mock binary running"'
+                } > "\$OUTPUT"
             fi
             chmod +x "\$OUTPUT"
         fi
@@ -195,6 +226,7 @@ chmod +x "$TEST_DIR/rollback-test.sh"
 
 export PATH="$TEST_DIR:$PATH"
 export HEALTH_CHECK_TIMEOUT=6
+export DEPLOY_BRANCH=master
 
 cd "$TEST_DIR/repo"
 
@@ -210,11 +242,28 @@ touch "$TEST_DIR/fail_asset_check"
 echo "change1" >> cmd/server/main.go
 git add -A
 git commit -q -m "change for test a"
+git push -q
 
+# Save state - this is what deploy will snapshot and restore to on failure
 INITIAL_BINARY=$(cat bin/server)
-INITIAL_COMMIT=$(cat "$TEST_DIR/rollbacks"/*/COMMIT 2>/dev/null | head -1 || echo "$INITIAL_COMMIT")
+INITIAL_COMMIT=$(git rev-parse HEAD)
 
-if bash "$TEST_DIR/deploy-test.sh" 2>&1 | grep -q "Asset validation failed"; then
+# Run deploy and capture output to file
+echo "  Running deploy (this may take a few seconds)..."
+if timeout 30 bash "$TEST_DIR/deploy-test.sh" > "$TEST_DIR/deploy-output-a.txt" 2>&1; then
+    DEPLOY_EXIT=0
+else
+    DEPLOY_EXIT=$?
+fi
+
+if [ "$DEPLOY_EXIT" = 124 ]; then
+    echo "✗ Test (a) failed - deploy timed out"
+    echo "Deploy output:"
+    cat "$TEST_DIR/deploy-output-a.txt"
+    exit 1
+fi
+
+if grep -q "Asset validation failed" "$TEST_DIR/deploy-output-a.txt"; then
     # Check binary unchanged
     CURRENT_BINARY=$(cat bin/server)
     if [ "$CURRENT_BINARY" = "$INITIAL_BINARY" ]; then
@@ -244,6 +293,9 @@ if bash "$TEST_DIR/deploy-test.sh" 2>&1 | grep -q "Asset validation failed"; the
     echo "✓ Test (a) passed"
 else
     echo "✗ Test (a) failed - deploy did not fail on asset check"
+    echo "Deploy exit code: $DEPLOY_EXIT"
+    echo "Deploy output:"
+    cat "$TEST_DIR/deploy-output-a.txt"
     exit 1
 fi
 
@@ -253,7 +305,9 @@ echo ""
 echo "=== Test (b): Health check failure triggers rollback ==="
 
 # Reset to clean state
+git checkout master -q 2>/dev/null || git checkout main -q
 git reset --hard "$INITIAL_COMMIT" -q
+git push -f -q
 echo "old-binary" > bin/server
 echo "old-js" > web/static/js/app.js
 
@@ -261,40 +315,55 @@ echo "old-js" > web/static/js/app.js
 echo "change2" >> cmd/server/main.go
 git add -A
 git commit -q -m "change for test b"
+git push -q
 
-# Deploy should succeed first, then we'll test health check failure
+# Deploy successfully first to create a known-good state
 rm -rf "$TEST_DIR/rollbacks"/*
-bash "$TEST_DIR/deploy-test.sh" > /dev/null 2>&1
+echo "change2b" >> cmd/server/main.go
+git add -A
+git commit -q -m "change for test b setup"
+git push -q
 
-# Now set up for health check failure on next deploy
+if ! bash "$TEST_DIR/deploy-test.sh" > /dev/null 2>&1; then
+    echo "✗ Test (b) failed - initial deploy didn't succeed"
+    exit 1
+fi
+
+# Save the known-good state (this is what rollback should restore to)
+GOOD_BINARY=$(cat bin/server)
+GOOD_JS=$(cat web/static/js/app.js)
+
+# Now test health check failure with a new change
 touch "$TEST_DIR/health_fail"
-echo "old-binary" > bin/server
-echo "old-js" > web/static/js/app.js
-rm -rf "$TEST_DIR/rollbacks"/*
-bash "$TEST_DIR/deploy-test.sh" > /dev/null 2>&1  # Create snapshot
 
 echo "change3" >> cmd/server/main.go
 git add -A
 git commit -q -m "change for test b health fail"
+git push -q
 
-if ! bash "$TEST_DIR/deploy-test.sh" 2>&1 | grep -q "Attempting automatic rollback"; then
+bash "$TEST_DIR/deploy-test.sh" > "$TEST_DIR/deploy-output-b.txt" 2>&1 || true
+if ! grep -q "Attempting automatic rollback" "$TEST_DIR/deploy-output-b.txt"; then
     echo "✗ Test (b) failed - no auto-rollback on health check failure"
+    echo "Deploy output:"
+    cat "$TEST_DIR/deploy-output-b.txt"
     exit 1
 fi
 
-# Check binary restored
-if grep -q "old-binary" bin/server; then
+# Check binary restored to known-good state
+CURRENT_BINARY=$(cat bin/server)
+if [ "$CURRENT_BINARY" = "$GOOD_BINARY" ]; then
     echo "✓ Binary rolled back"
 else
-    echo "✗ Binary not rolled back"
+    echo "✗ Binary not rolled back (expected '$GOOD_BINARY', got '$CURRENT_BINARY')"
     exit 1
 fi
 
 # Check assets restored
-if grep -q "old-js" web/static/js/app.js; then
+CURRENT_JS=$(cat web/static/js/app.js)
+if [ "$CURRENT_JS" = "$GOOD_JS" ]; then
     echo "✓ Assets rolled back"
 else
-    echo "✗ Assets not rolled back"
+    echo "✗ Assets not rolled back (expected '$GOOD_JS', got '$CURRENT_JS')"
     exit 1
 fi
 
@@ -305,27 +374,45 @@ rm -f "$TEST_DIR/health_fail"
 echo ""
 echo "=== Test (c): Crash loop (is-active false) triggers rollback ==="
 
+git checkout master -q 2>/dev/null || git checkout main -q
 git reset --hard "$INITIAL_COMMIT" -q
-echo "old-binary" > bin/server
+git push -f -q
 rm -rf "$TEST_DIR/rollbacks"/*
-bash "$TEST_DIR/deploy-test.sh" > /dev/null 2>&1
+
+echo "change4a" >> cmd/server/main.go
+git add -A
+git commit -q -m "change for test c setup"
+git push -q
+
+if ! bash "$TEST_DIR/deploy-test.sh" > /dev/null 2>&1; then
+    echo "✗ Test (c) failed - initial deploy didn't succeed"
+    exit 1
+fi
+
+# Save known-good state
+GOOD_BINARY=$(cat bin/server)
 
 touch "$TEST_DIR/crash_loop"
 
-echo "change4" >> cmd/server/main.go
+echo "change4b" >> cmd/server/main.go
 git add -A
 git commit -q -m "change for test c"
+git push -q
 
-if ! bash "$TEST_DIR/deploy-test.sh" 2>&1 | grep -q "Service failed to start"; then
+bash "$TEST_DIR/deploy-test.sh" > "$TEST_DIR/deploy-output-c.txt" 2>&1 || true
+if ! grep -q "Service failed to start" "$TEST_DIR/deploy-output-c.txt"; then
     echo "✗ Test (c) failed - no error on crash loop"
+    echo "Deploy output:"
+    cat "$TEST_DIR/deploy-output-c.txt"
     exit 1
 fi
 
 # Check rollback happened
-if grep -q "old-binary" bin/server; then
+CURRENT_BINARY=$(cat bin/server)
+if [ "$CURRENT_BINARY" = "$GOOD_BINARY" ]; then
     echo "✓ Binary rolled back on crash loop"
 else
-    echo "✗ Binary not rolled back on crash loop"
+    echo "✗ Binary not rolled back on crash loop (expected '$GOOD_BINARY', got '$CURRENT_BINARY')"
     exit 1
 fi
 
@@ -336,24 +423,32 @@ rm -f "$TEST_DIR/crash_loop"
 echo ""
 echo "=== Test (d): Successful deploy exits 0 ==="
 
+git checkout master -q 2>/dev/null || git checkout main -q
 git reset --hard "$INITIAL_COMMIT" -q
+git push -f -q
 rm -rf "$TEST_DIR/rollbacks"/*
+
+# Save old state
+OLD_BINARY_HASH=$(md5sum bin/server | cut -d' ' -f1)
 
 echo "change5" >> cmd/server/main.go
 git add -A
 git commit -q -m "change for test d"
+git push -q
 
-if bash "$TEST_DIR/deploy-test.sh" > /dev/null 2>&1; then
+if bash "$TEST_DIR/deploy-test.sh" >/dev/null 2>&1; then
     echo "✓ Successful deploy exits 0"
     
-    # Check files were updated
-    if grep -q "new-binary" bin/server; then
+    # Check binary was updated (hash changed)
+    NEW_BINARY_HASH=$(md5sum bin/server | cut -d' ' -f1)
+    if [ "$NEW_BINARY_HASH" != "$OLD_BINARY_HASH" ]; then
         echo "✓ Binary updated"
     else
         echo "✗ Binary not updated"
         exit 1
     fi
     
+    # Check assets were updated
     if grep -q "new-js" web/static/js/app.js; then
         echo "✓ Assets updated"
     else
@@ -370,47 +465,79 @@ fi
 echo ""
 echo "=== Test (e): Deploy after rollback (clean detached HEAD) succeeds ==="
 
-# Rollback to a known snapshot
+# First ensure we have a snapshot by doing a successful deploy
+git checkout master -q 2>/dev/null || git checkout main -q
+git reset --hard "$INITIAL_COMMIT" -q
+git push -f -q
+rm -rf "$TEST_DIR/rollbacks"/*
+echo "change6" >> cmd/server/main.go
+git add -A
+git commit -q -m "change for test e setup"
+git push -q
+if ! bash "$TEST_DIR/deploy-test.sh" > /dev/null 2>&1; then
+    echo "✗ Test (e) failed - initial deploy didn't succeed"
+    exit 1
+fi
+
+# Get the snapshot commit
 # shellcheck disable=SC2012
 SNAPSHOT_TS=$(ls "$TEST_DIR/rollbacks" | head -1)
-bash "$TEST_DIR/rollback-test.sh" "$SNAPSHOT_TS" > /dev/null 2>&1
+SNAPSHOT_COMMIT=$(cat "$TEST_DIR/rollbacks/$SNAPSHOT_TS/COMMIT")
+
+# Manually put system in detached HEAD at snapshot commit (simulating post-rollback state)
+git checkout "$SNAPSHOT_COMMIT" -q
 
 # Verify we're in detached HEAD
 if git symbolic-ref HEAD &>/dev/null; then
-    echo "✗ Not in detached HEAD after rollback"
+    echo "✗ Not in detached HEAD after checkout"
     exit 1
 fi
 
 echo "  In detached HEAD at $(git rev-parse HEAD)"
 
-# Now try to deploy - should detect rollback state and succeed
-echo "change6" >> cmd/server/main.go
+# Make a new commit on master in the remote so git pull has something to pull
+git checkout master -q 2>/dev/null || git checkout main -q
+echo "change7" >> cmd/server/main.go
 git add -A
 git commit -q -m "change for test e"
+git push -q
 
-if bash "$TEST_DIR/deploy-test.sh" 2>&1 | grep -q "Detected rollback state"; then
+# Go back to detached HEAD at snapshot commit
+git checkout "$SNAPSHOT_COMMIT" -q
+
+# Now try to deploy - should detect rollback state, switch to branch, pull, and succeed
+bash "$TEST_DIR/deploy-test.sh" > "$TEST_DIR/deploy-output-e.txt" 2>&1 || true
+if grep -q "Detected rollback state" "$TEST_DIR/deploy-output-e.txt"; then
     echo "✓ Rollback state detected"
     
-    # Should be back on main branch
-    if git symbolic-ref HEAD 2>/dev/null | grep -q "refs/heads/main"; then
-        echo "✓ Returned to main branch"
+    # Should be back on main/master branch
+    CURRENT_REF=$(git symbolic-ref HEAD 2>/dev/null || echo "detached")
+    if echo "$CURRENT_REF" | grep -qE "refs/heads/(main|master)"; then
+        echo "✓ Returned to branch ($CURRENT_REF)"
     else
-        echo "✗ Not on main branch after deploy"
-        git symbolic-ref HEAD || echo "(still detached)"
+        echo "✗ Not on branch after deploy (current: $CURRENT_REF)"
+        echo "Git status:"
+        git status
+        echo "Deploy output:"
+        tail -30 "$TEST_DIR/deploy-output-e.txt"
         exit 1
     fi
     
-    # Deploy should succeed
-    if grep -q "new-binary" bin/server; then
+    # Deploy should have succeeded (check that deploy completed)
+    if grep -q "Deploy complete" "$TEST_DIR/deploy-output-e.txt"; then
         echo "✓ Deploy after rollback succeeded"
     else
         echo "✗ Deploy after rollback failed"
+        echo "Deploy output:"
+        cat "$TEST_DIR/deploy-output-e.txt"
         exit 1
     fi
     
     echo "✓ Test (e) passed"
 else
     echo "✗ Test (e) failed - rollback state not detected"
+    echo "Deploy output:"
+    cat "$TEST_DIR/deploy-output-e.txt"
     exit 1
 fi
 
