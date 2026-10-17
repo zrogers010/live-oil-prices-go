@@ -14,6 +14,13 @@ export PATH=$PATH:/usr/local/go/bin
 SERVICE="liveoilprices"
 BIN="$PROJECT_DIR/bin/server"
 ROLLBACK_DIR="/home/deploy/liveoilprices-rollbacks"
+FRONTEND_BUILD_TEMP="$PROJECT_DIR/.build-tmp"
+
+# Safety check: ROLLBACK_DIR must be absolute and non-empty
+if [ -z "$ROLLBACK_DIR" ] || [[ ! "$ROLLBACK_DIR" = /* ]]; then
+    echo "ERROR: ROLLBACK_DIR must be a non-empty absolute path"
+    exit 1
+fi
 
 echo ""
 echo "=== Live Oil Prices Deploy ==="
@@ -31,45 +38,89 @@ if ! command -v node &>/dev/null; then
     exit 1
 fi
 
+# ---------- Create rollback snapshot BEFORE git pull ----------
+echo "[1/6] Creating rollback snapshot..."
+TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+mkdir -p "$ROLLBACK_DIR"
+
+# Back up current state (binary, templates, and built assets) if they exist
+if [ -f "$BIN" ] || [ -f "web/static/js/app.js" ]; then
+    ROLLBACK_PATH="$ROLLBACK_DIR/$TIMESTAMP"
+    mkdir -p "$ROLLBACK_PATH"
+    
+    # Copy binary if it exists
+    if [ -f "$BIN" ]; then
+        cp "$BIN" "$ROLLBACK_PATH/server" || {
+            echo "ERROR: Failed to back up binary"
+            exit 1
+        }
+    fi
+    
+    # Copy templates (tracked in git, needed for restore)
+    if [ -d "web/templates" ]; then
+        cp -r web/templates "$ROLLBACK_PATH/" || {
+            echo "ERROR: Failed to back up templates"
+            exit 1
+        }
+    fi
+    
+    # Copy built static assets if they exist
+    if [ -d "web/static/js" ]; then
+        cp -r web/static/js "$ROLLBACK_PATH/" || {
+            echo "ERROR: Failed to back up js"
+            exit 1
+        }
+    fi
+    
+    if [ -d "web/static/css" ]; then
+        cp -r web/static/css "$ROLLBACK_PATH/" || {
+            echo "ERROR: Failed to back up css"
+            exit 1
+        }
+    fi
+    
+    echo "  Rollback snapshot saved to $ROLLBACK_PATH"
+    
+    # Keep only the 10 most recent rollbacks (sort by name, not mtime)
+    # Using find with -print0 for safety against spaces in names
+    find "$ROLLBACK_DIR" -mindepth 1 -maxdepth 1 -type d -name '20*' -print0 \
+        | sort -zr \
+        | tail -zn +11 \
+        | xargs -0r rm -rf --
+else
+    echo "  No existing binary or assets to back up (first deploy or clean build)."
+fi
+
 # ---------- Pull latest code ----------
 if git rev-parse --is-inside-work-tree &>/dev/null 2>&1; then
-    echo "[1/4] Pulling latest code..."
+    echo "[2/6] Pulling latest code..."
     git pull --ff-only || {
         echo "  WARNING: git pull failed (maybe not on a tracked branch). Continuing..."
     }
 else
-    echo "[1/4] Not a git repo, skipping pull."
+    echo "[2/6] Not a git repo, skipping pull."
 fi
 
-# ---------- Create rollback snapshot ----------
-echo "[2/6] Creating rollback snapshot..."
-TIMESTAMP=$(date +%Y%m%d-%H%M%S)
-mkdir -p "$ROLLBACK_DIR"
-
-# Back up current built assets (if they exist) before building new ones
-if [ -d "web/static/js" ] && [ -f "web/static/js/app.js" ]; then
-    ROLLBACK_PATH="$ROLLBACK_DIR/$TIMESTAMP"
-    mkdir -p "$ROLLBACK_PATH"
-    cp -r web/static/js "$ROLLBACK_PATH/" 2>/dev/null || true
-    cp -r web/static/css "$ROLLBACK_PATH/" 2>/dev/null || true
-    if [ -f "$BIN" ]; then
-        cp "$BIN" "$ROLLBACK_PATH/server" 2>/dev/null || true
-    fi
-    echo "  Rollback snapshot saved to $ROLLBACK_PATH"
-    
-    # Keep only the 10 most recent rollbacks
-    ls -dt "$ROLLBACK_DIR"/* 2>/dev/null | tail -n +11 | xargs rm -rf 2>/dev/null || true
-else
-    echo "  No existing assets to back up (first deploy or clean build)."
-fi
-
-# ---------- Build frontend ----------
+# ---------- Build frontend into temp directory ----------
 echo "[3/6] Building frontend..."
 npm cache clean --force 2>/dev/null || true
 rm -rf node_modules
 npm ci
-npm run build
-echo "  Frontend built."
+
+# Build into temp directory to avoid the old server hash pointing at new bytes
+rm -rf "$FRONTEND_BUILD_TEMP"
+mkdir -p "$FRONTEND_BUILD_TEMP/js" "$FRONTEND_BUILD_TEMP/css"
+
+# Build JS bundles
+npx esbuild web/src/app.ts --bundle --outfile="$FRONTEND_BUILD_TEMP/js/app.js" --minify --sourcemap --target=es2020
+npx esbuild web/src/detail.ts --bundle --outfile="$FRONTEND_BUILD_TEMP/js/detail.js" --minify --sourcemap --target=es2020
+
+# Copy CSS (if built separately, or if it's static)
+if [ -f "web/static/css/styles.css" ]; then
+    cp web/static/css/styles.css "$FRONTEND_BUILD_TEMP/css/"
+fi
+
+echo "  Frontend built in temp directory."
 
 # ---------- Lint and test ----------
 echo "[4/6] Running go vet and tests..."
@@ -82,8 +133,24 @@ echo "[5/6] Building backend..."
 CGO_ENABLED=0 go build -ldflags="-s -w" -o "$BIN" ./cmd/server
 echo "  Backend built ($(du -h "$BIN" | cut -f1))."
 
-# ---------- Restart & verify ----------
-echo "[6/6] Restarting service..."
+# ---------- Swap frontend assets and restart ----------
+echo "[6/6] Swapping frontend assets and restarting service..."
+
+# Atomically swap the new frontend into place
+mkdir -p web/static
+if [ -d "$FRONTEND_BUILD_TEMP/js" ]; then
+    rm -rf web/static/js
+    mv "$FRONTEND_BUILD_TEMP/js" web/static/
+fi
+
+if [ -d "$FRONTEND_BUILD_TEMP/css" ]; then
+    rm -rf web/static/css
+    mv "$FRONTEND_BUILD_TEMP/css" web/static/
+fi
+
+# Clean up temp directory
+rm -rf "$FRONTEND_BUILD_TEMP"
+
 sudo systemctl restart "$SERVICE"
 sleep 2
 

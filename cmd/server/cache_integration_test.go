@@ -6,21 +6,56 @@ import (
 	"live-oil-prices-go/internal/services"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
 
 func TestAssetCacheHeaders(t *testing.T) {
-	// Initialize assets
-	if err := assets.Init(); err != nil {
-		t.Logf("Asset init warning (may not have built assets): %v", err)
+	// Create temp directory with test assets
+	tempDir := t.TempDir()
+	jsDir := filepath.Join(tempDir, "js")
+	cssDir := filepath.Join(tempDir, "css")
+	
+	if err := os.MkdirAll(jsDir, 0755); err != nil {
+		t.Fatalf("Failed to create js dir: %v", err)
+	}
+	if err := os.MkdirAll(cssDir, 0755); err != nil {
+		t.Fatalf("Failed to create css dir: %v", err)
+	}
+	
+	// Create test files
+	testFiles := map[string]string{
+		filepath.Join(jsDir, "app.js"):       "console.log('app');",
+		filepath.Join(jsDir, "detail.js"):    "console.log('detail');",
+		filepath.Join(cssDir, "styles.css"):  "body { margin: 0; }",
+	}
+	
+	for path, content := range testFiles {
+		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+			t.Fatalf("Failed to create test file %s: %v", path, err)
+		}
+	}
+	
+	// Initialize assets with temp directory
+	if err := assets.InitWithRoot(tempDir); err != nil {
+		t.Fatalf("Failed to init assets: %v", err)
+	}
+	
+	// Verify we have hashes
+	appHash, ok := assets.GetHash("js/app.js")
+	if !ok || len(appHash) != 12 {
+		t.Fatalf("Expected 12-char hash for app.js, got: %s (ok=%v)", appHash, ok)
 	}
 
 	// Initialize templates
-	if err := handlers.InitPageTemplates("../../web/templates"); err != nil {
+	templatesPath := filepath.Join("..", "..", "web", "templates")
+	if err := handlers.InitPageTemplates(templatesPath); err != nil {
 		t.Fatalf("Failed to init page templates: %v", err)
 	}
-	if err := handlers.InitCommodityTemplate("../../web/templates/commodity.html"); err != nil {
+	commodityTemplatePath := filepath.Join(templatesPath, "commodity.html")
+	if err := handlers.InitCommodityTemplate(commodityTemplatePath); err != nil {
 		t.Fatalf("Failed to init commodity template: %v", err)
 	}
 
@@ -99,13 +134,35 @@ func TestAssetCacheHeaders(t *testing.T) {
 }
 
 func TestRollbackPathBlocked(t *testing.T) {
-	if err := assets.Init(); err != nil {
-		t.Logf("Asset init warning: %v", err)
+	// Create temp directory with minimal assets for this test
+	tempDir := t.TempDir()
+	jsDir := filepath.Join(tempDir, "js")
+	cssDir := filepath.Join(tempDir, "css")
+	
+	if err := os.MkdirAll(jsDir, 0755); err != nil {
+		t.Fatalf("Failed to create js dir: %v", err)
 	}
-	if err := handlers.InitPageTemplates("../../web/templates"); err != nil {
+	if err := os.MkdirAll(cssDir, 0755); err != nil {
+		t.Fatalf("Failed to create css dir: %v", err)
+	}
+	
+	// Create minimal test files
+	for _, file := range []string{"js/app.js", "js/detail.js", "css/styles.css"} {
+		fullPath := filepath.Join(tempDir, file)
+		if err := os.WriteFile(fullPath, []byte("test"), 0644); err != nil {
+			t.Fatalf("Failed to create %s: %v", file, err)
+		}
+	}
+	
+	if err := assets.InitWithRoot(tempDir); err != nil {
+		t.Fatalf("Failed to init assets: %v", err)
+	}
+	
+	templatesPath := filepath.Join("..", "..", "web", "templates")
+	if err := handlers.InitPageTemplates(templatesPath); err != nil {
 		t.Fatalf("Failed to init page templates: %v", err)
 	}
-	if err := handlers.InitCommodityTemplate("../../web/templates/commodity.html"); err != nil {
+	if err := handlers.InitCommodityTemplate(filepath.Join(templatesPath, "commodity.html")); err != nil {
 		t.Fatalf("Failed to init commodity template: %v", err)
 	}
 
@@ -137,13 +194,34 @@ func TestRollbackPathBlocked(t *testing.T) {
 }
 
 func TestNormalPathsWork(t *testing.T) {
-	if err := assets.Init(); err != nil {
-		t.Logf("Asset init warning: %v", err)
+	// Create temp directory with minimal assets
+	tempDir := t.TempDir()
+	jsDir := filepath.Join(tempDir, "js")
+	cssDir := filepath.Join(tempDir, "css")
+	
+	if err := os.MkdirAll(jsDir, 0755); err != nil {
+		t.Fatalf("Failed to create js dir: %v", err)
 	}
-	if err := handlers.InitPageTemplates("../../web/templates"); err != nil {
+	if err := os.MkdirAll(cssDir, 0755); err != nil {
+		t.Fatalf("Failed to create css dir: %v", err)
+	}
+	
+	for _, file := range []string{"js/app.js", "js/detail.js", "css/styles.css"} {
+		fullPath := filepath.Join(tempDir, file)
+		if err := os.WriteFile(fullPath, []byte("test"), 0644); err != nil {
+			t.Fatalf("Failed to create %s: %v", file, err)
+		}
+	}
+	
+	if err := assets.InitWithRoot(tempDir); err != nil {
+		t.Fatalf("Failed to init assets: %v", err)
+	}
+	
+	templatesPath := filepath.Join("..", "..", "web", "templates")
+	if err := handlers.InitPageTemplates(templatesPath); err != nil {
 		t.Fatalf("Failed to init page templates: %v", err)
 	}
-	if err := handlers.InitCommodityTemplate("../../web/templates/commodity.html"); err != nil {
+	if err := handlers.InitCommodityTemplate(filepath.Join(templatesPath, "commodity.html")); err != nil {
 		t.Fatalf("Failed to init commodity template: %v", err)
 	}
 

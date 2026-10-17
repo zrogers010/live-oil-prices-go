@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -120,7 +121,17 @@ func newServerHandler(market handlers.MarketDataClient, news handlers.NewsClient
 		fmt.Fprintf(w, "google.com, pub-%s, DIRECT, f08c47fec0942fa0\n", pubID)
 	})
 
-	mux.Handle("/", http.FileServer(http.Dir("web/static")))
+	// Serve static files, but disable directory listings (return 404 for directories)
+	fileServer := http.FileServer(http.Dir("web/static"))
+	mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Check if the path is a directory
+		path := filepath.Join("web/static", filepath.Clean(r.URL.Path))
+		if info, err := os.Stat(path); err == nil && info.IsDir() {
+			http.NotFound(w, r)
+			return
+		}
+		fileServer.ServeHTTP(w, r)
+	}))
 
 	return middleware.Chain(mux)
 }

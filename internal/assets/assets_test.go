@@ -3,6 +3,7 @@ package assets
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -101,11 +102,10 @@ func TestGetHash(t *testing.T) {
 }
 
 func TestInitWithMissingAssets(t *testing.T) {
-	oldStaticRoot := staticRoot
-	staticRoot = t.TempDir()
-	defer func() { staticRoot = oldStaticRoot }()
-
-	jsDir := filepath.Join(staticRoot, "js")
+	tempDir := t.TempDir()
+	
+	// Create only partial assets
+	jsDir := filepath.Join(tempDir, "js")
 	if err := os.MkdirAll(jsDir, 0755); err != nil {
 		t.Fatalf("Failed to create js directory: %v", err)
 	}
@@ -115,26 +115,87 @@ func TestInitWithMissingAssets(t *testing.T) {
 		t.Fatalf("Failed to create test file: %v", err)
 	}
 
-	if err := Init(); err != nil {
-		t.Fatalf("Init should not fail with missing optional assets: %v", err)
+	// Init should fail when required assets are missing
+	err := InitWithRoot(tempDir)
+	if err == nil {
+		t.Fatal("Expected Init to fail with missing required assets")
+	}
+	
+	if !strings.Contains(err.Error(), "missing required assets") {
+		t.Errorf("Expected 'missing required assets' error, got: %v", err)
+	}
+}
+
+func TestInitWithAllAssets(t *testing.T) {
+	tempDir := t.TempDir()
+	
+	// Create all required assets
+	jsDir := filepath.Join(tempDir, "js")
+	cssDir := filepath.Join(tempDir, "css")
+	if err := os.MkdirAll(jsDir, 0755); err != nil {
+		t.Fatalf("Failed to create js directory: %v", err)
+	}
+	if err := os.MkdirAll(cssDir, 0755); err != nil {
+		t.Fatalf("Failed to create css directory: %v", err)
 	}
 
-	hash, ok := GetHash("js/app.js")
-	if !ok {
-		t.Error("Expected hash for existing app.js")
+	// Create test files with different content
+	files := map[string]string{
+		"js/app.js":       "console.log('app');",
+		"js/detail.js":    "console.log('detail');",
+		"css/styles.css":  "body { margin: 0; }",
 	}
-	if hash == "" {
-		t.Error("Expected non-empty hash")
+	
+	for path, content := range files {
+		fullPath := filepath.Join(tempDir, path)
+		if err := os.WriteFile(fullPath, []byte(content), 0644); err != nil {
+			t.Fatalf("Failed to create %s: %v", path, err)
+		}
+	}
+
+	// Init should succeed with all required assets
+	if err := InitWithRoot(tempDir); err != nil {
+		t.Fatalf("Init should succeed with all required assets: %v", err)
+	}
+
+	// Verify all assets have hashes
+	for path := range files {
+		hash, ok := GetHash(path)
+		if !ok {
+			t.Errorf("Expected hash for %s", path)
+		}
+		if hash == "" {
+			t.Errorf("Expected non-empty hash for %s", path)
+		}
+		if len(hash) != 12 {
+			t.Errorf("Expected hash length 12 for %s, got %d", path, len(hash))
+		}
+	}
+}
+
+func TestInitNonExistentRoot(t *testing.T) {
+	err := InitWithRoot("/nonexistent/path/that/does/not/exist")
+	if err == nil {
+		t.Fatal("Expected Init to fail with non-existent root")
+	}
+	if !strings.Contains(err.Error(), "does not exist") {
+		t.Errorf("Expected 'does not exist' error, got: %v", err)
 	}
 }
 
 func TestVersionedURLFormat(t *testing.T) {
 	hashes = map[string]string{
-		"js/app.js": "test123",
+		"js/app.js": "abc123def456",
 	}
 
 	url := GetVersionedURL("/js/app.js")
 	if !strings.HasPrefix(url, "/js/app.js?v=") {
 		t.Errorf("Versioned URL should have ?v= query parameter: %s", url)
+	}
+	
+	// Verify it's a 12-character hex hash
+	re := regexp.MustCompile(`\?v=([0-9a-f]{12})$`)
+	if !re.MatchString(url) {
+		t.Errorf("Expected 12-character hex hash in URL, got: %s", url)
 	}
 }

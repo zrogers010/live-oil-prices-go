@@ -96,10 +96,10 @@ func JSON(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
-// BlockRollbacks returns 404 for any path containing ".rollback" anywhere
+// BlockRollbacks returns 404 for any path containing ".rollback" anywhere (case-insensitive)
 func BlockRollbacks(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.Contains(r.URL.Path, ".rollback") {
+		if strings.Contains(strings.ToLower(r.URL.Path), ".rollback") {
 			http.NotFound(w, r)
 			return
 		}

@@ -28,7 +28,7 @@ clean:
 deploy:
 	bash scripts/deploy.sh
 
-test: test-go test-ts test-poller test-poller-extra test-poller-mutation test-poller-notbefore
+test: test-go test-ts test-poller test-poller-extra test-poller-mutation test-poller-notbefore test-rollback
 
 test-go:
 	go test ./...
@@ -47,3 +47,6 @@ test-poller-mutation:
 
 test-poller-notbefore:
 	npx --no-install tsx web/src/poller-notbefore.test.ts
+
+test-rollback:
+	bash scripts/rollback_test.sh

@@ -40,12 +40,12 @@ after the apex redirect change (scripts/NGINX_APEX_REDIRECT.md).
 +# and scripts/NGINX_CACHE_VERSIONING.md.
 +# deploy.sh does not install this file; apply it by hand per those docs.
 +
-+# Asset versioning: versioned requests (?v=hash) get long immutable cache,
-+# unversioned requests get short cache. conf.d files are included in http
-+# context, so this map is valid here.
++# Asset versioning: versioned requests with valid hash (?v=12-hex-chars) get
++# long immutable cache, everything else gets short cache. conf.d files are
++# included in http context, so this map is valid here.
 +map $arg_v $lop_static_cc {
-+    default "public, max-age=31536000, immutable";
-+    ""      "public, max-age=300";
++    "~^[0-9a-f]{12}$" "public, max-age=31536000, immutable";
++    default           "public, max-age=300";
 +}
 +
  server {
@@ -56,10 +56,11 @@ after the apex redirect change (scripts/NGINX_APEX_REDIRECT.md).
      gzip_min_length 256;
      gzip_vary on;
 
-+    # Block any path containing .rollback (e.g. /js.rollback-20261017b/app.js).
++    # Block any path containing .rollback (case-insensitive, e.g.
++    # /js.rollback-20261017b/app.js or /css/x.ROLLBACK-1/styles.css).
 +    # Regex location beats prefix locations /css/ and /js/, so it covers
 +    # /js.rollback-*/... paths.
-+    location ~ \.rollback {
++    location ~* \.rollback {
 +        return 404;
 +    }
 +
@@ -67,7 +68,7 @@ after the apex redirect change (scripts/NGINX_APEX_REDIRECT.md).
          alias /home/deploy/liveoilprices/web/static/css/;
 -        expires 7d;
 -        add_header Cache-Control "public, immutable";
-+        add_header Cache-Control $lop_static_cc always;
++        add_header Cache-Control $lop_static_cc;
          access_log off;
      }
 
@@ -75,53 +76,39 @@ after the apex redirect change (scripts/NGINX_APEX_REDIRECT.md).
          alias /home/deploy/liveoilprices/web/static/js/;
 -        expires 7d;
 -        add_header Cache-Control "public, immutable";
-+        add_header Cache-Control $lop_static_cc always;
++        add_header Cache-Control $lop_static_cc;
          access_log off;
      }
 ```
 
-**Important:** The `map` directive is placed at the top level of the conf.d
-file, which is included in nginx's `http` context, so it's valid there.
+**Important:** 
 
-The `location ~ \.rollback` block is placed inside the main server block as
-the **first** location directive, before `/css/`, `/js/`, and `/robots.txt`.
-Regex locations (using `~`) have higher precedence than prefix locations, so
-this catches any path containing `.rollback` anywhere, including
-`/js.rollback-20261017b/app.js` and `/js/x.rollback-1/app.js`.
+- The `map` directive validates that `$arg_v` is exactly 12 hexadecimal characters (matching the Go asset hasher's output). Only valid hashes get the long immutable cache; everything else (including empty, garbage, or wrong-length values) gets the short 300-second cache.
+- The `map` is placed at the top level of the conf.d file, which is included in nginx's `http` context, so it's valid there.
+- The `add_header` directive no longer has `always`, so 404 responses don't get cached for a year.
+- The `location ~* \.rollback` block uses `~*` for case-insensitive matching and is placed inside the main server block as the **first** location directive. Regex locations have higher precedence than prefix locations, so this catches any path containing `.rollback` anywhere (case-insensitive), including `/js.rollback-20261017b/app.js`, `/js/x.rollback-1/app.js`, and `/css/styles.ROLLBACK-2`.
 
 ## Apply (after Go deployment, PR #43 merged and deployed)
 
 ### 1. Move existing rollback directories out of web/static/
 
-These commands must be run **before** applying the nginx config change,
-while the rollback paths are still accessible:
+**Use the provided script** to safely move legacy rollback directories. The script refuses to overwrite existing destinations and validates each move:
 
 ```bash
 # On the EC2 host, as deploy user
 cd /home/deploy/liveoilprices
-sudo -u deploy mkdir -p /home/deploy/liveoilprices-rollbacks
 
-# Move the three known rollback directories
-if [ -d "web/static/js.rollback-20261016" ]; then
-    sudo -u deploy mv web/static/js.rollback-20261016 /home/deploy/liveoilprices-rollbacks/20261016-manual
-fi
-
-if [ -d "web/static/js.rollback-20261017" ]; then
-    sudo -u deploy mv web/static/js.rollback-20261017 /home/deploy/liveoilprices-rollbacks/20261017-manual
-fi
-
-if [ -d "web/static/js.rollback-20261017b" ]; then
-    sudo -u deploy mv web/static/js.rollback-20261017b /home/deploy/liveoilprices-rollbacks/20261017b-manual
-fi
-
-# Find and move any other *.rollback-* files/directories under web/static
-find web/static/js web/static/css -name "*.rollback-*" -print0 2>/dev/null | while IFS= read -r -d '' item; do
-    basename_item=$(basename "$item")
-    sudo -u deploy mv "$item" "/home/deploy/liveoilprices-rollbacks/${basename_item}"
-done
-
-ls -lh /home/deploy/liveoilprices-rollbacks/
+# Run the one-time migration script
+bash scripts/move-legacy-rollbacks.sh
 ```
+
+The script moves:
+- `web/static/js.rollback-20261016` → `/home/deploy/liveoilprices-rollbacks/20261016-manual`
+- `web/static/js.rollback-20261017` → `/home/deploy/liveoilprices-rollbacks/20261017-manual`
+- `web/static/js.rollback-20261017b` → `/home/deploy/liveoilprices-rollbacks/20261017b-manual`
+- Any other `*.rollback-*` files under `web/static/js` or `web/static/css`
+
+The script will not overwrite existing destinations and reports a summary of moved/skipped/error items.
 
 ### 2. Back up current nginx config
 

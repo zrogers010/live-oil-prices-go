@@ -24,6 +24,8 @@ func TestBlockRollbacks(t *testing.T) {
 		{"/js.rollback-20261017/app.js", http.StatusNotFound},
 		{"/js.rollback-20261017b/app.js", http.StatusNotFound},
 		{"/js/x.rollback-1/app.js", http.StatusNotFound},
+		{"/JS.ROLLBACK-x/app.js", http.StatusNotFound}, // case-insensitive
+		{"/css/styles.css.ROLLBACK-2", http.StatusNotFound}, // case-insensitive
 		{"/static/.rollback/file.js", http.StatusNotFound},
 		{"/normal/path", http.StatusOK},
 		{"/path/with.rollback.in.name/file.js", http.StatusNotFound},
