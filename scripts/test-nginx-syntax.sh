@@ -110,14 +110,16 @@ fi
 
 # Check that /css/ and /js/ alias locations use add_header Cache-Control (not expires)
 # Look for location /css/ and location /js/ blocks
-if echo "$STRIPPED" | grep -A3 'location /css/' | grep -q 'add_header Cache-Control.*\$lop_static_cc'; then
+# shellcheck disable=SC2016
+if echo "$STRIPPED" | grep -A3 'location /css/' | grep -q 'add_header Cache-Control.*$lop_static_cc'; then
     echo "  ✓ /css/ location uses add_header Cache-Control \$lop_static_cc"
 else
     echo "  ✗ /css/ location missing or not using add_header Cache-Control \$lop_static_cc"
     exit 1
 fi
 
-if echo "$STRIPPED" | grep -A3 'location /js/' | grep -q 'add_header Cache-Control.*\$lop_static_cc'; then
+# shellcheck disable=SC2016
+if echo "$STRIPPED" | grep -A3 'location /js/' | grep -q 'add_header Cache-Control.*$lop_static_cc'; then
     echo "  ✓ /js/ location uses add_header Cache-Control \$lop_static_cc"
 else
     echo "  ✗ /js/ location missing or not using add_header Cache-Control \$lop_static_cc"
