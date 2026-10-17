@@ -47,9 +47,12 @@ openssl dhparam -out "$TEMP_DIR/letsencrypt/ssl-dhparams.pem" 2048 2>/dev/null |
 }
 
 # Create a modified version of nginx-prod.conf with SSL cert paths stubbed out
+# Also replace privileged ports with unprivileged ones for CI testing
 sed -e "s|/etc/letsencrypt|$TEMP_DIR/letsencrypt|g" \
     -e 's|ssl_certificate .*fullchain\.pem.*|ssl_certificate '"$TEMP_DIR"'/letsencrypt/fullchain.pem;|' \
     -e 's|ssl_certificate_key .*privkey\.pem.*|ssl_certificate_key '"$TEMP_DIR"'/letsencrypt/privkey.pem;|' \
+    -e 's|listen 80|listen 8080|g' \
+    -e 's|listen 443|listen 8443|g' \
     "$SCRIPT_DIR/nginx-prod.conf" > "$TEMP_DIR/nginx-prod-stubbed.conf"
 
 # Generate self-signed SSL certificate for testing
