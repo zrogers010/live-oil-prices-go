@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"live-oil-prices-go/internal/assets"
 	"live-oil-prices-go/internal/handlers"
 	"live-oil-prices-go/internal/middleware"
 	"live-oil-prices-go/internal/services"
@@ -24,6 +25,10 @@ func main() {
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
+	}
+
+	if err := assets.Init(); err != nil {
+		log.Fatalf("Failed to initialize asset hashes: %v", err)
 	}
 
 	if err := handlers.InitCommodityTemplate("web/templates/commodity.html"); err != nil {

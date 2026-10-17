@@ -2,8 +2,10 @@ package middleware
 
 import (
 	"fmt"
+	"live-oil-prices-go/internal/assets"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -13,7 +15,7 @@ var (
 )
 
 func Chain(h http.Handler) http.Handler {
-	return Logging(CORS(Recovery(h)))
+	return Logging(CORS(Recovery(CacheControl(BlockRollbacks(h)))))
 }
 
 func CORS(next http.Handler) http.Handler {
@@ -92,4 +94,55 @@ func JSON(next http.HandlerFunc) http.HandlerFunc {
 		w.Header().Set("Content-Type", "application/json")
 		next(w, r)
 	}
+}
+
+// BlockRollbacks returns 404 for any path containing ".rollback"
+func BlockRollbacks(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, ".rollback") {
+			http.NotFound(w, r)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// CacheControl sets appropriate Cache-Control headers based on the resource type:
+// - Versioned assets (?v= query param): max-age=31536000, public, immutable
+// - Unversioned static assets: max-age=300, public
+// - HTML pages and API endpoints get no cache header (handled by page/API handlers)
+func CacheControl(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path := r.URL.Path
+		
+		// Check if this is a static asset request
+		isStaticAsset := strings.HasPrefix(path, "/js/") || 
+			strings.HasPrefix(path, "/css/") ||
+			strings.HasPrefix(path, "/images/") ||
+			strings.HasPrefix(path, "/fonts/")
+		
+		if isStaticAsset {
+			// Check if this is a versioned request (has ?v= query param)
+			if r.URL.Query().Get("v") != "" {
+				// Verify the hash matches to prevent serving stale cached content
+				// with a wrong hash after deploy
+				assetPath := strings.TrimPrefix(path, "/")
+				expectedHash, hasHash := assets.GetHash(assetPath)
+				providedHash := r.URL.Query().Get("v")
+				
+				if hasHash && expectedHash == providedHash {
+					// Valid versioned request - long immutable cache
+					w.Header().Set("Cache-Control", "max-age=31536000, public, immutable")
+				} else {
+					// Hash mismatch or unknown asset - short cache
+					w.Header().Set("Cache-Control", "max-age=300, public")
+				}
+			} else {
+				// Unversioned asset request - short cache
+				w.Header().Set("Cache-Control", "max-age=300, public")
+			}
+		}
+		
+		next.ServeHTTP(w, r)
+	})
 }

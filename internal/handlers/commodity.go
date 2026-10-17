@@ -3,6 +3,7 @@ package handlers
 import (
 	"fmt"
 	"html/template"
+	"live-oil-prices-go/internal/assets"
 	"net/http"
 	"strings"
 )
@@ -274,8 +275,13 @@ type commodityPageData struct {
 var commodityTmpl *template.Template
 
 func InitCommodityTemplate(path string) error {
+	funcs := template.FuncMap{
+		"assetURL": func(path string) string {
+			return assets.GetVersionedURL(path)
+		},
+	}
 	var err error
-	commodityTmpl, err = template.ParseFiles(path)
+	commodityTmpl, err = template.New("commodity.html").Funcs(funcs).ParseFiles(path)
 	return err
 }
 
@@ -332,6 +338,7 @@ func (a *API) ServeCommodityPage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-cache")
 	if err := commodityTmpl.Execute(w, data); err != nil {
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 	}

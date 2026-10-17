@@ -13,6 +13,7 @@ export PATH=$PATH:/usr/local/go/bin
 
 SERVICE="liveoilprices"
 BIN="$PROJECT_DIR/bin/server"
+ROLLBACK_DIR="/home/deploy/liveoilprices-rollbacks"
 
 echo ""
 echo "=== Live Oil Prices Deploy ==="
@@ -40,8 +41,30 @@ else
     echo "[1/4] Not a git repo, skipping pull."
 fi
 
+# ---------- Create rollback snapshot ----------
+echo "[2/6] Creating rollback snapshot..."
+TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+mkdir -p "$ROLLBACK_DIR"
+
+# Back up current built assets (if they exist) before building new ones
+if [ -d "web/static/js" ] && [ -f "web/static/js/app.js" ]; then
+    ROLLBACK_PATH="$ROLLBACK_DIR/$TIMESTAMP"
+    mkdir -p "$ROLLBACK_PATH"
+    cp -r web/static/js "$ROLLBACK_PATH/" 2>/dev/null || true
+    cp -r web/static/css "$ROLLBACK_PATH/" 2>/dev/null || true
+    if [ -f "$BIN" ]; then
+        cp "$BIN" "$ROLLBACK_PATH/server" 2>/dev/null || true
+    fi
+    echo "  Rollback snapshot saved to $ROLLBACK_PATH"
+    
+    # Keep only the 10 most recent rollbacks
+    ls -dt "$ROLLBACK_DIR"/* 2>/dev/null | tail -n +11 | xargs rm -rf 2>/dev/null || true
+else
+    echo "  No existing assets to back up (first deploy or clean build)."
+fi
+
 # ---------- Build frontend ----------
-echo "[2/5] Building frontend..."
+echo "[3/6] Building frontend..."
 npm cache clean --force 2>/dev/null || true
 rm -rf node_modules
 npm ci
@@ -49,18 +72,18 @@ npm run build
 echo "  Frontend built."
 
 # ---------- Lint and test ----------
-echo "[3/5] Running go vet and tests..."
+echo "[4/6] Running go vet and tests..."
 go vet ./...
 go test ./...
 echo "  Tests passed."
 
 # ---------- Build backend ----------
-echo "[4/5] Building backend..."
+echo "[5/6] Building backend..."
 CGO_ENABLED=0 go build -ldflags="-s -w" -o "$BIN" ./cmd/server
 echo "  Backend built ($(du -h "$BIN" | cut -f1))."
 
 # ---------- Restart & verify ----------
-echo "[5/5] Restarting service..."
+echo "[6/6] Restarting service..."
 sudo systemctl restart "$SERVICE"
 sleep 2
 
