@@ -1,0 +1,162 @@
+
+### B3 SSR fixture: fresh Pyth price (JS off)
+  pill initial {"text":"LIVE","title":"Streaming real-time exchange data","hiddenAttr":false,"style":null,"display":"inline","visibility":"visible","opacity":"1","wh":"36x17","cls":"hero-live-pill","dotAnim":"none"} (BRENT same)
+
+### B2 SSR fixture: stale Pyth price (JS off)
+  pill initial {"text":"","title":"Feed status loading","hiddenAttr":false,"style":null,"display":"inline","visibility":"visible","opacity":"1","wh":"0x17","cls":"hero-live-pill hero-live-pill-paused","dotAnim":"none"} (BRENT same)
+
+### B1 SSR real Yahoo (JS off)
+  pill initial {"text":"DELAYED","title":"15-minute delayed exchange data","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"79x24","cls":"hero-live-pill hero-live-pill-paused","dotAnim":"none"} (BRENT same)
+
+### B5 Yahoo SSR + JS, stub prior-session
+  pill initial {"text":"MARKET CLOSED · Sat, Oct 17","title":"Market is closed","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"215x24","cls":"hero-live-pill hero-live-pill-paused","dotAnim":"none"} (BRENT same)
+  pill afterJS {"text":"MARKET CLOSED · Sat, Oct 17","title":"Market is closed","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"215x24","cls":"hero-live-pill hero-live-pill-paused","dotAnim":"none"} (BRENT same)
+
+### B7 Yahoo SSR + JS, stub warming-up (empty bars)
+  pill initial {"text":"WARMING UP","title":"Loading chart data","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"99x24","cls":"hero-live-pill hero-live-pill-warming","dotAnim":"hero-live-pulse-amber"} (BRENT same)
+  pill afterJS {"text":"WARMING UP","title":"Loading chart data","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"99x24","cls":"hero-live-pill hero-live-pill-warming","dotAnim":"hero-live-pulse-amber"} (BRENT same)
+
+### B4 stale-Pyth SSR + JS, hero today-paused delayed=false
+  pill initial {"text":"FEED PAUSED · today","title":"Feed temporarily paused","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"160x24","cls":"hero-live-pill hero-live-pill-paused","dotAnim":"none"} (BRENT same)
+  pill afterJS {"text":"FEED PAUSED · today","title":"Feed temporarily paused","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"160x24","cls":"hero-live-pill hero-live-pill-paused","dotAnim":"none"} (BRENT same)
+
+### B6 Yahoo SSR + JS, stub live
+  pill initial {"text":"LIVE","title":"Streaming real-time exchange data","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"58x24","cls":"hero-live-pill","dotAnim":"hero-live-flash, hero-live-pulse"} (BRENT same)
+  pill afterJS {"text":"LIVE","title":"Streaming real-time exchange data","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"58x24","cls":"hero-live-pill","dotAnim":"hero-live-flash, hero-live-pulse"} (BRENT same)
+  pill afterPoll {"text":"LIVE","title":"Streaming real-time exchange data","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"58x24","cls":"hero-live-pill","dotAnim":"hero-live-pulse"} (BRENT same)
+
+### M5 transition while hidden: today-paused, hide, flip live, show
+  pill initial {"text":"DELAYED","title":"15-minute delayed exchange data","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"79x24","cls":"hero-live-pill hero-live-pill-paused","dotAnim":"none"} (BRENT same)
+  today-paused:WTI {"dur":10,"count":0,"perMin":0,"firstAt":null,"gaps":[],"st":[]}
+  today-paused:BRENT {"dur":10,"count":0,"perMin":0,"firstAt":null,"gaps":[],"st":[]}
+  hidden:WTI {"dur":30,"count":0,"perMin":0,"firstAt":null,"gaps":[],"st":[]}
+  hidden:BRENT {"dur":30,"count":0,"perMin":0,"firstAt":null,"gaps":[],"st":[]}
+  shown(expect immediate then 10s):WTI {"dur":60,"count":6,"perMin":6,"firstAt":0,"gaps":[10,10,10,10,10],"st":[200,200,200,200,200,200]}
+  shown(expect immediate then 10s):BRENT {"dur":60,"count":6,"perMin":6,"firstAt":0,"gaps":[10,10,10,10,10],"st":[200,200,200,200,200,200]}
+
+### R3 503 Retry-After 30 x1 then OK (live)
+  pill initial {"text":"LIVE","title":"Streaming real-time exchange data","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"58x24","cls":"hero-live-pill","dotAnim":"hero-live-flash, hero-live-pulse"} (BRENT same)
+  ok:WTI {"dur":25,"count":2,"perMin":4.8,"firstAt":6.9,"gaps":[10],"st":[200,200]}
+  ok:BRENT {"dur":25,"count":2,"perMin":4.8,"firstAt":6.9,"gaps":[10],"st":[200,200]}
+  503-then-ok:WTI {"dur":110,"count":7,"perMin":3.82,"firstAt":1.9,"gaps":[50,10,10,10,10,10],"st":[503,200,200,200,200,200,200]}
+  503-then-ok:BRENT {"dur":110,"count":7,"perMin":3.82,"firstAt":1.9,"gaps":[50,10,10,10,10,10],"st":[503,200,200,200,200,200,200]}
+
+### R2 429 Retry-After HTTP-date +25s x1 then OK (live)
+  pill initial {"text":"LIVE","title":"Streaming real-time exchange data","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"58x24","cls":"hero-live-pill","dotAnim":"hero-live-flash, hero-live-pulse"} (BRENT same)
+  ok:WTI {"dur":25,"count":2,"perMin":4.8,"firstAt":6.9,"gaps":[10],"st":[200,200]}
+  ok:BRENT {"dur":25,"count":2,"perMin":4.8,"firstAt":6.9,"gaps":[10],"st":[200,200]}
+  429date-then-ok(expect ~25 then 10):WTI {"dur":120,"count":9,"perMin":4.5,"firstAt":1.9,"gaps":[44,10,10,10,10,10,10,10],"st":[429,200,200,200,200,200,200,200,200]}
+  429date-then-ok(expect ~25 then 10):BRENT {"dur":120,"count":9,"perMin":4.5,"firstAt":1.9,"gaps":[44,10,10,10,10,10,10,10],"st":[429,200,200,200,200,200,200,200,200]}
+
+### M2 today-paused->live mid-fetch (2s latency)
+  note: flipped mid-fetch @62.52
+  pill initial {"text":"DELAYED","title":"15-minute delayed exchange data","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"79x24","cls":"hero-live-pill hero-live-pill-paused","dotAnim":"none"} (BRENT same)
+  today-paused:WTI {"dur":58.2,"count":0,"perMin":0,"firstAt":null,"gaps":[],"st":[]}
+  today-paused:BRENT {"dur":58.2,"count":0,"perMin":0,"firstAt":null,"gaps":[],"st":[]}
+  after-flip(expect ~12s):WTI {"dur":90,"count":8,"perMin":5.33,"firstAt":0,"gaps":[12,12,12,12,12,12,12],"st":[200,200,200,200,200,200,200,200]}
+  after-flip(expect ~12s):BRENT {"dur":90,"count":8,"perMin":5.33,"firstAt":0,"gaps":[12,12,12,12,12,12,12],"st":[200,200,200,200,200,200,200,200]}
+
+### F2 first load failing (2s latency, 500 x6) with hide/show during first fetch, then OK
+  note: toggle during first fetch @2.015
+  note: 2nd toggle @2.223
+  note: nudge @32.431
+  pill initial {"text":"DELAYED","title":"15-minute delayed exchange data","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"79x24","cls":"hero-live-pill hero-live-pill-paused","dotAnim":"none"} (BRENT same)
+  after-toggles:WTI {"dur":30.2,"count":0,"perMin":0,"firstAt":null,"gaps":[],"st":[]}
+  after-toggles:BRENT {"dur":30.2,"count":0,"perMin":0,"firstAt":null,"gaps":[],"st":[]}
+  after-nudge:WTI {"dur":30.2,"count":1,"perMin":1.99,"firstAt":0,"gaps":[],"st":[500]}
+  after-nudge:BRENT {"dur":30.2,"count":1,"perMin":1.99,"firstAt":0,"gaps":[],"st":[500]}
+  after-nudge2:WTI {"dur":30.2,"count":1,"perMin":1.99,"firstAt":0,"gaps":[],"st":[500]}
+  after-nudge2:BRENT {"dur":30.2,"count":1,"perMin":1.99,"firstAt":0,"gaps":[],"st":[500]}
+  after-nudge3:WTI {"dur":30.2,"count":1,"perMin":1.99,"firstAt":0,"gaps":[],"st":[500]}
+  after-nudge3:BRENT {"dur":30.2,"count":1,"perMin":1.99,"firstAt":0,"gaps":[],"st":[500]}
+  after-nudge4(should be OK by now):WTI {"dur":60,"count":1,"perMin":1,"firstAt":0,"gaps":[],"st":[500]}
+  after-nudge4(should be OK by now):BRENT {"dur":60,"count":1,"perMin":1,"firstAt":0,"gaps":[],"st":[500]}
+
+### M1 live->today-paused (no latency)
+  note: flip @34.349
+  pill initial {"text":"DELAYED","title":"15-minute delayed exchange data","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"79x24","cls":"hero-live-pill hero-live-pill-paused","dotAnim":"none"} (BRENT same)
+  live:WTI {"dur":30,"count":3,"perMin":6,"firstAt":7,"gaps":[10,10],"st":[200,200,200]}
+  live:BRENT {"dur":30,"count":3,"perMin":6,"firstAt":7,"gaps":[10,10],"st":[200,200,200]}
+  after-flip(expect 60s):WTI {"dur":150,"count":3,"perMin":1.2,"firstAt":7,"gaps":[60,60],"st":[200,200,200]}
+  after-flip(expect 60s):BRENT {"dur":150,"count":3,"perMin":1.2,"firstAt":7,"gaps":[60,60],"st":[200,200,200]}
+
+### M4 transition while hidden: live, hide, flip today-paused, show
+  pill initial {"text":"LIVE","title":"Streaming real-time exchange data","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"58x24","cls":"hero-live-pill","dotAnim":"hero-live-flash, hero-live-pulse"} (BRENT same)
+  live:WTI {"dur":25,"count":2,"perMin":4.8,"firstAt":6.8,"gaps":[10],"st":[200,200]}
+  live:BRENT {"dur":25,"count":2,"perMin":4.8,"firstAt":6.8,"gaps":[10],"st":[200,200]}
+  hidden:WTI {"dur":30,"count":0,"perMin":0,"firstAt":null,"gaps":[],"st":[]}
+  hidden:BRENT {"dur":30,"count":0,"perMin":0,"firstAt":null,"gaps":[],"st":[]}
+  shown(expect immediate then 60s):WTI {"dur":140,"count":3,"perMin":1.29,"firstAt":0,"gaps":[60,60],"st":[200,200,200]}
+  shown(expect immediate then 60s):BRENT {"dur":140,"count":3,"perMin":1.29,"firstAt":0,"gaps":[60,60],"st":[200,200,200]}
+
+### M3 transition during backoff: live, 500x2, then OK as today-paused
+  pill initial {"text":"LIVE","title":"Streaming real-time exchange data","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"58x24","cls":"hero-live-pill","dotAnim":"hero-live-flash, hero-live-pulse"} (BRENT same)
+  live:WTI {"dur":25,"count":2,"perMin":4.8,"firstAt":6.7,"gaps":[10],"st":[200,200]}
+  live:BRENT {"dur":25,"count":2,"perMin":4.8,"firstAt":6.9,"gaps":[10],"st":[200,200]}
+  500x2-then-today-paused(expect 20,40,then 60s):WTI {"dur":200,"count":5,"perMin":1.5,"firstAt":1.7,"gaps":[20,40,60,60],"st":[500,500,200,200,200]}
+  500x2-then-today-paused(expect 20,40,then 60s):BRENT {"dur":200,"count":5,"perMin":1.5,"firstAt":1.9,"gaps":[20,40,60,60],"st":[500,500,200,200,200]}
+
+### E1 500 x3 then OK (live)
+  pill initial {"text":"LIVE","title":"Streaming real-time exchange data","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"58x24","cls":"hero-live-pill","dotAnim":"hero-live-flash, hero-live-pulse"} (BRENT same)
+  ok:WTI {"dur":25,"count":2,"perMin":4.8,"firstAt":7,"gaps":[10],"st":[200,200]}
+  ok:BRENT {"dur":25,"count":2,"perMin":4.8,"firstAt":7,"gaps":[10],"st":[200,200]}
+  500x3-then-ok:WTI {"dur":220,"count":11,"perMin":3,"firstAt":2,"gaps":[20,40,80,10,10,10,10,10,10,10],"st":[500,500,500,200,200,200,200,200,200,200,200]}
+  500x3-then-ok:BRENT {"dur":220,"count":11,"perMin":3,"firstAt":2,"gaps":[20,40,80,10,10,10,10,10,10,10],"st":[500,500,500,200,200,200,200,200,200,200,200]}
+
+### E2 404 x3 then OK (live)
+  pill initial {"text":"LIVE","title":"Streaming real-time exchange data","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"58x24","cls":"hero-live-pill","dotAnim":"hero-live-flash, hero-live-pulse"} (BRENT same)
+  ok:WTI {"dur":25,"count":2,"perMin":4.8,"firstAt":7,"gaps":[10],"st":[200,200]}
+  ok:BRENT {"dur":25,"count":2,"perMin":4.8,"firstAt":7,"gaps":[10],"st":[200,200]}
+  404x3-then-ok:WTI {"dur":220,"count":11,"perMin":3,"firstAt":2,"gaps":[20,40,80,10,10,10,10,10,10,10],"st":[404,404,404,200,200,200,200,200,200,200,200]}
+  404x3-then-ok:BRENT {"dur":220,"count":11,"perMin":3,"firstAt":2,"gaps":[20,40,80,10,10,10,10,10,10,10],"st":[404,404,404,200,200,200,200,200,200,200,200]}
+
+### Y Real Yahoo: visible/hidden/visible
+  pill initial {"text":"DELAYED","title":"15-minute delayed exchange data","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"79x24","cls":"hero-live-pill hero-live-pill-paused","dotAnim":"none"} (BRENT same)
+  pill afterLoad {"text":"DELAYED","title":"15-minute delayed exchange data","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"79x24","cls":"hero-live-pill hero-live-pill-paused","dotAnim":"none"} (BRENT same)
+  pill afterPolls {"text":"DELAYED","title":"15-minute delayed exchange data","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"79x24","cls":"hero-live-pill hero-live-pill-paused","dotAnim":"none"} (BRENT same)
+  pill end {"text":"DELAYED","title":"15-minute delayed exchange data","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"79x24","cls":"hero-live-pill hero-live-pill-paused","dotAnim":"none"} (BRENT same)
+  visible1:WTI {"dur":125,"count":2,"perMin":0.96,"firstAt":56.4,"gaps":[60],"st":[null,null]}
+  visible1:BRENT {"dur":125,"count":2,"perMin":0.96,"firstAt":56.5,"gaps":[60],"st":[null,null]}
+  hidden:WTI {"dur":60,"count":0,"perMin":0,"firstAt":null,"gaps":[],"st":[]}
+  hidden:BRENT {"dur":60,"count":0,"perMin":0,"firstAt":null,"gaps":[],"st":[]}
+  visible2:WTI {"dur":65,"count":2,"perMin":1.85,"firstAt":0,"gaps":[60],"st":[null,null]}
+  visible2:BRENT {"dur":65,"count":2,"perMin":1.85,"firstAt":0,"gaps":[60],"st":[null,null]}
+
+### M3b transition during backoff: today-paused, 500x1, then OK as live
+  pill initial {"text":"DELAYED","title":"15-minute delayed exchange data","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"79x24","cls":"hero-live-pill hero-live-pill-paused","dotAnim":"none"} (BRENT same)
+  500x1-then-live(expect 60,120,then 10s):WTI {"dur":260,"count":10,"perMin":2.31,"firstAt":56.9,"gaps":[120,10,10,10,10,10,10,10,10],"st":[500,200,200,200,200,200,200,200,200,200]}
+  500x1-then-live(expect 60,120,then 10s):BRENT {"dur":260,"count":10,"perMin":2.31,"firstAt":56.9,"gaps":[120,10,10,10,10,10,10,10,10],"st":[500,200,200,200,200,200,200,200,200,200]}
+
+### R1 429 Retry-After 30 x3 then OK (live)
+  pill initial {"text":"LIVE","title":"Streaming real-time exchange data","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"58x24","cls":"hero-live-pill","dotAnim":"hero-live-flash, hero-live-pulse"} (BRENT same)
+  ok:WTI {"dur":25,"count":2,"perMin":4.8,"firstAt":6.9,"gaps":[10],"st":[200,200]}
+  ok:BRENT {"dur":25,"count":2,"perMin":4.8,"firstAt":6.9,"gaps":[10],"st":[200,200]}
+  429x3-then-ok(expect ~30,30,30 then 10):WTI {"dur":260,"count":6,"perMin":1.38,"firstAt":1.9,"gaps":[50,70,110,10,10],"st":[429,429,429,200,200,200]}
+  429x3-then-ok(expect ~30,30,30 then 10):BRENT {"dur":260,"count":6,"perMin":1.38,"firstAt":1.9,"gaps":[50,70,110,10,10],"st":[429,429,429,200,200,200]}
+
+### T Live stub 2s latency: rapid toggles mid-fetch
+  note: toggle burst 0 @61.536
+  note: toggle burst 1 @73.543
+  note: toggle burst 2 @85.557
+  pill initial {"text":"DELAYED","title":"15-minute delayed exchange data","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"79x24","cls":"hero-live-pill hero-live-pill-paused","dotAnim":"none"} (BRENT same)
+  visible-baseline:WTI {"dur":50,"count":4,"perMin":4.8,"firstAt":6.2,"gaps":[12,12,12],"st":[200,200,200,200]}
+  visible-baseline:BRENT {"dur":50,"count":4,"perMin":4.8,"firstAt":6.2,"gaps":[12,12,12],"st":[200,200,200,200]}
+  visible-after-toggles:WTI {"dur":95.6,"count":8,"perMin":5.02,"firstAt":11,"gaps":[12,12,12,12,12,12,12],"st":[200,200,200,200,200,200,200,200]}
+  visible-after-toggles:BRENT {"dur":95.6,"count":8,"perMin":5.02,"firstAt":11,"gaps":[12,12,12,12,12,12,12],"st":[200,200,200,200,200,200,200,200]}
+  hidden-after-midfetch-toggle:WTI {"dur":60,"count":0,"perMin":0,"firstAt":null,"gaps":[],"st":[]}
+  hidden-after-midfetch-toggle:BRENT {"dur":60,"count":0,"perMin":0,"firstAt":null,"gaps":[],"st":[]}
+  visible-final:WTI {"dur":60,"count":5,"perMin":5,"firstAt":0,"gaps":[12,12,12,12],"st":[200,200,200,200,200]}
+  visible-final:BRENT {"dur":60,"count":5,"perMin":5,"firstAt":0,"gaps":[12,12,12,12],"st":[200,200,200,200,200]}
+
+### F3 first load 404 x2 then OK (live stub)
+  pill initial {"text":"DELAYED","title":"15-minute delayed exchange data","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"79x24","cls":"hero-live-pill hero-live-pill-paused","dotAnim":"none"} (BRENT same)
+  from-load:WTI {"dur":440.9,"count":8,"perMin":1.09,"firstAt":119.9,"gaps":[260.9,10,10,10,10,10,10],"st":[404,200,200,200,200,200,200,null]}
+  from-load:BRENT {"dur":440.9,"count":8,"perMin":1.09,"firstAt":119.9,"gaps":[260.9,10,10,10,10,10,10],"st":[404,200,200,200,200,200,200,200]}
+
+### F1 first load: 4 x 500 then OK (live stub)
+  pill initial {"text":"DELAYED","title":"15-minute delayed exchange data","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"79x24","cls":"hero-live-pill hero-live-pill-paused","dotAnim":"none"} (BRENT same)
+  pill end {"text":"LIVE","title":"Streaming real-time exchange data","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"58x24","cls":"hero-live-pill","dotAnim":"hero-live-pulse"} (BRENT same)
+  from-load:WTI {"dur":1050.9,"count":11,"perMin":0.63,"firstAt":119.8,"gaps":[260.9,300,300,10.1,10,10,10,10,10,10],"st":[500,500,500,200,200,200,200,200,200,200,200]}
+  from-load:BRENT {"dur":1050.9,"count":11,"perMin":0.63,"firstAt":119.8,"gaps":[260.9,300,300,10,10,10,10,10,10,10],"st":[500,500,500,200,200,200,200,200,200,200,200]}
+
+DONE

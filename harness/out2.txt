@@ -1,0 +1,105 @@
+
+### SSR-only (JS disabled), real Yahoo
+  pill initial [{"text":"DELAYED","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"79x24","cls":"hero-live-pill hero-live-pill-paused","dotAnim":"none"},{"text":"DELAYED","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"79x24","cls":"hero-live-pill hero-live-pill-paused","dotAnim":"none"}]
+
+### Stub today-paused non-delayed (Pyth paused): badge
+  pill initial [{"text":"DELAYED","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"79x24","cls":"hero-live-pill hero-live-pill-paused","dotAnim":"none"},{"text":"DELAYED","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"79x24","cls":"hero-live-pill hero-live-pill-paused","dotAnim":"none"}]
+  pill afterLoad [{"text":"DELAYED","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"79x24","cls":"hero-live-pill hero-live-pill-paused","dotAnim":"none"},{"text":"DELAYED","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"79x24","cls":"hero-live-pill hero-live-pill-paused","dotAnim":"none"}]
+
+### Stub prior-session: badge
+  pill initial [{"text":"MARKET CLOSED","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"119x24","cls":"hero-live-pill hero-live-pill-paused","dotAnim":"none"},{"text":"MARKET CLOSED","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"119x24","cls":"hero-live-pill hero-live-pill-paused","dotAnim":"none"}]
+  pill afterLoad [{"text":"MARKET CLOSED","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"119x24","cls":"hero-live-pill hero-live-pill-paused","dotAnim":"none"},{"text":"MARKET CLOSED","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"119x24","cls":"hero-live-pill hero-live-pill-paused","dotAnim":"none"}]
+
+### Stub live: badge
+  pill initial [{"text":"DELAYED","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"79x24","cls":"hero-live-pill hero-live-pill-paused","dotAnim":"none"},{"text":"DELAYED","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"79x24","cls":"hero-live-pill hero-live-pill-paused","dotAnim":"none"}]
+  pill afterLoad [{"text":"LIVE","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"58x24","cls":"hero-live-pill","dotAnim":"hero-live-flash, hero-live-pulse"},{"text":"LIVE","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"58x24","cls":"hero-live-pill","dotAnim":"hero-live-flash, hero-live-pulse"}]
+  pill afterPoll [{"text":"LIVE","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"58x24","cls":"hero-live-pill","dotAnim":"hero-live-pulse"},{"text":"LIVE","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"58x24","cls":"hero-live-pill","dotAnim":"hero-live-pulse"}]
+
+### Initial load: first 1 hero req(s) per symbol 500, then OK (live stub)
+  pill initial [{"text":"DELAYED","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"79x24","cls":"hero-live-pill hero-live-pill-paused","dotAnim":"none"},{"text":"DELAYED","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"79x24","cls":"hero-live-pill hero-live-pill-paused","dotAnim":"none"}]
+  pill end [{"text":"LIVE","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"58x24","cls":"hero-live-pill","dotAnim":"hero-live-pulse"},{"text":"LIVE","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"58x24","cls":"hero-live-pill","dotAnim":"hero-live-pulse"}]
+  from-load:WTI {"dur":90.5,"count":9,"perMin":5.97,"firstAt":1.9,"gaps":[10,10,10,10,10,10,10,10],"st":[200,200,200,200,200,200,200,200,200]}
+  from-load:BRENT {"dur":90.5,"count":9,"perMin":5.97,"firstAt":1.9,"gaps":[10,10,10,10,10,10,10,10],"st":[200,200,200,200,200,200,200,200,200]}
+  after-visibility-nudge:WTI {"dur":30,"count":3,"perMin":6,"firstAt":0,"gaps":[10,10],"st":[200,200,200]}
+  after-visibility-nudge:BRENT {"dur":30,"count":3,"perMin":6,"firstAt":0,"gaps":[10,10],"st":[200,200,200]}
+
+### Initial load: first 3 hero req(s) per symbol 500, then OK (live stub)
+  pill initial [{"text":"DELAYED","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"79x24","cls":"hero-live-pill hero-live-pill-paused","dotAnim":"none"},{"text":"DELAYED","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"79x24","cls":"hero-live-pill hero-live-pill-paused","dotAnim":"none"}]
+  pill end [{"text":"DELAYED","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"79x24","cls":"hero-live-pill hero-live-pill-paused","dotAnim":"none"},{"text":"DELAYED","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"79x24","cls":"hero-live-pill hero-live-pill-paused","dotAnim":"none"}]
+  from-load:WTI {"dur":90.5,"count":1,"perMin":0.66,"firstAt":1.8,"gaps":[],"st":[500]}
+  from-load:BRENT {"dur":90.5,"count":1,"perMin":0.66,"firstAt":1.8,"gaps":[],"st":[500]}
+  after-visibility-nudge:WTI {"dur":30,"count":0,"perMin":0,"firstAt":null,"gaps":[],"st":[]}
+  after-visibility-nudge:BRENT {"dur":30,"count":0,"perMin":0,"firstAt":null,"gaps":[],"st":[]}
+
+### Mode change mid-fetch today-paused->live (2s latency)
+  note: flipped to live mid-fetch @62.518
+  pill initial [{"text":"DELAYED","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"79x24","cls":"hero-live-pill hero-live-pill-paused","dotAnim":"none"},{"text":"DELAYED","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"79x24","cls":"hero-live-pill hero-live-pill-paused","dotAnim":"none"}]
+  pill afterFlip [{"text":"LIVE","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"58x24","cls":"hero-live-pill","dotAnim":"hero-live-pulse"},{"text":"LIVE","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"58x24","cls":"hero-live-pill","dotAnim":"hero-live-pulse"}]
+  today-paused:WTI {"dur":58.7,"count":0,"perMin":0,"firstAt":null,"gaps":[],"st":[]}
+  today-paused:BRENT {"dur":58.7,"count":1,"perMin":1.02,"firstAt":58.7,"gaps":[],"st":[200]}
+  after-flip-to-live(expect 10s):WTI {"dur":130,"count":3,"perMin":1.38,"firstAt":0,"gaps":[62,62],"st":[200,200,200]}
+  after-flip-to-live(expect 10s):BRENT {"dur":130,"count":2,"perMin":0.92,"firstAt":62,"gaps":[62],"st":[200,200]}
+
+### Mode change mid-fetch live->today-paused (2s latency)
+  note: flipped to today-paused mid-fetch @48.966
+  pill initial [{"text":"DELAYED","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"79x24","cls":"hero-live-pill hero-live-pill-paused","dotAnim":"none"},{"text":"DELAYED","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"79x24","cls":"hero-live-pill hero-live-pill-paused","dotAnim":"none"}]
+  pill afterFlip [{"text":"DELAYED","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"79x24","cls":"hero-live-pill hero-live-pill-paused","dotAnim":"none"},{"text":"DELAYED","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"79x24","cls":"hero-live-pill hero-live-pill-paused","dotAnim":"none"}]
+  live:WTI {"dur":43.2,"count":4,"perMin":5.56,"firstAt":6.7,"gaps":[12,12,12],"st":[200,200,200,200]}
+  live:BRENT {"dur":43.2,"count":4,"perMin":5.56,"firstAt":6.8,"gaps":[12,12,12],"st":[200,200,200,200]}
+  after-flip-to-today-paused(expect 60s):WTI {"dur":150,"count":12,"perMin":4.8,"firstAt":11.6,"gaps":[12,12,12,12,12,12,12,12,12,12,12],"st":[200,200,200,200,200,200,200,200,200,200,200,200]}
+  after-flip-to-today-paused(expect 60s):BRENT {"dur":150,"count":12,"perMin":4.8,"firstAt":11.6,"gaps":[12,12,12,12,12,12,12,12,12,12,12],"st":[200,200,200,200,200,200,200,200,200,200,200,200]}
+
+### Live stub: 429 Retry-After 30 x3 then OK
+  pill initial [{"text":"LIVE","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"58x24","cls":"hero-live-pill","dotAnim":"hero-live-flash, hero-live-pulse"},{"text":"LIVE","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"58x24","cls":"hero-live-pill","dotAnim":"hero-live-flash, hero-live-pulse"}]
+  ok:WTI {"dur":25,"count":2,"perMin":4.8,"firstAt":6.9,"gaps":[10],"st":[200,200]}
+  ok:BRENT {"dur":25,"count":2,"perMin":4.8,"firstAt":6.9,"gaps":[10],"st":[200,200]}
+  429x3-then-ok:WTI {"dur":200,"count":11,"perMin":3.3,"firstAt":2,"gaps":[40,40,40,10,10,10,10,10,10,10],"st":[429,429,429,200,200,200,200,200,200,200,200]}
+  429x3-then-ok:BRENT {"dur":200,"count":11,"perMin":3.3,"firstAt":2,"gaps":[40,40,40,10,10,10,10,10,10,10],"st":[429,429,429,200,200,200,200,200,200,200,200]}
+
+### Live stub: 404s then recover
+  pill initial [{"text":"LIVE","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"58x24","cls":"hero-live-pill","dotAnim":"hero-live-flash, hero-live-pulse"},{"text":"LIVE","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"58x24","cls":"hero-live-pill","dotAnim":"hero-live-flash, hero-live-pulse"}]
+  ok:WTI {"dur":25,"count":2,"perMin":4.8,"firstAt":7,"gaps":[10],"st":[200,200]}
+  ok:BRENT {"dur":25,"count":2,"perMin":4.8,"firstAt":7,"gaps":[10],"st":[200,200]}
+  errors404:WTI {"dur":160,"count":4,"perMin":1.5,"firstAt":2,"gaps":[20,40,80],"st":[404,404,404,404]}
+  errors404:BRENT {"dur":160,"count":4,"perMin":1.5,"firstAt":2,"gaps":[20,40,80],"st":[404,404,404,404]}
+  recovered:WTI {"dur":45,"count":0,"perMin":0,"firstAt":null,"gaps":[],"st":[]}
+  recovered:BRENT {"dur":45,"count":0,"perMin":0,"firstAt":null,"gaps":[],"st":[]}
+
+### Real Yahoo: visible/hidden/visible
+  pill initial [{"text":"DELAYED","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"79x24","cls":"hero-live-pill hero-live-pill-paused","dotAnim":"none"},{"text":"DELAYED","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"79x24","cls":"hero-live-pill hero-live-pill-paused","dotAnim":"none"}]
+  pill afterLoad [{"text":"DELAYED","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"79x24","cls":"hero-live-pill hero-live-pill-paused","dotAnim":"none"},{"text":"DELAYED","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"79x24","cls":"hero-live-pill hero-live-pill-paused","dotAnim":"none"}]
+  pill afterPolls [{"text":"DELAYED","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"79x24","cls":"hero-live-pill hero-live-pill-paused","dotAnim":"none"},{"text":"DELAYED","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"79x24","cls":"hero-live-pill hero-live-pill-paused","dotAnim":"none"}]
+  pill end [{"text":"DELAYED","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"79x24","cls":"hero-live-pill hero-live-pill-paused","dotAnim":"none"},{"text":"DELAYED","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"79x24","cls":"hero-live-pill hero-live-pill-paused","dotAnim":"none"}]
+  visible1:WTI {"dur":125,"count":2,"perMin":0.96,"firstAt":56.7,"gaps":[60],"st":[null,null]}
+  visible1:BRENT {"dur":125,"count":2,"perMin":0.96,"firstAt":56.8,"gaps":[60],"st":[null,null]}
+  hidden:WTI {"dur":60,"count":0,"perMin":0,"firstAt":null,"gaps":[],"st":[]}
+  hidden:BRENT {"dur":60,"count":0,"perMin":0,"firstAt":null,"gaps":[],"st":[]}
+  visible2:WTI {"dur":65,"count":2,"perMin":1.85,"firstAt":0,"gaps":[60],"st":[null,null]}
+  visible2:BRENT {"dur":65,"count":2,"perMin":1.85,"firstAt":0,"gaps":[60],"st":[null,null]}
+
+### Live stub 2s latency: rapid toggles mid-fetch
+  note: toggle burst 0 @61.563
+  note: toggle burst 1 @73.575
+  note: toggle burst 2 @85.589
+  note: ended hidden mid-fetch @181.282
+  pill initial [{"text":"DELAYED","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"79x24","cls":"hero-live-pill hero-live-pill-paused","dotAnim":"none"},{"text":"DELAYED","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"79x24","cls":"hero-live-pill hero-live-pill-paused","dotAnim":"none"}]
+  visible-baseline:WTI {"dur":50,"count":4,"perMin":4.8,"firstAt":6.7,"gaps":[12,12,12],"st":[200,200,200,200]}
+  visible-baseline:BRENT {"dur":50,"count":4,"perMin":4.8,"firstAt":6.7,"gaps":[12,12,12],"st":[200,200,200,200]}
+  visible-after-toggles:WTI {"dur":95.7,"count":8,"perMin":5.02,"firstAt":11.1,"gaps":[12,12,12,12,12,12,12],"st":[200,200,200,200,200,200,200,200]}
+  visible-after-toggles:BRENT {"dur":95.7,"count":8,"perMin":5.02,"firstAt":11.1,"gaps":[12,12,12,12,12,12,12],"st":[200,200,200,200,200,200,200,200]}
+  hidden-after-midfetch-toggle:WTI {"dur":60,"count":0,"perMin":0,"firstAt":null,"gaps":[],"st":[]}
+  hidden-after-midfetch-toggle:BRENT {"dur":60,"count":0,"perMin":0,"firstAt":null,"gaps":[],"st":[]}
+  visible-final:WTI {"dur":60,"count":5,"perMin":5,"firstAt":0,"gaps":[12,12,12,12],"st":[200,200,200,200,200]}
+  visible-final:BRENT {"dur":60,"count":5,"perMin":5,"firstAt":0,"gaps":[12,12,12,12],"st":[200,200,200,200,200]}
+
+### Live stub: 500s then recover
+  note: recovered @368.832
+  pill initial [{"text":"DELAYED","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"79x24","cls":"hero-live-pill hero-live-pill-paused","dotAnim":"none"},{"text":"DELAYED","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"79x24","cls":"hero-live-pill hero-live-pill-paused","dotAnim":"none"}]
+  ok:WTI {"dur":25,"count":2,"perMin":4.8,"firstAt":7,"gaps":[10],"st":[200,200]}
+  ok:BRENT {"dur":25,"count":2,"perMin":4.8,"firstAt":7,"gaps":[10],"st":[200,200]}
+  errors500:WTI {"dur":340,"count":5,"perMin":0.88,"firstAt":2,"gaps":[20,40,80,160],"st":[500,500,500,500,500]}
+  errors500:BRENT {"dur":340,"count":5,"perMin":0.88,"firstAt":2,"gaps":[20,40,80,160],"st":[500,500,500,500,500]}
+  recovered:WTI {"dur":60,"count":0,"perMin":0,"firstAt":null,"gaps":[],"st":[]}
+  recovered:BRENT {"dur":60,"count":0,"perMin":0,"firstAt":null,"gaps":[],"st":[]}
+
+DONE

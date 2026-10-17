@@ -1,0 +1,188 @@
+
+### B2 SSR fixture: stale Pyth price (JS off)
+  pageerrors(0): []
+  pill initial {"text":"FEED PAUSED","title":"Feed temporarily paused","hiddenAttr":false,"style":null,"display":"inline","visibility":"visible","opacity":"1","wh":"105x17","cls":"hero-live-pill hero-live-pill-paused","dotAnim":"none"} (BRENT same)
+
+### B3 SSR fixture: fresh Pyth price (JS off)
+  pageerrors(0): []
+  pill initial {"text":"LIVE","title":"Streaming real-time exchange data","hiddenAttr":false,"style":null,"display":"inline","visibility":"visible","opacity":"1","wh":"36x17","cls":"hero-live-pill","dotAnim":"none"} (BRENT same)
+
+### B1 SSR real Yahoo (JS off)
+  pageerrors(0): []
+  pill initial {"text":"DELAYED","title":"15-minute delayed exchange data","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"79x24","cls":"hero-live-pill hero-live-pill-paused","dotAnim":"none"} (BRENT same)
+
+### B4 stale-Pyth SSR + JS, hero today-paused delayed=false
+  pageerrors(2): ["2.5 Illegal invocation","2.5 Illegal invocation"]
+  pill initial {"text":"FEED PAUSED · today","title":"Feed temporarily paused","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"160x24","cls":"hero-live-pill hero-live-pill-paused","dotAnim":"none"} (BRENT same)
+  pill afterJS {"text":"FEED PAUSED · today","title":"Feed temporarily paused","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"160x24","cls":"hero-live-pill hero-live-pill-paused","dotAnim":"none"} (BRENT same)
+
+### B7 Yahoo SSR + JS, stub warming-up (empty bars)
+  pageerrors(2): ["2.5 Illegal invocation","2.5 Illegal invocation"]
+  pill initial {"text":"WARMING UP","title":"Loading chart data","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"99x24","cls":"hero-live-pill hero-live-pill-warming","dotAnim":"hero-live-pulse-amber"} (BRENT same)
+  pill afterJS {"text":"WARMING UP","title":"Loading chart data","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"99x24","cls":"hero-live-pill hero-live-pill-warming","dotAnim":"hero-live-pulse-amber"} (BRENT same)
+
+### B5 Yahoo SSR + JS, stub prior-session
+  pageerrors(2): ["2.6 Illegal invocation","2.6 Illegal invocation"]
+  pill initial {"text":"MARKET CLOSED · Sat, Oct 17","title":"Market is closed","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"215x24","cls":"hero-live-pill hero-live-pill-paused","dotAnim":"none"} (BRENT same)
+  pill afterJS {"text":"MARKET CLOSED · Sat, Oct 17","title":"Market is closed","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"215x24","cls":"hero-live-pill hero-live-pill-paused","dotAnim":"none"} (BRENT same)
+
+### B6 Yahoo SSR + JS, stub live
+  pageerrors(2): ["2.5 Illegal invocation","2.5 Illegal invocation"]
+  pill initial {"text":"LIVE","title":"Streaming real-time exchange data","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"58x24","cls":"hero-live-pill","dotAnim":"hero-live-flash, hero-live-pulse"} (BRENT same)
+  pill afterJS {"text":"LIVE","title":"Streaming real-time exchange data","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"58x24","cls":"hero-live-pill","dotAnim":"hero-live-flash, hero-live-pulse"} (BRENT same)
+  pill afterPoll {"text":"LIVE","title":"Streaming real-time exchange data","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"58x24","cls":"hero-live-pill","dotAnim":"hero-live-flash, hero-live-pulse"} (BRENT same)
+
+### M5 transition while hidden: today-paused, hide, flip live, show
+  pageerrors(4): ["2.7 Illegal invocation","2.7 Illegal invocation","45.7 Illegal invocation","45.7 Illegal invocation"]
+  pill initial {"text":"DELAYED","title":"15-minute delayed exchange data","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"79x24","cls":"hero-live-pill hero-live-pill-paused","dotAnim":"none"} (BRENT same)
+  today-paused:WTI {"dur":10,"count":0,"perMin":0,"firstAt":null,"gaps":[],"st":[]}
+  today-paused:BRENT {"dur":10,"count":0,"perMin":0,"firstAt":null,"gaps":[],"st":[]}
+  hidden:WTI {"dur":30,"count":0,"perMin":0,"firstAt":null,"gaps":[],"st":[]}
+  hidden:BRENT {"dur":30,"count":0,"perMin":0,"firstAt":null,"gaps":[],"st":[]}
+  shown(expect immediate then 10s):WTI {"dur":60,"count":1,"perMin":1,"firstAt":0,"gaps":[],"st":[200]}
+  shown(expect immediate then 10s):BRENT {"dur":60,"count":1,"perMin":1,"firstAt":0,"gaps":[],"st":[200]}
+
+### R3 503 Retry-After 30 x1 then OK (live)
+  pageerrors(2): ["2.5 Illegal invocation","2.5 Illegal invocation"]
+  pill initial {"text":"LIVE","title":"Streaming real-time exchange data","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"58x24","cls":"hero-live-pill","dotAnim":"hero-live-flash, hero-live-pulse"} BRENT={"text":"DELAYED","title":"15-minute delayed exchange data","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"79x24","cls":"hero-live-pill hero-live-pill-paused","dotAnim":"none"}
+  ok:WTI {"dur":25,"count":0,"perMin":0,"firstAt":null,"gaps":[],"st":[]}
+  ok:BRENT {"dur":25,"count":0,"perMin":0,"firstAt":null,"gaps":[],"st":[]}
+  503-then-ok:WTI {"dur":110,"count":0,"perMin":0,"firstAt":null,"gaps":[],"st":[]}
+  503-then-ok:BRENT {"dur":110,"count":0,"perMin":0,"firstAt":null,"gaps":[],"st":[]}
+
+### R2 429 Retry-After HTTP-date +25s x1 then OK (live)
+  pageerrors(2): ["2.7 Illegal invocation","2.7 Illegal invocation"]
+  pill initial {"text":"LIVE","title":"Streaming real-time exchange data","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"58x24","cls":"hero-live-pill","dotAnim":"hero-live-flash, hero-live-pulse"} (BRENT same)
+  ok:WTI {"dur":25,"count":0,"perMin":0,"firstAt":null,"gaps":[],"st":[]}
+  ok:BRENT {"dur":25,"count":0,"perMin":0,"firstAt":null,"gaps":[],"st":[]}
+  429date-then-ok(expect ~25 then 10):WTI {"dur":120,"count":0,"perMin":0,"firstAt":null,"gaps":[],"st":[]}
+  429date-then-ok(expect ~25 then 10):BRENT {"dur":120,"count":0,"perMin":0,"firstAt":null,"gaps":[],"st":[]}
+
+### A3 mode change returned by retry fetch: live, 429 RA 10, retry returns today-paused
+  pageerrors(2): ["2.5 Illegal invocation","2.5 Illegal invocation"]
+  pill initial {"text":"LIVE","title":"Streaming real-time exchange data","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"58x24","cls":"hero-live-pill","dotAnim":"hero-live-flash, hero-live-pulse"} (BRENT same)
+  ok:WTI {"dur":25,"count":0,"perMin":0,"firstAt":null,"gaps":[],"st":[]}
+  ok:BRENT {"dur":25,"count":0,"perMin":0,"firstAt":null,"gaps":[],"st":[]}
+  429-then-today-paused(expect 10 then 60s):WTI {"dur":150,"count":0,"perMin":0,"firstAt":null,"gaps":[],"st":[]}
+  429-then-today-paused(expect 10 then 60s):BRENT {"dur":150,"count":0,"perMin":0,"firstAt":null,"gaps":[],"st":[]}
+
+### R6 429 RA 10 x6 then OK (escalation check)
+  pageerrors(2): ["2.6 Illegal invocation","2.6 Illegal invocation"]
+  pill initial {"text":"LIVE","title":"Streaming real-time exchange data","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"58x24","cls":"hero-live-pill","dotAnim":"hero-live-flash, hero-live-pulse"} (BRENT same)
+  ok:WTI {"dur":25,"count":0,"perMin":0,"firstAt":null,"gaps":[],"st":[]}
+  ok:BRENT {"dur":25,"count":0,"perMin":0,"firstAt":null,"gaps":[],"st":[]}
+  429x6-then-ok:WTI {"dur":150,"count":0,"perMin":0,"firstAt":null,"gaps":[],"st":[]}
+  429x6-then-ok:BRENT {"dur":150,"count":0,"perMin":0,"firstAt":null,"gaps":[],"st":[]}
+
+### M1 live->today-paused (no latency)
+  note: flip @35.61
+  pageerrors(2): ["2.6 Illegal invocation","2.6 Illegal invocation"]
+  pill initial {"text":"LIVE","title":"Streaming real-time exchange data","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"58x24","cls":"hero-live-pill","dotAnim":"hero-live-flash, hero-live-pulse"} (BRENT same)
+  live:WTI {"dur":30,"count":0,"perMin":0,"firstAt":null,"gaps":[],"st":[]}
+  live:BRENT {"dur":30,"count":0,"perMin":0,"firstAt":null,"gaps":[],"st":[]}
+  after-flip(expect 60s):WTI {"dur":150,"count":0,"perMin":0,"firstAt":null,"gaps":[],"st":[]}
+  after-flip(expect 60s):BRENT {"dur":150,"count":0,"perMin":0,"firstAt":null,"gaps":[],"st":[]}
+
+### M4 transition while hidden: live, hide, flip today-paused, show
+  pageerrors(4): ["2.5 Illegal invocation","2.6 Illegal invocation","60.6 Illegal invocation","60.6 Illegal invocation"]
+  pill initial {"text":"LIVE","title":"Streaming real-time exchange data","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"58x24","cls":"hero-live-pill","dotAnim":"hero-live-flash, hero-live-pulse"} (BRENT same)
+  live:WTI {"dur":25,"count":0,"perMin":0,"firstAt":null,"gaps":[],"st":[]}
+  live:BRENT {"dur":25,"count":0,"perMin":0,"firstAt":null,"gaps":[],"st":[]}
+  hidden:WTI {"dur":30,"count":0,"perMin":0,"firstAt":null,"gaps":[],"st":[]}
+  hidden:BRENT {"dur":30,"count":0,"perMin":0,"firstAt":null,"gaps":[],"st":[]}
+  shown(expect immediate then 60s):WTI {"dur":140,"count":1,"perMin":0.43,"firstAt":0,"gaps":[],"st":[200]}
+  shown(expect immediate then 60s):BRENT {"dur":140,"count":1,"perMin":0.43,"firstAt":0,"gaps":[],"st":[200]}
+
+### R8 429 RA 10, retry fetch 429 RA 120, then OK
+  pageerrors(2): ["2.2 Illegal invocation","2.2 Illegal invocation"]
+  pill initial {"text":"LIVE","title":"Streaming real-time exchange data","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"58x24","cls":"hero-live-pill","dotAnim":"hero-live-flash, hero-live-pulse"} (BRENT same)
+  ok:WTI {"dur":25,"count":0,"perMin":0,"firstAt":null,"gaps":[],"st":[]}
+  ok:BRENT {"dur":25,"count":0,"perMin":0,"firstAt":null,"gaps":[],"st":[]}
+  429ra10-429ra120-ok(expect 10,120,10):WTI {"dur":200,"count":0,"perMin":0,"firstAt":null,"gaps":[],"st":[]}
+  429ra10-429ra120-ok(expect 10,120,10):BRENT {"dur":200,"count":0,"perMin":0,"firstAt":null,"gaps":[],"st":[]}
+
+### R7 429 RA 10 then 500 x2 then OK (mixed)
+  pageerrors(2): ["2.2 Illegal invocation","2.2 Illegal invocation"]
+  pill initial {"text":"LIVE","title":"Streaming real-time exchange data","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"58x24","cls":"hero-live-pill","dotAnim":"hero-live-flash, hero-live-pulse"} (BRENT same)
+  ok:WTI {"dur":25,"count":0,"perMin":0,"firstAt":null,"gaps":[],"st":[]}
+  ok:BRENT {"dur":25,"count":0,"perMin":0,"firstAt":null,"gaps":[],"st":[]}
+  429-500-500-then-ok:WTI {"dur":200,"count":0,"perMin":0,"firstAt":null,"gaps":[],"st":[]}
+  429-500-500-then-ok:BRENT {"dur":200,"count":0,"perMin":0,"firstAt":null,"gaps":[],"st":[]}
+
+### M3 transition during backoff: live, 500x2, then OK as today-paused
+  pageerrors(2): ["2.7 Illegal invocation","2.7 Illegal invocation"]
+  pill initial {"text":"LIVE","title":"Streaming real-time exchange data","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"58x24","cls":"hero-live-pill","dotAnim":"hero-live-flash, hero-live-pulse"} (BRENT same)
+  live:WTI {"dur":25,"count":0,"perMin":0,"firstAt":null,"gaps":[],"st":[]}
+  live:BRENT {"dur":25,"count":0,"perMin":0,"firstAt":null,"gaps":[],"st":[]}
+  500x2-then-today-paused(expect 20,40,then 60s):WTI {"dur":200,"count":0,"perMin":0,"firstAt":null,"gaps":[],"st":[]}
+  500x2-then-today-paused(expect 20,40,then 60s):BRENT {"dur":200,"count":0,"perMin":0,"firstAt":null,"gaps":[],"st":[]}
+
+### E1 500 x3 then OK (live)
+  pageerrors(2): ["2.6 Illegal invocation","2.6 Illegal invocation"]
+  pill initial {"text":"LIVE","title":"Streaming real-time exchange data","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"58x24","cls":"hero-live-pill","dotAnim":"hero-live-flash, hero-live-pulse"} (BRENT same)
+  ok:WTI {"dur":25,"count":0,"perMin":0,"firstAt":null,"gaps":[],"st":[]}
+  ok:BRENT {"dur":25,"count":0,"perMin":0,"firstAt":null,"gaps":[],"st":[]}
+  500x3-then-ok:WTI {"dur":220,"count":0,"perMin":0,"firstAt":null,"gaps":[],"st":[]}
+  500x3-then-ok:BRENT {"dur":220,"count":0,"perMin":0,"firstAt":null,"gaps":[],"st":[]}
+
+### E2 404 x3 then OK (live)
+  pageerrors(2): ["2.6 Illegal invocation","2.6 Illegal invocation"]
+  pill initial {"text":"LIVE","title":"Streaming real-time exchange data","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"58x24","cls":"hero-live-pill","dotAnim":"hero-live-flash, hero-live-pulse"} (BRENT same)
+  ok:WTI {"dur":25,"count":0,"perMin":0,"firstAt":null,"gaps":[],"st":[]}
+  ok:BRENT {"dur":25,"count":0,"perMin":0,"firstAt":null,"gaps":[],"st":[]}
+  404x3-then-ok:WTI {"dur":220,"count":0,"perMin":0,"firstAt":null,"gaps":[],"st":[]}
+  404x3-then-ok:BRENT {"dur":220,"count":0,"perMin":0,"firstAt":null,"gaps":[],"st":[]}
+
+### Y Real Yahoo: visible/hidden/visible
+  pageerrors(4): ["1.1 Illegal invocation","1.4 Illegal invocation","189.5 Illegal invocation","189.5 Illegal invocation"]
+  pill initial {"text":"DELAYED","title":"15-minute delayed exchange data","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"79x24","cls":"hero-live-pill hero-live-pill-paused","dotAnim":"none"} (BRENT same)
+  pill afterLoad {"text":"DELAYED","title":"15-minute delayed exchange data","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"79x24","cls":"hero-live-pill hero-live-pill-paused","dotAnim":"none"} (BRENT same)
+  pill afterPolls {"text":"DELAYED","title":"15-minute delayed exchange data","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"79x24","cls":"hero-live-pill hero-live-pill-paused","dotAnim":"none"} (BRENT same)
+  pill end {"text":"DELAYED","title":"15-minute delayed exchange data","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"79x24","cls":"hero-live-pill hero-live-pill-paused","dotAnim":"none"} (BRENT same)
+  visible1:WTI {"dur":125,"count":0,"perMin":0,"firstAt":null,"gaps":[],"st":[]}
+  visible1:BRENT {"dur":125,"count":0,"perMin":0,"firstAt":null,"gaps":[],"st":[]}
+  hidden:WTI {"dur":60,"count":0,"perMin":0,"firstAt":null,"gaps":[],"st":[]}
+  hidden:BRENT {"dur":60,"count":0,"perMin":0,"firstAt":null,"gaps":[],"st":[]}
+  visible2:WTI {"dur":65,"count":1,"perMin":0.92,"firstAt":0,"gaps":[],"st":[null]}
+  visible2:BRENT {"dur":65,"count":1,"perMin":0.92,"firstAt":0,"gaps":[],"st":[null]}
+
+### M3b transition during backoff: today-paused, 500x1, then OK as live
+  pageerrors(2): ["2.6 Illegal invocation","2.6 Illegal invocation"]
+  pill initial {"text":"DELAYED","title":"15-minute delayed exchange data","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"79x24","cls":"hero-live-pill hero-live-pill-paused","dotAnim":"none"} (BRENT same)
+  500x1-then-live(expect 60,120,then 10s):WTI {"dur":260,"count":0,"perMin":0,"firstAt":null,"gaps":[],"st":[]}
+  500x1-then-live(expect 60,120,then 10s):BRENT {"dur":260,"count":0,"perMin":0,"firstAt":null,"gaps":[],"st":[]}
+
+### R1 429 Retry-After 30 x3 then OK (live)
+  pageerrors(2): ["2.5 Illegal invocation","2.5 Illegal invocation"]
+  pill initial {"text":"LIVE","title":"Streaming real-time exchange data","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"58x24","cls":"hero-live-pill","dotAnim":"hero-live-flash, hero-live-pulse"} (BRENT same)
+  ok:WTI {"dur":25,"count":0,"perMin":0,"firstAt":null,"gaps":[],"st":[]}
+  ok:BRENT {"dur":25,"count":0,"perMin":0,"firstAt":null,"gaps":[],"st":[]}
+  429x3-then-ok(expect ~30,30,30 then 10):WTI {"dur":260,"count":0,"perMin":0,"firstAt":null,"gaps":[],"st":[]}
+  429x3-then-ok(expect ~30,30,30 then 10):BRENT {"dur":260,"count":0,"perMin":0,"firstAt":null,"gaps":[],"st":[]}
+
+### F2c first load slow (4s) 500, resume fetch fast (0.5s) 500, then 500 x2, then OK
+  note: toggle during slow first fetch @3.056
+  pageerrors(2): ["4.8 Illegal invocation","4.8 Illegal invocation"]
+  pill initial {"text":"DELAYED","title":"15-minute delayed exchange data","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"79x24","cls":"hero-live-pill hero-live-pill-paused","dotAnim":"none"} (BRENT same)
+  from-load:WTI {"dur":539.3,"count":0,"perMin":0,"firstAt":null,"gaps":[],"st":[]}
+  from-load:BRENT {"dur":539.3,"count":0,"perMin":0,"firstAt":null,"gaps":[],"st":[]}
+
+### F2b first load 500 x3 (2s latency), hide/show x2 during first fetch, hands-off
+  note: toggles done @3.158
+  pageerrors(4): ["2.8 Illegal invocation","2.8 Illegal invocation","5.0 Illegal invocation","5.0 Illegal invocation"]
+  pill initial {"text":"DELAYED","title":"15-minute delayed exchange data","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"79x24","cls":"hero-live-pill hero-live-pill-paused","dotAnim":"none"} (BRENT same)
+  from-load:WTI {"dur":539.5,"count":1,"perMin":0.11,"firstAt":0.6,"gaps":[],"st":[500]}
+  from-load:BRENT {"dur":539.5,"count":1,"perMin":0.11,"firstAt":0.6,"gaps":[],"st":[500]}
+
+### F3 cold first load 404 x3 then OK (live stub)
+  pageerrors(2): ["2.2 Illegal invocation","2.2 Illegal invocation"]
+  pill initial {"text":"DELAYED","title":"15-minute delayed exchange data","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"79x24","cls":"hero-live-pill hero-live-pill-paused","dotAnim":"none"} (BRENT same)
+  from-load:WTI {"dur":558.7,"count":0,"perMin":0,"firstAt":null,"gaps":[],"st":[]}
+  from-load:BRENT {"dur":558.7,"count":0,"perMin":0,"firstAt":null,"gaps":[],"st":[]}
+
+### F1 cold first load 500 x5 then OK (live stub)
+  pageerrors(2): ["1.8 Illegal invocation","1.8 Illegal invocation"]
+  pill initial {"text":"DELAYED","title":"15-minute delayed exchange data","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"79x24","cls":"hero-live-pill hero-live-pill-paused","dotAnim":"none"} (BRENT same)
+  pill end {"text":"DELAYED","title":"15-minute delayed exchange data","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"79x24","cls":"hero-live-pill hero-live-pill-paused","dotAnim":"none"} (BRENT same)
+  from-load:WTI {"dur":936.4,"count":0,"perMin":0,"firstAt":null,"gaps":[],"st":[]}
+  from-load:BRENT {"dur":936.4,"count":0,"perMin":0,"firstAt":null,"gaps":[],"st":[]}

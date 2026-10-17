@@ -40,6 +40,7 @@ export class HeroPoller {
   private inFlight = false;
   private failures = 0;
   private hasSucceeded = false;
+  private notBefore = 0;  // Timestamp: don't fetch before this time
   
   constructor(config: PollerConfig) {
     this.symbol = config.symbol;
@@ -49,7 +50,14 @@ export class HeroPoller {
     this.getMode = config.getMode;
     this.isHidden = config.isHidden;
     this.clock = config.clock || { now: () => Date.now() };
-    this.timers = config.timers || { setTimeout, clearTimeout };
+    // Bind default timers to avoid "Illegal invocation" in browsers
+    this.timers = config.timers || {
+      setTimeout: (fn: () => void, ms: number) => {
+        const timer = (typeof window !== 'undefined' ? window : globalThis).setTimeout(fn, ms);
+        return timer as unknown as number;
+      },
+      clearTimeout: (handle: number) => (typeof window !== 'undefined' ? window : globalThis).clearTimeout(handle as any)
+    };
   }
   
   // Start polling by doing an immediate first tick
@@ -63,8 +71,18 @@ export class HeroPoller {
   }
   
   // Resume calls tick if not hidden, no timer, and nothing in flight
+  // Also respects notBefore deadline (pending Retry-After or backoff)
   resume(): void {
-    if (!this.isHidden() && this.pollTimer === null && !this.inFlight) {
+    if (this.isHidden() || this.pollTimer !== null || this.inFlight) {
+      return;
+    }
+    
+    const now = this.clock.now();
+    if (now < this.notBefore) {
+      // There's a pending deadline, schedule to that time instead of fetching now
+      this.schedule(this.notBefore - now);
+    } else {
+      // No pending deadline, fetch immediately
       this.tick();
     }
   }
@@ -123,6 +141,9 @@ export class HeroPoller {
       this.inFlight = false;
     }
     
+    // Set notBefore for resume() to respect
+    this.notBefore = this.clock.now() + nextDelay;
+    
     // Schedule next tick
     this.schedule(nextDelay);
   }
@@ -174,7 +195,8 @@ export class HeroPoller {
       hasTimer: this.pollTimer !== null,
       inFlight: this.inFlight,
       failures: this.failures,
-      hasSucceeded: this.hasSucceeded
+      hasSucceeded: this.hasSucceeded,
+      notBefore: this.notBefore
     };
   }
 }

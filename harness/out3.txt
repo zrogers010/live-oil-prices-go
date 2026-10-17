@@ -1,0 +1,29 @@
+
+### R1 Live stub: 500 x2 per symbol then OK (recovery)
+  pill initial [{"text":"LIVE","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"58x24","cls":"hero-live-pill","dotAnim":"hero-live-flash, hero-live-pulse"},{"text":"LIVE","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"58x24","cls":"hero-live-pill","dotAnim":"hero-live-flash, hero-live-pulse"}]
+  ok:WTI {"dur":25,"count":2,"perMin":4.8,"firstAt":7,"gaps":[10],"st":[200,200]}
+  ok:BRENT {"dur":25,"count":2,"perMin":4.8,"firstAt":7,"gaps":[10],"st":[200,200]}
+  500x2-then-ok:WTI {"dur":120,"count":8,"perMin":4,"firstAt":2,"gaps":[20,40,10,10,10,10,10],"st":[500,500,200,200,200,200,200,200]}
+  500x2-then-ok:BRENT {"dur":120,"count":8,"perMin":4,"firstAt":2,"gaps":[20,40,10,10,10,10,10],"st":[500,500,200,200,200,200,200,200]}
+
+### R2 Live stub: 404 x2 per symbol then OK (recovery)
+  pill initial [{"text":"LIVE","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"58x24","cls":"hero-live-pill","dotAnim":"hero-live-flash, hero-live-pulse"},{"text":"LIVE","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"58x24","cls":"hero-live-pill","dotAnim":"hero-live-flash, hero-live-pulse"}]
+  ok:WTI {"dur":25,"count":2,"perMin":4.8,"firstAt":7,"gaps":[10],"st":[200,200]}
+  ok:BRENT {"dur":25,"count":2,"perMin":4.8,"firstAt":7,"gaps":[10],"st":[200,200]}
+  404x2-then-ok:WTI {"dur":120,"count":8,"perMin":4,"firstAt":2,"gaps":[20,40,10,10,10,10,10],"st":[404,404,200,200,200,200,200,200]}
+  404x2-then-ok:BRENT {"dur":120,"count":8,"perMin":4,"firstAt":2,"gaps":[20,40,10,10,10,10,10],"st":[404,404,200,200,200,200,200,200]}
+
+### R4 Delayed-mode 500s (60s base) backoff
+  pill initial [{"text":"DELAYED","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"79x24","cls":"hero-live-pill hero-live-pill-paused","dotAnim":"none"},{"text":"DELAYED","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"79x24","cls":"hero-live-pill hero-live-pill-paused","dotAnim":"none"}]
+  errors500:WTI {"dur":150,"count":1,"perMin":0.4,"firstAt":57,"gaps":[],"st":[500]}
+  errors500:BRENT {"dur":150,"count":1,"perMin":0.4,"firstAt":57,"gaps":[],"st":[500]}
+
+### R3 Mode change, no latency: live->today-paused
+  note: flip @33.618
+  pill initial [{"text":"LIVE","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"58x24","cls":"hero-live-pill","dotAnim":"hero-live-flash, hero-live-pulse"},{"text":"LIVE","hiddenAttr":false,"style":null,"display":"flex","visibility":"visible","opacity":"1","wh":"58x24","cls":"hero-live-pill","dotAnim":"hero-live-flash, hero-live-pulse"}]
+  live:WTI {"dur":30,"count":3,"perMin":6,"firstAt":7,"gaps":[10,10],"st":[200,200,200]}
+  live:BRENT {"dur":30,"count":3,"perMin":6,"firstAt":7,"gaps":[10,10],"st":[200,200,200]}
+  after-flip(expect 60s):WTI {"dur":120,"count":12,"perMin":6,"firstAt":7,"gaps":[10,10,10,10,10,10,10,10,10,10,10],"st":[200,200,200,200,200,200,200,200,200,200,200,200]}
+  after-flip(expect 60s):BRENT {"dur":120,"count":12,"perMin":6,"firstAt":7,"gaps":[10,10,10,10,10,10,10,10,10,10,10],"st":[200,200,200,200,200,200,200,200,200,200,200,200]}
+
+DONE

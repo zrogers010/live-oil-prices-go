@@ -11,6 +11,10 @@ class FakeClock implements Clock {
   advance(ms: number): void {
     this.time += ms;
   }
+  
+  setTime(t: number): void {
+    this.time = t;
+  }
 }
 
 class FakeTimers implements Timers {
@@ -54,6 +58,10 @@ class FakeTimers implements Timers {
   
   hasTimer(): boolean {
     return this.timers.size > 0;
+  }
+  
+  timerCount(): number {
+    return this.timers.size;
   }
   
   nextFireTime(): number | null {
@@ -322,28 +330,31 @@ test('resume during slow first load gives single chain', async () => {
   // Wait for first fetch to complete
   await new Promise(r => setTimeout(r, 10));
   
-  // First fetch should have failed
+  // First fetch should have failed and scheduled a 10s retry
   assertEquals(fetchCount, 1, 'first fetch started');
+  assert(ctx.timers.hasTimer(), 'timer scheduled after first failure');
   
-  // While first fetch is in flight, hide and show
+  // While in backoff, hide and show
   ctx.hidden = true;
   poller.pause();
+  assert(!ctx.timers.hasTimer(), 'timer cleared on pause');
+  
   ctx.hidden = false;
   poller.resume();
   
-  // Resume should not start another fetch if one is in flight
-  // But since first fetch completed, resume will start a new one
+  // Resume should schedule to the existing notBefore, not start another fetch
   await new Promise(r => setTimeout(r, 10));
   
-  // After resume completes, should have a timer
-  // Advance and check
+  // Should have scheduled a timer to the notBefore
+  assert(ctx.timers.hasTimer(), 'timer scheduled after resume');
+  
+  // Advance through backoff
   await ctx.timers.tick(10000);
   
-  // Should be on backoff schedule
-  assert(fetchCount >= 2, 'second fetch after retry delay');
-  
-  // Should have only one timer chain (no double-scheduling)
-  // This is verified by checking that timers don't pile up
+  // Should have exactly 2 fetches total (initial + first retry), with one timer chain
+  assertEquals(fetchCount, 2, 'second fetch after retry delay');
+  assertEquals(ctx.fetches.length, 2, 'exactly 2 fetches');
+  assertEquals(ctx.fetches[1].t - ctx.fetches[0].t, 10000, 'gap is 10s');
 });
 
 // Test: mode changes take effect

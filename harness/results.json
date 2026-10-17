@@ -1,0 +1,2898 @@
+[
+ {
+  "name": "HEAD real backend (Yahoo delayed, today-paused)",
+  "ssrPillStyle": [
+   "display:none;",
+   "display:none;"
+  ],
+  "pills": {
+   "afterLoad": [
+    {
+     "text": "DELAYED",
+     "visible": false
+    },
+    {
+     "text": "DELAYED",
+     "visible": false
+    }
+   ]
+  },
+  "phases": [
+   {
+    "phase": "visible",
+    "t": 3.672
+   },
+   {
+    "phase": "end",
+    "t": 183.673
+   }
+  ],
+  "reqs": [
+   {
+    "sym": "WTI",
+    "t": 0.435,
+    "phase": "load"
+   },
+   {
+    "sym": "BRENT",
+    "t": 0.435,
+    "phase": "load"
+   },
+   {
+    "sym": "WTI",
+    "t": 60.697,
+    "phase": "visible"
+   },
+   {
+    "sym": "BRENT",
+    "t": 60.716,
+    "phase": "visible"
+   },
+   {
+    "sym": "WTI",
+    "t": 120.697,
+    "phase": "visible"
+   },
+   {
+    "sym": "BRENT",
+    "t": 120.711,
+    "phase": "visible"
+   },
+   {
+    "sym": "WTI",
+    "t": 180.696,
+    "phase": "visible"
+   },
+   {
+    "sym": "BRENT",
+    "t": 180.709,
+    "phase": "visible"
+   }
+  ],
+  "summary": {
+   "visible:WTI": {
+    "durS": 180,
+    "count": 3,
+    "perMin": 1,
+    "gaps": [
+     60,
+     60
+    ]
+   },
+   "visible:BRENT": {
+    "durS": 180,
+    "count": 3,
+    "perMin": 1,
+    "gaps": [
+     60,
+     60
+    ]
+   }
+  }
+ },
+ {
+  "name": "HEAD stubbed mode=live: visible/hidden/visible",
+  "ssrPillStyle": [
+   "display:none;",
+   "display:none;"
+  ],
+  "pills": {
+   "afterLoad": [
+    {
+     "text": "LIVE",
+     "visible": false
+    },
+    {
+     "text": "LIVE",
+     "visible": false
+    }
+   ]
+  },
+  "phases": [
+   {
+    "phase": "visible1",
+    "t": 3.591
+   },
+   {
+    "phase": "hidden",
+    "t": 63.595
+   },
+   {
+    "phase": "visible2",
+    "t": 123.599
+   },
+   {
+    "phase": "end",
+    "t": 183.6
+   }
+  ],
+  "reqs": [
+   {
+    "sym": "WTI",
+    "t": 0.402,
+    "phase": "load"
+   },
+   {
+    "sym": "BRENT",
+    "t": 0.403,
+    "phase": "load"
+   },
+   {
+    "sym": "WTI",
+    "t": 10.699,
+    "phase": "visible1"
+   },
+   {
+    "sym": "BRENT",
+    "t": 10.71,
+    "phase": "visible1"
+   },
+   {
+    "sym": "WTI",
+    "t": 20.699,
+    "phase": "visible1"
+   },
+   {
+    "sym": "BRENT",
+    "t": 20.71,
+    "phase": "visible1"
+   },
+   {
+    "sym": "WTI",
+    "t": 30.699,
+    "phase": "visible1"
+   },
+   {
+    "sym": "BRENT",
+    "t": 30.709,
+    "phase": "visible1"
+   },
+   {
+    "sym": "WTI",
+    "t": 40.699,
+    "phase": "visible1"
+   },
+   {
+    "sym": "BRENT",
+    "t": 40.71,
+    "phase": "visible1"
+   },
+   {
+    "sym": "WTI",
+    "t": 50.699,
+    "phase": "visible1"
+   },
+   {
+    "sym": "BRENT",
+    "t": 50.71,
+    "phase": "visible1"
+   },
+   {
+    "sym": "WTI",
+    "t": 60.699,
+    "phase": "visible1"
+   },
+   {
+    "sym": "BRENT",
+    "t": 60.71,
+    "phase": "visible1"
+   },
+   {
+    "sym": "WTI",
+    "t": 123.6,
+    "phase": "visible2"
+   },
+   {
+    "sym": "BRENT",
+    "t": 123.6,
+    "phase": "visible2"
+   },
+   {
+    "sym": "WTI",
+    "t": 133.609,
+    "phase": "visible2"
+   },
+   {
+    "sym": "BRENT",
+    "t": 133.609,
+    "phase": "visible2"
+   },
+   {
+    "sym": "WTI",
+    "t": 143.609,
+    "phase": "visible2"
+   },
+   {
+    "sym": "BRENT",
+    "t": 143.609,
+    "phase": "visible2"
+   },
+   {
+    "sym": "WTI",
+    "t": 153.61,
+    "phase": "visible2"
+   },
+   {
+    "sym": "BRENT",
+    "t": 153.611,
+    "phase": "visible2"
+   },
+   {
+    "sym": "WTI",
+    "t": 163.609,
+    "phase": "visible2"
+   },
+   {
+    "sym": "BRENT",
+    "t": 163.61,
+    "phase": "visible2"
+   },
+   {
+    "sym": "WTI",
+    "t": 173.61,
+    "phase": "visible2"
+   },
+   {
+    "sym": "BRENT",
+    "t": 173.61,
+    "phase": "visible2"
+   }
+  ],
+  "summary": {
+   "visible1:WTI": {
+    "durS": 60,
+    "count": 6,
+    "perMin": 6,
+    "gaps": [
+     10,
+     10,
+     10,
+     10,
+     10
+    ]
+   },
+   "visible1:BRENT": {
+    "durS": 60,
+    "count": 6,
+    "perMin": 6,
+    "gaps": [
+     10,
+     10,
+     10,
+     10,
+     10
+    ]
+   },
+   "hidden:WTI": {
+    "durS": 60,
+    "count": 0,
+    "perMin": 0,
+    "gaps": []
+   },
+   "hidden:BRENT": {
+    "durS": 60,
+    "count": 0,
+    "perMin": 0,
+    "gaps": []
+   },
+   "visible2:WTI": {
+    "durS": 60,
+    "count": 6,
+    "perMin": 6,
+    "gaps": [
+     10,
+     10,
+     10,
+     10,
+     10
+    ]
+   },
+   "visible2:BRENT": {
+    "durS": 60,
+    "count": 6,
+    "perMin": 6,
+    "gaps": [
+     10,
+     10,
+     10,
+     10,
+     10
+    ]
+   }
+  }
+ },
+ {
+  "name": "HEAD stubbed live then 500s",
+  "ssrPillStyle": [
+   "display:none;",
+   "display:none;"
+  ],
+  "pills": {},
+  "phases": [
+   {
+    "phase": "ok",
+    "t": 3.614
+   },
+   {
+    "phase": "errors500",
+    "t": 33.614
+   },
+   {
+    "phase": "end",
+    "t": 183.614
+   }
+  ],
+  "reqs": [
+   {
+    "sym": "WTI",
+    "t": 0.371,
+    "phase": "load"
+   },
+   {
+    "sym": "BRENT",
+    "t": 0.374,
+    "phase": "load"
+   },
+   {
+    "sym": "WTI",
+    "t": 10.732,
+    "phase": "ok"
+   },
+   {
+    "sym": "BRENT",
+    "t": 10.742,
+    "phase": "ok"
+   },
+   {
+    "sym": "WTI",
+    "t": 20.731,
+    "phase": "ok"
+   },
+   {
+    "sym": "BRENT",
+    "t": 20.742,
+    "phase": "ok"
+   },
+   {
+    "sym": "WTI",
+    "t": 30.731,
+    "phase": "ok"
+   },
+   {
+    "sym": "BRENT",
+    "t": 30.742,
+    "phase": "ok"
+   },
+   {
+    "sym": "WTI",
+    "t": 40.732,
+    "phase": "errors500"
+   },
+   {
+    "sym": "BRENT",
+    "t": 40.742,
+    "phase": "errors500"
+   },
+   {
+    "sym": "WTI",
+    "t": 50.732,
+    "phase": "errors500"
+   },
+   {
+    "sym": "BRENT",
+    "t": 50.742,
+    "phase": "errors500"
+   },
+   {
+    "sym": "WTI",
+    "t": 60.732,
+    "phase": "errors500"
+   },
+   {
+    "sym": "BRENT",
+    "t": 60.743,
+    "phase": "errors500"
+   },
+   {
+    "sym": "WTI",
+    "t": 70.732,
+    "phase": "errors500"
+   },
+   {
+    "sym": "BRENT",
+    "t": 70.743,
+    "phase": "errors500"
+   },
+   {
+    "sym": "WTI",
+    "t": 80.732,
+    "phase": "errors500"
+   },
+   {
+    "sym": "BRENT",
+    "t": 80.743,
+    "phase": "errors500"
+   },
+   {
+    "sym": "WTI",
+    "t": 90.732,
+    "phase": "errors500"
+   },
+   {
+    "sym": "BRENT",
+    "t": 90.743,
+    "phase": "errors500"
+   },
+   {
+    "sym": "WTI",
+    "t": 100.732,
+    "phase": "errors500"
+   },
+   {
+    "sym": "BRENT",
+    "t": 100.743,
+    "phase": "errors500"
+   },
+   {
+    "sym": "WTI",
+    "t": 110.732,
+    "phase": "errors500"
+   },
+   {
+    "sym": "BRENT",
+    "t": 110.743,
+    "phase": "errors500"
+   },
+   {
+    "sym": "WTI",
+    "t": 120.731,
+    "phase": "errors500"
+   },
+   {
+    "sym": "BRENT",
+    "t": 120.742,
+    "phase": "errors500"
+   },
+   {
+    "sym": "WTI",
+    "t": 130.732,
+    "phase": "errors500"
+   },
+   {
+    "sym": "BRENT",
+    "t": 130.742,
+    "phase": "errors500"
+   },
+   {
+    "sym": "WTI",
+    "t": 140.732,
+    "phase": "errors500"
+   },
+   {
+    "sym": "BRENT",
+    "t": 140.742,
+    "phase": "errors500"
+   },
+   {
+    "sym": "WTI",
+    "t": 150.732,
+    "phase": "errors500"
+   },
+   {
+    "sym": "BRENT",
+    "t": 150.742,
+    "phase": "errors500"
+   },
+   {
+    "sym": "WTI",
+    "t": 160.732,
+    "phase": "errors500"
+   },
+   {
+    "sym": "BRENT",
+    "t": 160.743,
+    "phase": "errors500"
+   },
+   {
+    "sym": "WTI",
+    "t": 170.732,
+    "phase": "errors500"
+   },
+   {
+    "sym": "BRENT",
+    "t": 170.743,
+    "phase": "errors500"
+   },
+   {
+    "sym": "WTI",
+    "t": 180.731,
+    "phase": "errors500"
+   },
+   {
+    "sym": "BRENT",
+    "t": 180.744,
+    "phase": "errors500"
+   }
+  ],
+  "summary": {
+   "ok:WTI": {
+    "durS": 30,
+    "count": 3,
+    "perMin": 6,
+    "gaps": [
+     10,
+     10
+    ]
+   },
+   "ok:BRENT": {
+    "durS": 30,
+    "count": 3,
+    "perMin": 6,
+    "gaps": [
+     10,
+     10
+    ]
+   },
+   "errors500:WTI": {
+    "durS": 150,
+    "count": 15,
+    "perMin": 6,
+    "gaps": [
+     10,
+     10,
+     10,
+     10,
+     10,
+     10,
+     10,
+     10,
+     10,
+     10,
+     10,
+     10,
+     10,
+     10
+    ]
+   },
+   "errors500:BRENT": {
+    "durS": 150,
+    "count": 15,
+    "perMin": 6,
+    "gaps": [
+     10,
+     10,
+     10,
+     10,
+     10,
+     10,
+     10,
+     10,
+     10,
+     10,
+     10,
+     10,
+     10,
+     10
+    ]
+   }
+  }
+ },
+ {
+  "name": "HEAD stubbed delayed(today-paused) then 500s",
+  "ssrPillStyle": [
+   "display:none;",
+   "display:none;"
+  ],
+  "pills": {},
+  "phases": [
+   {
+    "phase": "errors500",
+    "t": 3.599
+   },
+   {
+    "phase": "end",
+    "t": 183.6
+   }
+  ],
+  "reqs": [
+   {
+    "sym": "WTI",
+    "t": 0.398,
+    "phase": "load"
+   },
+   {
+    "sym": "BRENT",
+    "t": 0.399,
+    "phase": "load"
+   },
+   {
+    "sym": "WTI",
+    "t": 60.703,
+    "phase": "errors500"
+   },
+   {
+    "sym": "BRENT",
+    "t": 60.71,
+    "phase": "errors500"
+   },
+   {
+    "sym": "WTI",
+    "t": 120.72,
+    "phase": "errors500"
+   },
+   {
+    "sym": "BRENT",
+    "t": 120.723,
+    "phase": "errors500"
+   },
+   {
+    "sym": "WTI",
+    "t": 180.702,
+    "phase": "errors500"
+   },
+   {
+    "sym": "BRENT",
+    "t": 180.71,
+    "phase": "errors500"
+   }
+  ],
+  "summary": {
+   "errors500:WTI": {
+    "durS": 180,
+    "count": 3,
+    "perMin": 1,
+    "gaps": [
+     60,
+     60
+    ]
+   },
+   "errors500:BRENT": {
+    "durS": 180,
+    "count": 3,
+    "perMin": 1,
+    "gaps": [
+     60,
+     60
+    ]
+   }
+  }
+ },
+ {
+  "name": "HEAD resume race: live stub, 1.5s latency, rapid toggles",
+  "ssrPillStyle": [
+   "display:none;",
+   "display:none;"
+  ],
+  "pills": {},
+  "phases": [
+   {
+    "phase": "visible-before",
+    "t": 5.572
+   },
+   {
+    "phase": "visible-after-rapid-toggles",
+    "t": 65.889
+   },
+   {
+    "phase": "hidden-after-toggle",
+    "t": 126.2
+   },
+   {
+    "phase": "end",
+    "t": 186.204
+   }
+  ],
+  "reqs": [
+   {
+    "sym": "WTI",
+    "t": 0.395,
+    "phase": "load"
+   },
+   {
+    "sym": "BRENT",
+    "t": 0.395,
+    "phase": "load"
+   },
+   {
+    "sym": "WTI",
+    "t": 11.911,
+    "phase": "visible-before"
+   },
+   {
+    "sym": "BRENT",
+    "t": 11.923,
+    "phase": "visible-before"
+   },
+   {
+    "sym": "WTI",
+    "t": 21.91,
+    "phase": "visible-before"
+   },
+   {
+    "sym": "BRENT",
+    "t": 21.924,
+    "phase": "visible-before"
+   },
+   {
+    "sym": "WTI",
+    "t": 31.91,
+    "phase": "visible-before"
+   },
+   {
+    "sym": "BRENT",
+    "t": 31.924,
+    "phase": "visible-before"
+   },
+   {
+    "sym": "WTI",
+    "t": 41.911,
+    "phase": "visible-before"
+   },
+   {
+    "sym": "BRENT",
+    "t": 41.923,
+    "phase": "visible-before"
+   },
+   {
+    "sym": "WTI",
+    "t": 51.91,
+    "phase": "visible-before"
+   },
+   {
+    "sym": "BRENT",
+    "t": 51.924,
+    "phase": "visible-before"
+   },
+   {
+    "sym": "WTI",
+    "t": 61.911,
+    "phase": "visible-before"
+   },
+   {
+    "sym": "BRENT",
+    "t": 61.924,
+    "phase": "visible-before"
+   },
+   {
+    "sym": "WTI",
+    "t": 65.681,
+    "phase": "visible-before"
+   },
+   {
+    "sym": "BRENT",
+    "t": 65.681,
+    "phase": "visible-before"
+   },
+   {
+    "sym": "WTI",
+    "t": 65.889,
+    "phase": "visible-after-rapid-toggles"
+   },
+   {
+    "sym": "BRENT",
+    "t": 65.89,
+    "phase": "visible-after-rapid-toggles"
+   },
+   {
+    "sym": "WTI",
+    "t": 77.191,
+    "phase": "visible-after-rapid-toggles"
+   },
+   {
+    "sym": "BRENT",
+    "t": 77.191,
+    "phase": "visible-after-rapid-toggles"
+   },
+   {
+    "sym": "WTI",
+    "t": 77.399,
+    "phase": "visible-after-rapid-toggles"
+   },
+   {
+    "sym": "BRENT",
+    "t": 77.399,
+    "phase": "visible-after-rapid-toggles"
+   },
+   {
+    "sym": "WTI",
+    "t": 87.191,
+    "phase": "visible-after-rapid-toggles"
+   },
+   {
+    "sym": "BRENT",
+    "t": 87.191,
+    "phase": "visible-after-rapid-toggles"
+   },
+   {
+    "sym": "WTI",
+    "t": 87.398,
+    "phase": "visible-after-rapid-toggles"
+   },
+   {
+    "sym": "BRENT",
+    "t": 87.399,
+    "phase": "visible-after-rapid-toggles"
+   },
+   {
+    "sym": "WTI",
+    "t": 97.191,
+    "phase": "visible-after-rapid-toggles"
+   },
+   {
+    "sym": "BRENT",
+    "t": 97.191,
+    "phase": "visible-after-rapid-toggles"
+   },
+   {
+    "sym": "WTI",
+    "t": 97.399,
+    "phase": "visible-after-rapid-toggles"
+   },
+   {
+    "sym": "BRENT",
+    "t": 97.399,
+    "phase": "visible-after-rapid-toggles"
+   },
+   {
+    "sym": "WTI",
+    "t": 107.191,
+    "phase": "visible-after-rapid-toggles"
+   },
+   {
+    "sym": "BRENT",
+    "t": 107.191,
+    "phase": "visible-after-rapid-toggles"
+   },
+   {
+    "sym": "WTI",
+    "t": 107.399,
+    "phase": "visible-after-rapid-toggles"
+   },
+   {
+    "sym": "BRENT",
+    "t": 107.399,
+    "phase": "visible-after-rapid-toggles"
+   },
+   {
+    "sym": "WTI",
+    "t": 117.192,
+    "phase": "visible-after-rapid-toggles"
+   },
+   {
+    "sym": "BRENT",
+    "t": 117.192,
+    "phase": "visible-after-rapid-toggles"
+   },
+   {
+    "sym": "WTI",
+    "t": 117.399,
+    "phase": "visible-after-rapid-toggles"
+   },
+   {
+    "sym": "BRENT",
+    "t": 117.399,
+    "phase": "visible-after-rapid-toggles"
+   },
+   {
+    "sym": "WTI",
+    "t": 125.997,
+    "phase": "visible-after-rapid-toggles"
+   },
+   {
+    "sym": "BRENT",
+    "t": 125.998,
+    "phase": "visible-after-rapid-toggles"
+   },
+   {
+    "sym": "WTI",
+    "t": 127.191,
+    "phase": "hidden-after-toggle"
+   },
+   {
+    "sym": "BRENT",
+    "t": 127.191,
+    "phase": "hidden-after-toggle"
+   },
+   {
+    "sym": "WTI",
+    "t": 137.191,
+    "phase": "hidden-after-toggle"
+   },
+   {
+    "sym": "BRENT",
+    "t": 137.191,
+    "phase": "hidden-after-toggle"
+   },
+   {
+    "sym": "WTI",
+    "t": 137.508,
+    "phase": "hidden-after-toggle"
+   },
+   {
+    "sym": "BRENT",
+    "t": 137.508,
+    "phase": "hidden-after-toggle"
+   },
+   {
+    "sym": "WTI",
+    "t": 147.191,
+    "phase": "hidden-after-toggle"
+   },
+   {
+    "sym": "BRENT",
+    "t": 147.191,
+    "phase": "hidden-after-toggle"
+   },
+   {
+    "sym": "WTI",
+    "t": 147.509,
+    "phase": "hidden-after-toggle"
+   },
+   {
+    "sym": "BRENT",
+    "t": 147.509,
+    "phase": "hidden-after-toggle"
+   },
+   {
+    "sym": "WTI",
+    "t": 157.191,
+    "phase": "hidden-after-toggle"
+   },
+   {
+    "sym": "BRENT",
+    "t": 157.191,
+    "phase": "hidden-after-toggle"
+   },
+   {
+    "sym": "WTI",
+    "t": 157.509,
+    "phase": "hidden-after-toggle"
+   },
+   {
+    "sym": "BRENT",
+    "t": 157.509,
+    "phase": "hidden-after-toggle"
+   },
+   {
+    "sym": "WTI",
+    "t": 167.19,
+    "phase": "hidden-after-toggle"
+   },
+   {
+    "sym": "BRENT",
+    "t": 167.19,
+    "phase": "hidden-after-toggle"
+   },
+   {
+    "sym": "WTI",
+    "t": 167.509,
+    "phase": "hidden-after-toggle"
+   },
+   {
+    "sym": "BRENT",
+    "t": 167.509,
+    "phase": "hidden-after-toggle"
+   },
+   {
+    "sym": "WTI",
+    "t": 177.19,
+    "phase": "hidden-after-toggle"
+   },
+   {
+    "sym": "BRENT",
+    "t": 177.19,
+    "phase": "hidden-after-toggle"
+   },
+   {
+    "sym": "WTI",
+    "t": 177.509,
+    "phase": "hidden-after-toggle"
+   },
+   {
+    "sym": "BRENT",
+    "t": 177.509,
+    "phase": "hidden-after-toggle"
+   }
+  ],
+  "summary": {
+   "visible-before:WTI": {
+    "durS": 60.3,
+    "count": 7,
+    "perMin": 7,
+    "gaps": [
+     10,
+     10,
+     10,
+     10,
+     10,
+     3.8
+    ]
+   },
+   "visible-before:BRENT": {
+    "durS": 60.3,
+    "count": 7,
+    "perMin": 7,
+    "gaps": [
+     10,
+     10,
+     10,
+     10,
+     10,
+     3.8
+    ]
+   },
+   "visible-after-rapid-toggles:WTI": {
+    "durS": 60.3,
+    "count": 12,
+    "perMin": 11.9,
+    "gaps": [
+     11.3,
+     0.2,
+     9.8,
+     0.2,
+     9.8,
+     0.2,
+     9.8,
+     0.2,
+     9.8,
+     0.2,
+     8.6
+    ]
+   },
+   "visible-after-rapid-toggles:BRENT": {
+    "durS": 60.3,
+    "count": 12,
+    "perMin": 11.9,
+    "gaps": [
+     11.3,
+     0.2,
+     9.8,
+     0.2,
+     9.8,
+     0.2,
+     9.8,
+     0.2,
+     9.8,
+     0.2,
+     8.6
+    ]
+   },
+   "hidden-after-toggle:WTI": {
+    "durS": 60,
+    "count": 11,
+    "perMin": 11,
+    "gaps": [
+     10,
+     0.3,
+     9.7,
+     0.3,
+     9.7,
+     0.3,
+     9.7,
+     0.3,
+     9.7,
+     0.3
+    ]
+   },
+   "hidden-after-toggle:BRENT": {
+    "durS": 60,
+    "count": 11,
+    "perMin": 11,
+    "gaps": [
+     10,
+     0.3,
+     9.7,
+     0.3,
+     9.7,
+     0.3,
+     9.7,
+     0.3,
+     9.7,
+     0.3
+    ]
+   }
+  }
+ },
+ {
+  "name": "BASE real backend: visible/hidden",
+  "ssrPillStyle": [
+   "display:none;",
+   "display:none;"
+  ],
+  "pills": {
+   "afterLoad": [
+    {
+     "text": "DELAYED",
+     "visible": false
+    },
+    {
+     "text": "DELAYED",
+     "visible": false
+    }
+   ]
+  },
+  "phases": [
+   {
+    "phase": "visible",
+    "t": 3.61
+   },
+   {
+    "phase": "hidden",
+    "t": 93.615
+   },
+   {
+    "phase": "end",
+    "t": 183.616
+   }
+  ],
+  "reqs": [
+   {
+    "sym": "WTI",
+    "t": 0.435,
+    "phase": "load"
+   },
+   {
+    "sym": "BRENT",
+    "t": 0.435,
+    "phase": "load"
+   },
+   {
+    "sym": "WTI",
+    "t": 2.643,
+    "phase": "load"
+   },
+   {
+    "sym": "BRENT",
+    "t": 2.653,
+    "phase": "load"
+   },
+   {
+    "sym": "WTI",
+    "t": 4.643,
+    "phase": "visible"
+   },
+   {
+    "sym": "BRENT",
+    "t": 4.653,
+    "phase": "visible"
+   },
+   {
+    "sym": "WTI",
+    "t": 6.643,
+    "phase": "visible"
+   },
+   {
+    "sym": "BRENT",
+    "t": 6.653,
+    "phase": "visible"
+   },
+   {
+    "sym": "WTI",
+    "t": 8.643,
+    "phase": "visible"
+   },
+   {
+    "sym": "BRENT",
+    "t": 8.663,
+    "phase": "visible"
+   },
+   {
+    "sym": "WTI",
+    "t": 10.643,
+    "phase": "visible"
+   },
+   {
+    "sym": "BRENT",
+    "t": 10.653,
+    "phase": "visible"
+   },
+   {
+    "sym": "WTI",
+    "t": 12.643,
+    "phase": "visible"
+   },
+   {
+    "sym": "BRENT",
+    "t": 12.653,
+    "phase": "visible"
+   },
+   {
+    "sym": "WTI",
+    "t": 14.643,
+    "phase": "visible"
+   },
+   {
+    "sym": "BRENT",
+    "t": 14.653,
+    "phase": "visible"
+   },
+   {
+    "sym": "WTI",
+    "t": 16.642,
+    "phase": "visible"
+   },
+   {
+    "sym": "BRENT",
+    "t": 16.653,
+    "phase": "visible"
+   },
+   {
+    "sym": "WTI",
+    "t": 18.643,
+    "phase": "visible"
+   },
+   {
+    "sym": "BRENT",
+    "t": 18.653,
+    "phase": "visible"
+   },
+   {
+    "sym": "WTI",
+    "t": 20.643,
+    "phase": "visible"
+   },
+   {
+    "sym": "BRENT",
+    "t": 20.653,
+    "phase": "visible"
+   },
+   {
+    "sym": "WTI",
+    "t": 22.642,
+    "phase": "visible"
+   },
+   {
+    "sym": "BRENT",
+    "t": 22.653,
+    "phase": "visible"
+   },
+   {
+    "sym": "WTI",
+    "t": 24.643,
+    "phase": "visible"
+   },
+   {
+    "sym": "BRENT",
+    "t": 24.653,
+    "phase": "visible"
+   },
+   {
+    "sym": "WTI",
+    "t": 26.643,
+    "phase": "visible"
+   },
+   {
+    "sym": "BRENT",
+    "t": 26.653,
+    "phase": "visible"
+   },
+   {
+    "sym": "WTI",
+    "t": 28.642,
+    "phase": "visible"
+   },
+   {
+    "sym": "BRENT",
+    "t": 28.653,
+    "phase": "visible"
+   },
+   {
+    "sym": "WTI",
+    "t": 30.643,
+    "phase": "visible"
+   },
+   {
+    "sym": "BRENT",
+    "t": 30.654,
+    "phase": "visible"
+   },
+   {
+    "sym": "WTI",
+    "t": 32.643,
+    "phase": "visible"
+   },
+   {
+    "sym": "BRENT",
+    "t": 32.653,
+    "phase": "visible"
+   },
+   {
+    "sym": "WTI",
+    "t": 34.643,
+    "phase": "visible"
+   },
+   {
+    "sym": "BRENT",
+    "t": 34.653,
+    "phase": "visible"
+   },
+   {
+    "sym": "WTI",
+    "t": 36.643,
+    "phase": "visible"
+   },
+   {
+    "sym": "BRENT",
+    "t": 36.653,
+    "phase": "visible"
+   },
+   {
+    "sym": "WTI",
+    "t": 38.643,
+    "phase": "visible"
+   },
+   {
+    "sym": "BRENT",
+    "t": 38.653,
+    "phase": "visible"
+   },
+   {
+    "sym": "WTI",
+    "t": 40.643,
+    "phase": "visible"
+   },
+   {
+    "sym": "BRENT",
+    "t": 40.653,
+    "phase": "visible"
+   },
+   {
+    "sym": "WTI",
+    "t": 42.644,
+    "phase": "visible"
+   },
+   {
+    "sym": "BRENT",
+    "t": 42.653,
+    "phase": "visible"
+   },
+   {
+    "sym": "WTI",
+    "t": 44.643,
+    "phase": "visible"
+   },
+   {
+    "sym": "BRENT",
+    "t": 44.653,
+    "phase": "visible"
+   },
+   {
+    "sym": "WTI",
+    "t": 46.643,
+    "phase": "visible"
+   },
+   {
+    "sym": "BRENT",
+    "t": 46.654,
+    "phase": "visible"
+   },
+   {
+    "sym": "WTI",
+    "t": 48.643,
+    "phase": "visible"
+   },
+   {
+    "sym": "BRENT",
+    "t": 48.653,
+    "phase": "visible"
+   },
+   {
+    "sym": "WTI",
+    "t": 50.643,
+    "phase": "visible"
+   },
+   {
+    "sym": "BRENT",
+    "t": 50.654,
+    "phase": "visible"
+   },
+   {
+    "sym": "WTI",
+    "t": 52.643,
+    "phase": "visible"
+   },
+   {
+    "sym": "BRENT",
+    "t": 52.653,
+    "phase": "visible"
+   },
+   {
+    "sym": "WTI",
+    "t": 54.643,
+    "phase": "visible"
+   },
+   {
+    "sym": "BRENT",
+    "t": 54.653,
+    "phase": "visible"
+   },
+   {
+    "sym": "WTI",
+    "t": 56.643,
+    "phase": "visible"
+   },
+   {
+    "sym": "BRENT",
+    "t": 56.653,
+    "phase": "visible"
+   },
+   {
+    "sym": "WTI",
+    "t": 58.642,
+    "phase": "visible"
+   },
+   {
+    "sym": "BRENT",
+    "t": 58.653,
+    "phase": "visible"
+   },
+   {
+    "sym": "WTI",
+    "t": 60.642,
+    "phase": "visible"
+   },
+   {
+    "sym": "BRENT",
+    "t": 60.653,
+    "phase": "visible"
+   },
+   {
+    "sym": "WTI",
+    "t": 62.643,
+    "phase": "visible"
+   },
+   {
+    "sym": "BRENT",
+    "t": 62.653,
+    "phase": "visible"
+   },
+   {
+    "sym": "WTI",
+    "t": 64.643,
+    "phase": "visible"
+   },
+   {
+    "sym": "BRENT",
+    "t": 64.653,
+    "phase": "visible"
+   },
+   {
+    "sym": "WTI",
+    "t": 66.643,
+    "phase": "visible"
+   },
+   {
+    "sym": "BRENT",
+    "t": 66.653,
+    "phase": "visible"
+   },
+   {
+    "sym": "WTI",
+    "t": 68.643,
+    "phase": "visible"
+   },
+   {
+    "sym": "BRENT",
+    "t": 68.653,
+    "phase": "visible"
+   },
+   {
+    "sym": "WTI",
+    "t": 70.644,
+    "phase": "visible"
+   },
+   {
+    "sym": "BRENT",
+    "t": 70.653,
+    "phase": "visible"
+   },
+   {
+    "sym": "WTI",
+    "t": 72.643,
+    "phase": "visible"
+   },
+   {
+    "sym": "BRENT",
+    "t": 72.653,
+    "phase": "visible"
+   },
+   {
+    "sym": "WTI",
+    "t": 74.642,
+    "phase": "visible"
+   },
+   {
+    "sym": "BRENT",
+    "t": 74.653,
+    "phase": "visible"
+   },
+   {
+    "sym": "WTI",
+    "t": 76.643,
+    "phase": "visible"
+   },
+   {
+    "sym": "BRENT",
+    "t": 76.653,
+    "phase": "visible"
+   },
+   {
+    "sym": "WTI",
+    "t": 78.642,
+    "phase": "visible"
+   },
+   {
+    "sym": "BRENT",
+    "t": 78.653,
+    "phase": "visible"
+   },
+   {
+    "sym": "WTI",
+    "t": 80.644,
+    "phase": "visible"
+   },
+   {
+    "sym": "BRENT",
+    "t": 80.653,
+    "phase": "visible"
+   },
+   {
+    "sym": "WTI",
+    "t": 82.643,
+    "phase": "visible"
+   },
+   {
+    "sym": "BRENT",
+    "t": 82.653,
+    "phase": "visible"
+   },
+   {
+    "sym": "WTI",
+    "t": 84.642,
+    "phase": "visible"
+   },
+   {
+    "sym": "BRENT",
+    "t": 84.653,
+    "phase": "visible"
+   },
+   {
+    "sym": "WTI",
+    "t": 86.642,
+    "phase": "visible"
+   },
+   {
+    "sym": "BRENT",
+    "t": 86.653,
+    "phase": "visible"
+   },
+   {
+    "sym": "WTI",
+    "t": 88.643,
+    "phase": "visible"
+   },
+   {
+    "sym": "BRENT",
+    "t": 88.653,
+    "phase": "visible"
+   },
+   {
+    "sym": "WTI",
+    "t": 90.642,
+    "phase": "visible"
+   },
+   {
+    "sym": "BRENT",
+    "t": 90.653,
+    "phase": "visible"
+   },
+   {
+    "sym": "WTI",
+    "t": 92.642,
+    "phase": "visible"
+   },
+   {
+    "sym": "BRENT",
+    "t": 92.653,
+    "phase": "visible"
+   },
+   {
+    "sym": "WTI",
+    "t": 94.642,
+    "phase": "hidden"
+   },
+   {
+    "sym": "BRENT",
+    "t": 94.653,
+    "phase": "hidden"
+   },
+   {
+    "sym": "WTI",
+    "t": 96.642,
+    "phase": "hidden"
+   },
+   {
+    "sym": "BRENT",
+    "t": 96.653,
+    "phase": "hidden"
+   },
+   {
+    "sym": "WTI",
+    "t": 98.642,
+    "phase": "hidden"
+   },
+   {
+    "sym": "BRENT",
+    "t": 98.653,
+    "phase": "hidden"
+   },
+   {
+    "sym": "WTI",
+    "t": 100.642,
+    "phase": "hidden"
+   },
+   {
+    "sym": "BRENT",
+    "t": 100.653,
+    "phase": "hidden"
+   },
+   {
+    "sym": "WTI",
+    "t": 102.643,
+    "phase": "hidden"
+   },
+   {
+    "sym": "BRENT",
+    "t": 102.653,
+    "phase": "hidden"
+   },
+   {
+    "sym": "WTI",
+    "t": 104.642,
+    "phase": "hidden"
+   },
+   {
+    "sym": "BRENT",
+    "t": 104.653,
+    "phase": "hidden"
+   },
+   {
+    "sym": "WTI",
+    "t": 106.643,
+    "phase": "hidden"
+   },
+   {
+    "sym": "BRENT",
+    "t": 106.653,
+    "phase": "hidden"
+   },
+   {
+    "sym": "WTI",
+    "t": 108.643,
+    "phase": "hidden"
+   },
+   {
+    "sym": "BRENT",
+    "t": 108.653,
+    "phase": "hidden"
+   },
+   {
+    "sym": "WTI",
+    "t": 110.643,
+    "phase": "hidden"
+   },
+   {
+    "sym": "BRENT",
+    "t": 110.653,
+    "phase": "hidden"
+   },
+   {
+    "sym": "WTI",
+    "t": 112.642,
+    "phase": "hidden"
+   },
+   {
+    "sym": "BRENT",
+    "t": 112.653,
+    "phase": "hidden"
+   },
+   {
+    "sym": "WTI",
+    "t": 114.642,
+    "phase": "hidden"
+   },
+   {
+    "sym": "BRENT",
+    "t": 114.653,
+    "phase": "hidden"
+   },
+   {
+    "sym": "WTI",
+    "t": 116.642,
+    "phase": "hidden"
+   },
+   {
+    "sym": "BRENT",
+    "t": 116.653,
+    "phase": "hidden"
+   },
+   {
+    "sym": "WTI",
+    "t": 118.642,
+    "phase": "hidden"
+   },
+   {
+    "sym": "BRENT",
+    "t": 118.654,
+    "phase": "hidden"
+   },
+   {
+    "sym": "WTI",
+    "t": 120.642,
+    "phase": "hidden"
+   },
+   {
+    "sym": "BRENT",
+    "t": 120.653,
+    "phase": "hidden"
+   },
+   {
+    "sym": "WTI",
+    "t": 122.642,
+    "phase": "hidden"
+   },
+   {
+    "sym": "BRENT",
+    "t": 122.653,
+    "phase": "hidden"
+   },
+   {
+    "sym": "WTI",
+    "t": 124.642,
+    "phase": "hidden"
+   },
+   {
+    "sym": "BRENT",
+    "t": 124.653,
+    "phase": "hidden"
+   },
+   {
+    "sym": "WTI",
+    "t": 126.657,
+    "phase": "hidden"
+   },
+   {
+    "sym": "BRENT",
+    "t": 126.658,
+    "phase": "hidden"
+   },
+   {
+    "sym": "WTI",
+    "t": 128.642,
+    "phase": "hidden"
+   },
+   {
+    "sym": "BRENT",
+    "t": 128.653,
+    "phase": "hidden"
+   },
+   {
+    "sym": "WTI",
+    "t": 130.642,
+    "phase": "hidden"
+   },
+   {
+    "sym": "BRENT",
+    "t": 130.653,
+    "phase": "hidden"
+   },
+   {
+    "sym": "WTI",
+    "t": 132.642,
+    "phase": "hidden"
+   },
+   {
+    "sym": "BRENT",
+    "t": 132.653,
+    "phase": "hidden"
+   },
+   {
+    "sym": "WTI",
+    "t": 134.642,
+    "phase": "hidden"
+   },
+   {
+    "sym": "BRENT",
+    "t": 134.653,
+    "phase": "hidden"
+   },
+   {
+    "sym": "WTI",
+    "t": 136.642,
+    "phase": "hidden"
+   },
+   {
+    "sym": "BRENT",
+    "t": 136.653,
+    "phase": "hidden"
+   },
+   {
+    "sym": "WTI",
+    "t": 138.642,
+    "phase": "hidden"
+   },
+   {
+    "sym": "BRENT",
+    "t": 138.653,
+    "phase": "hidden"
+   },
+   {
+    "sym": "WTI",
+    "t": 140.643,
+    "phase": "hidden"
+   },
+   {
+    "sym": "BRENT",
+    "t": 140.653,
+    "phase": "hidden"
+   },
+   {
+    "sym": "WTI",
+    "t": 142.642,
+    "phase": "hidden"
+   },
+   {
+    "sym": "BRENT",
+    "t": 142.653,
+    "phase": "hidden"
+   },
+   {
+    "sym": "WTI",
+    "t": 144.642,
+    "phase": "hidden"
+   },
+   {
+    "sym": "BRENT",
+    "t": 144.653,
+    "phase": "hidden"
+   },
+   {
+    "sym": "WTI",
+    "t": 146.642,
+    "phase": "hidden"
+   },
+   {
+    "sym": "BRENT",
+    "t": 146.653,
+    "phase": "hidden"
+   },
+   {
+    "sym": "WTI",
+    "t": 148.642,
+    "phase": "hidden"
+   },
+   {
+    "sym": "BRENT",
+    "t": 148.653,
+    "phase": "hidden"
+   },
+   {
+    "sym": "WTI",
+    "t": 150.642,
+    "phase": "hidden"
+   },
+   {
+    "sym": "BRENT",
+    "t": 150.653,
+    "phase": "hidden"
+   },
+   {
+    "sym": "WTI",
+    "t": 152.642,
+    "phase": "hidden"
+   },
+   {
+    "sym": "BRENT",
+    "t": 152.653,
+    "phase": "hidden"
+   },
+   {
+    "sym": "WTI",
+    "t": 154.642,
+    "phase": "hidden"
+   },
+   {
+    "sym": "BRENT",
+    "t": 154.653,
+    "phase": "hidden"
+   },
+   {
+    "sym": "WTI",
+    "t": 156.642,
+    "phase": "hidden"
+   },
+   {
+    "sym": "BRENT",
+    "t": 156.653,
+    "phase": "hidden"
+   },
+   {
+    "sym": "WTI",
+    "t": 158.643,
+    "phase": "hidden"
+   },
+   {
+    "sym": "BRENT",
+    "t": 158.653,
+    "phase": "hidden"
+   },
+   {
+    "sym": "WTI",
+    "t": 160.642,
+    "phase": "hidden"
+   },
+   {
+    "sym": "BRENT",
+    "t": 160.653,
+    "phase": "hidden"
+   },
+   {
+    "sym": "WTI",
+    "t": 162.644,
+    "phase": "hidden"
+   },
+   {
+    "sym": "BRENT",
+    "t": 162.653,
+    "phase": "hidden"
+   },
+   {
+    "sym": "WTI",
+    "t": 164.643,
+    "phase": "hidden"
+   },
+   {
+    "sym": "BRENT",
+    "t": 164.653,
+    "phase": "hidden"
+   },
+   {
+    "sym": "WTI",
+    "t": 166.642,
+    "phase": "hidden"
+   },
+   {
+    "sym": "BRENT",
+    "t": 166.653,
+    "phase": "hidden"
+   },
+   {
+    "sym": "WTI",
+    "t": 168.643,
+    "phase": "hidden"
+   },
+   {
+    "sym": "BRENT",
+    "t": 168.653,
+    "phase": "hidden"
+   },
+   {
+    "sym": "WTI",
+    "t": 170.643,
+    "phase": "hidden"
+   },
+   {
+    "sym": "BRENT",
+    "t": 170.653,
+    "phase": "hidden"
+   },
+   {
+    "sym": "WTI",
+    "t": 172.643,
+    "phase": "hidden"
+   },
+   {
+    "sym": "BRENT",
+    "t": 172.653,
+    "phase": "hidden"
+   },
+   {
+    "sym": "WTI",
+    "t": 174.642,
+    "phase": "hidden"
+   },
+   {
+    "sym": "BRENT",
+    "t": 174.653,
+    "phase": "hidden"
+   },
+   {
+    "sym": "WTI",
+    "t": 176.643,
+    "phase": "hidden"
+   },
+   {
+    "sym": "BRENT",
+    "t": 176.653,
+    "phase": "hidden"
+   },
+   {
+    "sym": "WTI",
+    "t": 178.642,
+    "phase": "hidden"
+   },
+   {
+    "sym": "BRENT",
+    "t": 178.653,
+    "phase": "hidden"
+   },
+   {
+    "sym": "WTI",
+    "t": 180.643,
+    "phase": "hidden"
+   },
+   {
+    "sym": "BRENT",
+    "t": 180.653,
+    "phase": "hidden"
+   },
+   {
+    "sym": "WTI",
+    "t": 182.643,
+    "phase": "hidden"
+   },
+   {
+    "sym": "BRENT",
+    "t": 182.653,
+    "phase": "hidden"
+   }
+  ],
+  "summary": {
+   "visible:WTI": {
+    "durS": 90,
+    "count": 45,
+    "perMin": 30,
+    "gaps": [
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2
+    ]
+   },
+   "visible:BRENT": {
+    "durS": 90,
+    "count": 45,
+    "perMin": 30,
+    "gaps": [
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2
+    ]
+   },
+   "hidden:WTI": {
+    "durS": 90,
+    "count": 45,
+    "perMin": 30,
+    "gaps": [
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2
+    ]
+   },
+   "hidden:BRENT": {
+    "durS": 90,
+    "count": 45,
+    "perMin": 30,
+    "gaps": [
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2
+    ]
+   }
+  }
+ },
+ {
+  "name": "BASE stubbed live then 500s",
+  "ssrPillStyle": [
+   "display:none;",
+   "display:none;"
+  ],
+  "pills": {
+   "afterLoad": [
+    {
+     "text": "LIVE",
+     "visible": false
+    },
+    {
+     "text": "LIVE",
+     "visible": false
+    }
+   ]
+  },
+  "phases": [
+   {
+    "phase": "ok",
+    "t": 3.639
+   },
+   {
+    "phase": "errors500",
+    "t": 33.639
+   },
+   {
+    "phase": "end",
+    "t": 93.639
+   }
+  ],
+  "reqs": [
+   {
+    "sym": "WTI",
+    "t": 0.421,
+    "phase": "load"
+   },
+   {
+    "sym": "BRENT",
+    "t": 0.422,
+    "phase": "load"
+   },
+   {
+    "sym": "WTI",
+    "t": 2.736,
+    "phase": "load"
+   },
+   {
+    "sym": "BRENT",
+    "t": 2.75,
+    "phase": "load"
+   },
+   {
+    "sym": "WTI",
+    "t": 4.736,
+    "phase": "ok"
+   },
+   {
+    "sym": "BRENT",
+    "t": 4.751,
+    "phase": "ok"
+   },
+   {
+    "sym": "WTI",
+    "t": 6.736,
+    "phase": "ok"
+   },
+   {
+    "sym": "BRENT",
+    "t": 6.751,
+    "phase": "ok"
+   },
+   {
+    "sym": "WTI",
+    "t": 8.736,
+    "phase": "ok"
+   },
+   {
+    "sym": "BRENT",
+    "t": 8.751,
+    "phase": "ok"
+   },
+   {
+    "sym": "WTI",
+    "t": 10.735,
+    "phase": "ok"
+   },
+   {
+    "sym": "BRENT",
+    "t": 10.751,
+    "phase": "ok"
+   },
+   {
+    "sym": "WTI",
+    "t": 12.736,
+    "phase": "ok"
+   },
+   {
+    "sym": "BRENT",
+    "t": 12.75,
+    "phase": "ok"
+   },
+   {
+    "sym": "WTI",
+    "t": 14.736,
+    "phase": "ok"
+   },
+   {
+    "sym": "BRENT",
+    "t": 14.75,
+    "phase": "ok"
+   },
+   {
+    "sym": "WTI",
+    "t": 16.736,
+    "phase": "ok"
+   },
+   {
+    "sym": "BRENT",
+    "t": 16.75,
+    "phase": "ok"
+   },
+   {
+    "sym": "WTI",
+    "t": 18.736,
+    "phase": "ok"
+   },
+   {
+    "sym": "BRENT",
+    "t": 18.752,
+    "phase": "ok"
+   },
+   {
+    "sym": "WTI",
+    "t": 20.735,
+    "phase": "ok"
+   },
+   {
+    "sym": "BRENT",
+    "t": 20.75,
+    "phase": "ok"
+   },
+   {
+    "sym": "WTI",
+    "t": 22.737,
+    "phase": "ok"
+   },
+   {
+    "sym": "BRENT",
+    "t": 22.751,
+    "phase": "ok"
+   },
+   {
+    "sym": "WTI",
+    "t": 24.736,
+    "phase": "ok"
+   },
+   {
+    "sym": "BRENT",
+    "t": 24.75,
+    "phase": "ok"
+   },
+   {
+    "sym": "WTI",
+    "t": 26.736,
+    "phase": "ok"
+   },
+   {
+    "sym": "BRENT",
+    "t": 26.75,
+    "phase": "ok"
+   },
+   {
+    "sym": "WTI",
+    "t": 28.736,
+    "phase": "ok"
+   },
+   {
+    "sym": "BRENT",
+    "t": 28.75,
+    "phase": "ok"
+   },
+   {
+    "sym": "WTI",
+    "t": 30.735,
+    "phase": "ok"
+   },
+   {
+    "sym": "BRENT",
+    "t": 30.75,
+    "phase": "ok"
+   },
+   {
+    "sym": "WTI",
+    "t": 32.736,
+    "phase": "ok"
+   },
+   {
+    "sym": "BRENT",
+    "t": 32.75,
+    "phase": "ok"
+   },
+   {
+    "sym": "WTI",
+    "t": 34.736,
+    "phase": "errors500"
+   },
+   {
+    "sym": "BRENT",
+    "t": 34.747,
+    "phase": "errors500"
+   },
+   {
+    "sym": "WTI",
+    "t": 36.736,
+    "phase": "errors500"
+   },
+   {
+    "sym": "BRENT",
+    "t": 36.747,
+    "phase": "errors500"
+   },
+   {
+    "sym": "WTI",
+    "t": 38.737,
+    "phase": "errors500"
+   },
+   {
+    "sym": "BRENT",
+    "t": 38.747,
+    "phase": "errors500"
+   },
+   {
+    "sym": "WTI",
+    "t": 40.735,
+    "phase": "errors500"
+   },
+   {
+    "sym": "BRENT",
+    "t": 40.747,
+    "phase": "errors500"
+   },
+   {
+    "sym": "WTI",
+    "t": 42.736,
+    "phase": "errors500"
+   },
+   {
+    "sym": "BRENT",
+    "t": 42.747,
+    "phase": "errors500"
+   },
+   {
+    "sym": "WTI",
+    "t": 44.736,
+    "phase": "errors500"
+   },
+   {
+    "sym": "BRENT",
+    "t": 44.747,
+    "phase": "errors500"
+   },
+   {
+    "sym": "WTI",
+    "t": 46.736,
+    "phase": "errors500"
+   },
+   {
+    "sym": "BRENT",
+    "t": 46.747,
+    "phase": "errors500"
+   },
+   {
+    "sym": "WTI",
+    "t": 48.737,
+    "phase": "errors500"
+   },
+   {
+    "sym": "BRENT",
+    "t": 48.747,
+    "phase": "errors500"
+   },
+   {
+    "sym": "WTI",
+    "t": 50.735,
+    "phase": "errors500"
+   },
+   {
+    "sym": "BRENT",
+    "t": 50.747,
+    "phase": "errors500"
+   },
+   {
+    "sym": "WTI",
+    "t": 52.737,
+    "phase": "errors500"
+   },
+   {
+    "sym": "BRENT",
+    "t": 52.75,
+    "phase": "errors500"
+   },
+   {
+    "sym": "WTI",
+    "t": 54.754,
+    "phase": "errors500"
+   },
+   {
+    "sym": "BRENT",
+    "t": 54.756,
+    "phase": "errors500"
+   },
+   {
+    "sym": "WTI",
+    "t": 56.736,
+    "phase": "errors500"
+   },
+   {
+    "sym": "BRENT",
+    "t": 56.747,
+    "phase": "errors500"
+   },
+   {
+    "sym": "WTI",
+    "t": 58.736,
+    "phase": "errors500"
+   },
+   {
+    "sym": "BRENT",
+    "t": 58.747,
+    "phase": "errors500"
+   },
+   {
+    "sym": "WTI",
+    "t": 60.735,
+    "phase": "errors500"
+   },
+   {
+    "sym": "BRENT",
+    "t": 60.747,
+    "phase": "errors500"
+   },
+   {
+    "sym": "WTI",
+    "t": 62.737,
+    "phase": "errors500"
+   },
+   {
+    "sym": "BRENT",
+    "t": 62.747,
+    "phase": "errors500"
+   },
+   {
+    "sym": "WTI",
+    "t": 64.737,
+    "phase": "errors500"
+   },
+   {
+    "sym": "BRENT",
+    "t": 64.747,
+    "phase": "errors500"
+   },
+   {
+    "sym": "WTI",
+    "t": 66.736,
+    "phase": "errors500"
+   },
+   {
+    "sym": "BRENT",
+    "t": 66.747,
+    "phase": "errors500"
+   },
+   {
+    "sym": "WTI",
+    "t": 68.737,
+    "phase": "errors500"
+   },
+   {
+    "sym": "BRENT",
+    "t": 68.747,
+    "phase": "errors500"
+   },
+   {
+    "sym": "WTI",
+    "t": 70.735,
+    "phase": "errors500"
+   },
+   {
+    "sym": "BRENT",
+    "t": 70.747,
+    "phase": "errors500"
+   },
+   {
+    "sym": "WTI",
+    "t": 72.736,
+    "phase": "errors500"
+   },
+   {
+    "sym": "BRENT",
+    "t": 72.747,
+    "phase": "errors500"
+   },
+   {
+    "sym": "WTI",
+    "t": 74.736,
+    "phase": "errors500"
+   },
+   {
+    "sym": "BRENT",
+    "t": 74.747,
+    "phase": "errors500"
+   },
+   {
+    "sym": "WTI",
+    "t": 76.737,
+    "phase": "errors500"
+   },
+   {
+    "sym": "BRENT",
+    "t": 76.747,
+    "phase": "errors500"
+   },
+   {
+    "sym": "WTI",
+    "t": 78.736,
+    "phase": "errors500"
+   },
+   {
+    "sym": "BRENT",
+    "t": 78.747,
+    "phase": "errors500"
+   },
+   {
+    "sym": "WTI",
+    "t": 80.735,
+    "phase": "errors500"
+   },
+   {
+    "sym": "BRENT",
+    "t": 80.747,
+    "phase": "errors500"
+   },
+   {
+    "sym": "WTI",
+    "t": 82.736,
+    "phase": "errors500"
+   },
+   {
+    "sym": "BRENT",
+    "t": 82.748,
+    "phase": "errors500"
+   },
+   {
+    "sym": "WTI",
+    "t": 84.736,
+    "phase": "errors500"
+   },
+   {
+    "sym": "BRENT",
+    "t": 84.747,
+    "phase": "errors500"
+   },
+   {
+    "sym": "WTI",
+    "t": 86.737,
+    "phase": "errors500"
+   },
+   {
+    "sym": "BRENT",
+    "t": 86.747,
+    "phase": "errors500"
+   },
+   {
+    "sym": "WTI",
+    "t": 88.736,
+    "phase": "errors500"
+   },
+   {
+    "sym": "BRENT",
+    "t": 88.747,
+    "phase": "errors500"
+   },
+   {
+    "sym": "WTI",
+    "t": 90.735,
+    "phase": "errors500"
+   },
+   {
+    "sym": "BRENT",
+    "t": 90.747,
+    "phase": "errors500"
+   },
+   {
+    "sym": "WTI",
+    "t": 92.736,
+    "phase": "errors500"
+   },
+   {
+    "sym": "BRENT",
+    "t": 92.747,
+    "phase": "errors500"
+   }
+  ],
+  "summary": {
+   "ok:WTI": {
+    "durS": 30,
+    "count": 15,
+    "perMin": 30,
+    "gaps": [
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2
+    ]
+   },
+   "ok:BRENT": {
+    "durS": 30,
+    "count": 15,
+    "perMin": 30,
+    "gaps": [
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2
+    ]
+   },
+   "errors500:WTI": {
+    "durS": 60,
+    "count": 30,
+    "perMin": 30,
+    "gaps": [
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2
+    ]
+   },
+   "errors500:BRENT": {
+    "durS": 60,
+    "count": 30,
+    "perMin": 30,
+    "gaps": [
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2
+    ]
+   }
+  }
+ }
+]
