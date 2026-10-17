@@ -311,10 +311,25 @@ Paste this first to back up and review the diff (wrapped in subshell for paste s
 ```bash
 # On the EC2 host - Step A: backup and review
 (
+set -e
+umask 077
+
+MARKER="$HOME/.nginx-backup-path"
+trap 'rm -f "$MARKER"' EXIT
+
 BACKUP="/root/liveoilprices.conf.bak-$(date +%Y%m%d-%H%M%S)"
-sudo cp -a /etc/nginx/conf.d/liveoilprices.conf "$BACKUP"
+if ! sudo cp -a /etc/nginx/conf.d/liveoilprices.conf "$BACKUP"; then
+    echo "ERROR: Failed to create backup" >&2
+    exit 1
+fi
+
+if ! echo "$BACKUP" > "$MARKER"; then
+    echo "ERROR: Failed to write marker file" >&2
+    sudo rm -f "$BACKUP"
+    exit 1
+fi
+
 echo "Backup saved to $BACKUP"
-echo "$BACKUP" > /tmp/.nginx-backup-path
 
 # Copy candidate: scp scripts/nginx-prod.conf to /tmp/liveoilprices.conf first
 
@@ -336,16 +351,35 @@ After reviewing the diff, paste this to install (runs in a guarded subshell):
 (
 set -euo pipefail
 
+MARKER="$HOME/.nginx-backup-path"
+trap 'rm -f "$MARKER"' EXIT
+
 # Restore the backup path from Step A
-if [ ! -f /tmp/.nginx-backup-path ]; then
+if [ ! -f "$MARKER" ]; then
     echo "ERROR: No backup path found. Run Step A first." >&2
     exit 1
 fi
-BACKUP=$(cat /tmp/.nginx-backup-path)
-if [ ! -f "$BACKUP" ]; then
+
+BACKUP=$(cat "$MARKER")
+
+# Verify backup exists (use sudo test for root-owned files)
+if ! sudo test -f "$BACKUP"; then
     echo "ERROR: Backup file $BACKUP not found" >&2
     exit 1
 fi
+
+# Check backup age (must be < 30 minutes)
+BACKUP_AGE=$(($(date +%s) - $(stat -c %Y "$MARKER")))
+if [ "$BACKUP_AGE" -gt 1800 ]; then
+    echo "WARNING: Backup marker is $((BACKUP_AGE / 60)) minutes old"
+    echo "Backup path: $BACKUP"
+    read -p "Continue anyway? (y/N) " confirm
+    if [ "$confirm" != "y" ]; then
+        echo "Aborted" >&2
+        exit 1
+    fi
+fi
+
 echo "Using backup: $BACKUP"
 
 # Install the candidate config
@@ -362,9 +396,6 @@ fi
 # Reload nginx
 sudo systemctl reload nginx
 echo "nginx reloaded successfully"
-
-# Clean up backup path marker
-rm -f /tmp/.nginx-backup-path
 )
 ```
 
