@@ -10,6 +10,7 @@ export interface Price {
   updatedAt: string;
   contract?: string;
   source?: string;
+  available: boolean;
 }
 
 export interface OHLCV {

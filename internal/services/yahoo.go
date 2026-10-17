@@ -270,6 +270,7 @@ func (s *YahooFinanceService) fetchQuote(sym yahooSymbol) (models.Price, error) 
 		UpdatedAt: time.Unix(meta.RegularMarketTime, 0).UTC().Format(time.RFC3339),
 		Contract:  contract,
 		Source:    "yahoo",
+		Available: true,
 	}, nil
 }
 
@@ -434,27 +435,70 @@ func (s *YahooFinanceService) fetchHistory(sym yahooSymbol) ([]models.OHLCV, err
 	return bars, nil
 }
 
-// GetDailyHistory returns up to `days` of the most recent cached daily
-// OHLCV bars for `symbol`, oldest-first. Returns nil if nothing is cached
-// yet for that symbol (e.g. cold start, or a non-Yahoo symbol). The
-// `days` cap is taken in *bar* count, not calendar days, so weekends and
-// holidays are naturally excluded from the count.
+// GetDailyHistory returns daily OHLCV bars for the given symbol, sliced by 
+// calendar date rather than bar count. This ensures days=90 returns ~90 
+// calendar days back (excluding weekends/holidays), not 90 trading days.
 func (s *YahooFinanceService) GetDailyHistory(symbol string, days int) []models.OHLCV {
+	return s.GetDailyHistoryByDate(symbol, days)
+}
+
+func (s *YahooFinanceService) GetDailyHistoryByDate(symbol string, days int) []models.OHLCV {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	src, ok := s.historyOHLC[symbol]
 	if !ok || len(src) == 0 {
 		return nil
 	}
-	if days <= 0 || days >= len(src) {
+	if days <= 0 {
 		out := make([]models.OHLCV, len(src))
 		copy(out, src)
 		return out
 	}
-	out := make([]models.OHLCV, days)
-	copy(out, src[len(src)-days:])
+	
+	// Cut by calendar date, not bar count
+	cutoff := time.Now().UTC().Add(-time.Duration(days) * 24 * time.Hour).Unix()
+	var startIdx int
+	for i, bar := range src {
+		if bar.Time >= cutoff {
+			startIdx = i
+			break
+		}
+	}
+	
+	if startIdx >= len(src) {
+		return nil
+	}
+	
+	out := make([]models.OHLCV, len(src)-startIdx)
+	copy(out, src[startIdx:])
 	return out
 }
+
+// FetchIntradayRange fetches Yahoo intraday bars for the specified symbol,
+// interval, and range on-demand (not from cache). Used by GetChartData to
+// fetch the full requested range (e.g. 5d/15m, 1mo/60m).
+func (s *YahooFinanceService) FetchIntradayRange(symbol, interval, rangeParam string) []models.OHLCV {
+	sym, ok := s.lookupSymbol(symbol)
+	if !ok {
+		return nil
+	}
+	bars, err := s.fetchIntraday(sym, interval, rangeParam)
+	if err != nil {
+		log.Printf("yahoo: intraday range fetch failed for %s (%s %s): %v", symbol, interval, rangeParam, err)
+		return nil
+	}
+	return bars
+}
+
+func (s *YahooFinanceService) lookupSymbol(internal string) (yahooSymbol, bool) {
+	for _, sym := range yahooSymbols {
+		if sym.internal == internal {
+			return sym, true
+		}
+	}
+	return yahooSymbol{}, false
+}
+
 
 // intradayHotSymbols are the symbols we proactively keep an intraday series
 // cached for. WTI is the only one used by the homepage hero, but we cache

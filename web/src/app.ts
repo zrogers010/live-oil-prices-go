@@ -215,6 +215,12 @@ class HeroChartController {
   // price/change text.
   applyPriceRecord(p: Price): void {
     if (!this.priceEl) return;
+    
+    // Don't render unavailable prices - keep SSR dashes
+    if (!p.available) {
+      return;
+    }
+    
     // Stash the latest Price so syncFromChart() can derive previous-close
     // (= p.price - p.change) without an extra fetch.
     this.latestPrice = p;
@@ -330,6 +336,8 @@ class HeroChartController {
     if (!payload.bars || payload.bars.length === 0) {
       this.setEmpty(true);
       this.setLiveState('warming');
+      // When warming-up with no bars, show "Live feed unavailable"
+      // instead of "connecting to the live feed..." tagline
       setHeroTagline(payload);
       if (this.mode !== 'warming-up') {
         this.mode = 'warming-up';
@@ -641,7 +649,7 @@ function setHeroTagline(payload: HeroChart): void {
   if (!accent) return;
   switch (payload.mode) {
     case 'live':
-      accent.textContent = 'Streaming Real-time';
+      accent.textContent = 'Streaming Live';
       accent.className = 'hero-tagline-accent hero-tagline-accent-live';
       break;
     case 'today-paused':
@@ -659,8 +667,14 @@ function setHeroTagline(payload: HeroChart): void {
       accent.className = 'hero-tagline-accent hero-tagline-accent-paused';
       break;
     default:
-      accent.textContent = 'connecting to the live feed…';
-      accent.className = 'hero-tagline-accent hero-tagline-accent-warming';
+      // When warming-up with no bars (offline), show "Live feed unavailable"
+      if (!payload.bars || payload.bars.length === 0) {
+        accent.textContent = 'Live feed unavailable';
+        accent.className = 'hero-tagline-accent hero-tagline-accent-paused';
+      } else {
+        accent.textContent = 'connecting to the live feed…';
+        accent.className = 'hero-tagline-accent hero-tagline-accent-warming';
+      }
   }
 }
 
@@ -681,7 +695,10 @@ function renderTicker(prices: Price[]): void {
   const track = document.getElementById('tickerTrack');
   if (!track) return;
 
-  const html = prices.map(p => {
+  // Filter out unavailable prices
+  const filtered = prices.filter(p => p.available);
+
+  const html = filtered.map(p => {
     const positive = p.change >= 0;
     const sign = positive ? '+' : '';
     return `
@@ -705,7 +722,8 @@ function renderPriceCards(prices: Price[]): void {
   const grid = document.getElementById('priceGrid');
   if (!grid) return;
 
-  const filtered = prices.filter(p => CARD_SYMBOLS.includes(p.symbol));
+  // Filter out unavailable prices
+  const filtered = prices.filter(p => CARD_SYMBOLS.includes(p.symbol) && p.available);
   grid.innerHTML = filtered.map(p => {
     const positive = p.change >= 0;
     const sign = positive ? '+' : '';
@@ -753,6 +771,9 @@ function renderPriceCards(prices: Price[]): void {
 
 function updatePriceValues(prices: Price[]): void {
   prices.forEach(p => {
+    // Skip unavailable prices
+    if (!p.available) return;
+    
     const card = document.querySelector(`.price-card[data-symbol="${p.symbol}"]`) as HTMLElement;
     if (!card) return;
 
@@ -812,7 +833,10 @@ function renderMarketTable(prices: Price[]): void {
   const tbody = document.getElementById('marketTableBody');
   if (!tbody) return;
 
-  tbody.innerHTML = prices.map(p => {
+  // Filter out unavailable prices
+  const filtered = prices.filter(p => p.available);
+
+  tbody.innerHTML = filtered.map(p => {
     const positive = p.change >= 0;
     const sign = positive ? '+' : '';
     const cls = positive ? 'positive' : 'negative';
@@ -1141,7 +1165,6 @@ function renderBacktestBlock(p: Prediction): string {
   return `
     <div class="backtest-credibility" aria-label="Backtest credibility">
       <div class="backtest-verdict">
-        <span class="backtest-verdict-icon" aria-hidden="true">📊</span>
         <span class="backtest-verdict-text">${verdict}</span>
       </div>
       <dl class="backtest-stats">
@@ -1465,7 +1488,7 @@ function sourceBadgeHtml(source?: string, updatedAt?: string): string {
 function forecastSourceLabel(source?: string): string {
   switch (source) {
     case 'pyth':
-      return 'Real-time streaming + Yahoo history';
+      return 'Pyth + Yahoo history';
     case 'yahoo':
       return 'Yahoo Finance (15-min delayed)';
     default:

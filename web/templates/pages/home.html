@@ -3,12 +3,12 @@
     <div class="hero-bg"><div class="hero-grid-pattern"></div><div class="hero-glow"></div></div>
     <div class="container hero-content">
         <div class="hero-eyebrow">
-            <h1 class="hero-tagline" id="heroTagline">Live WTI &amp; Brent crude oil prices — <span class="hero-tagline-accent" id="heroTaglineAccent">connecting to the live feed&hellip;</span></h1>
+            <h1 class="hero-tagline" id="heroTagline">Latest WTI &amp; Brent crude oil prices — <span class="hero-tagline-accent" id="heroTaglineAccent">{{if or .HeroWTI .HeroBRENT}}connecting to the feed&hellip;{{else}}live feed unavailable{{end}}</span></h1>
         </div>
 
-        {{template "hero_chart_card" dict "Symbol" "WTI" "Title" "WTI Crude Oil" "AriaLabel" "WTI crude oil live 1-minute candle chart" "DetailsHref" "/commodity/WTI" "OtherHref" "/commodity/BRENT" "OtherLabel" "Brent" "Price" .HeroWTI}}
+        {{template "hero_chart_card" dict "Symbol" "WTI" "Title" "WTI Crude Oil" "AriaLabel" "WTI crude oil live 1-minute candle chart" "DetailsHref" "/commodity/WTI" "OtherHref" "/commodity/BRENT" "OtherLabel" "Brent" "Price" .HeroWTI "HasPrice" .HeroWTI}}
 
-        {{template "hero_chart_card" dict "Symbol" "BRENT" "Title" "Brent Crude Oil" "AriaLabel" "Brent crude oil live 1-minute candle chart" "DetailsHref" "/commodity/BRENT" "OtherHref" "/commodity/WTI" "OtherLabel" "WTI" "Price" .HeroBRENT}}
+        {{template "hero_chart_card" dict "Symbol" "BRENT" "Title" "Brent Crude Oil" "AriaLabel" "Brent crude oil live 1-minute candle chart" "DetailsHref" "/commodity/BRENT" "OtherHref" "/commodity/WTI" "OtherLabel" "WTI" "Price" .HeroBRENT "HasPrice" .HeroBRENT}}
 
         <div class="hero-cta">
             <a href="#markets" class="btn btn-primary">
@@ -23,9 +23,9 @@
 <section class="section" id="markets" aria-labelledby="markets-heading">
     <div class="container">
         <header class="section-header">
-            <div class="section-label">Live Market Data</div>
+            <div class="section-label">Latest Market Data</div>
             <h2 class="section-title" id="markets-heading">Oil &amp; Energy Prices Today</h2>
-            <p class="section-desc">Live streaming WTI &amp; Brent prices alongside the broader energy complex, with every card refreshing every 15 seconds.</p>
+            <p class="section-desc">Latest WTI &amp; Brent prices alongside the broader energy complex, with every card refreshing periodically.</p>
         </header>
 
         {{template "price_grid" .CardPrices}}
@@ -37,6 +37,27 @@
             </div>
             <p class="section-cta-line"><a href="/charts" class="section-cta-link">See full interactive oil price charts →</a></p>
         </div>
+
+        {{if .AdSenseClient}}
+        <div style="margin: 2.5rem auto; max-width: 970px; min-height: 100px; display: flex; align-items: center; justify-content: center;">
+            {{if .AdSlots.BelowPriceTable}}
+            <ins class="adsbygoogle"
+                 style="display:block"
+                 data-ad-client="{{.AdSenseClient}}"
+                 data-ad-slot="{{.AdSlots.BelowPriceTable}}"
+                 data-ad-format="horizontal"
+                 data-full-width-responsive="true"></ins>
+            <script>(adsbygoogle = window.adsbygoogle || []).push({});</script>
+            {{else}}
+            <ins class="adsbygoogle"
+                 style="display:block"
+                 data-ad-client="{{.AdSenseClient}}"
+                 data-ad-format="horizontal"
+                 data-full-width-responsive="true"></ins>
+            <script>(adsbygoogle = window.adsbygoogle || []).push({});</script>
+            {{end}}
+        </div>
+        {{end}}
     </div>
 </section>
 
@@ -114,6 +135,28 @@
         </nav>
         <div class="news-featured" id="newsFeatured"></div>
         <div class="news-grid" id="newsGrid" role="feed" aria-label="Energy news articles"></div>
+
+        {{if .AdSenseClient}}
+        <div style="margin: 2.5rem auto; max-width: 728px; min-height: 250px; display: flex; align-items: center; justify-content: center;">
+            {{if .AdSlots.NewsFlow}}
+            <ins class="adsbygoogle"
+                 style="display:block"
+                 data-ad-client="{{.AdSenseClient}}"
+                 data-ad-slot="{{.AdSlots.NewsFlow}}"
+                 data-ad-format="auto"
+                 data-full-width-responsive="true"></ins>
+            <script>(adsbygoogle = window.adsbygoogle || []).push({});</script>
+            {{else}}
+            <ins class="adsbygoogle"
+                 style="display:block"
+                 data-ad-client="{{.AdSenseClient}}"
+                 data-ad-format="auto"
+                 data-full-width-responsive="true"></ins>
+            <script>(adsbygoogle = window.adsbygoogle || []).push({});</script>
+            {{end}}
+        </div>
+        {{end}}
+
         <p class="section-cta-line"><a href="/news" class="section-cta-link">All energy market news →</a></p>
     </div>
 </section>

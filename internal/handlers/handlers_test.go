@@ -276,3 +276,81 @@ func TestNewsArticleFound(t *testing.T) {
 		t.Fatalf("unexpected article: %v", article)
 	}
 }
+
+func TestCommodityPageWithOnlyEstimateData(t *testing.T) {
+	api := NewAPI(
+		&fakeMarketDataService{
+			getPricesFunc: func() []models.Price {
+				// Return only estimate price (synthetic data when feeds are down)
+				return []models.Price{
+					{
+						Symbol:    "WTI",
+						Name:      "WTI Crude Oil",
+						Price:     72.34,
+						Change:    0.5,
+						ChangePct: 0.7,
+						High:      73.0,
+						Low:       71.5,
+						Volume:    1000000,
+						UpdatedAt: "2026-10-17T00:00:00Z",
+						Source:    "estimate", // Synthetic estimate data
+					},
+				}
+			},
+		},
+		&fakeNewsFeedService{},
+	)
+
+	// Initialize the commodity template
+	if err := InitCommodityTemplate("../../web/templates/commodity.html"); err != nil {
+		t.Skip("commodity template not available in test environment")
+		return
+	}
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /commodity/{symbol}", api.ServeCommodityPage)
+
+	req := httptest.NewRequest(http.MethodGet, "/commodity/WTI", nil)
+	req.SetPathValue("symbol", "WTI")
+	res := httptest.NewRecorder()
+	mux.ServeHTTP(res, req)
+
+	if res.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", res.Code)
+	}
+
+	body := res.Body.String()
+
+	// Verify no "$—" appears (dollar sign with dash)
+	if contains(body, "$—") {
+		t.Errorf("page should not contain '$—' when data is unavailable")
+	}
+
+	// Verify the dash character appears (for empty price fields)
+	if !contains(body, "—") {
+		t.Errorf("page should contain '—' dash when price is unavailable")
+	}
+
+	// Verify price is not rendered (no synthetic data in HTML)
+	if contains(body, "$72.34") {
+		t.Errorf("page should not render synthetic estimate price $72.34")
+	}
+
+	// Verify title doesn't contain estimate price
+	if contains(body, "<title>WTI Crude Oil Price Today $72.34") {
+		t.Errorf("title should not contain estimate price")
+	}
+}
+
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) && (s == substr || len(s) > len(substr) && containsAt(s, substr))
+}
+
+func containsAt(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
+}

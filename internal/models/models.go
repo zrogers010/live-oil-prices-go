@@ -12,6 +12,7 @@ type Price struct {
 	UpdatedAt string  `json:"updatedAt"`
 	Contract  string  `json:"contract,omitempty"`
 	Source    string  `json:"source,omitempty"`
+	Available bool    `json:"available"` // false when no real data exists
 }
 
 type OHLCV struct {

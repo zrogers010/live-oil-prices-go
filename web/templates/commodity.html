@@ -94,7 +94,7 @@
           "name": "What is the {{.Meta.Name}} price today?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "The live {{.Meta.Name}} price is updated every 15 seconds on this page. {{.Meta.Name}} is traded on the {{.Meta.Exchange}} and quoted in {{.Meta.Unit}}."
+            "text": "The live {{.Meta.Name}} price is updated periodically on this page. {{.Meta.Name}} is traded on the {{.Meta.Exchange}} and quoted in {{.Meta.Unit}}."
           }
         },
         {
@@ -117,7 +117,7 @@
     }
     </script>
 
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect rx='20' width='100' height='100' fill='%230B1120'/><text x='50' y='68' text-anchor='middle' font-size='50' fill='%233B82F6'>◆</text></svg>">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect rx='20' width='100' height='100' fill='%230B1120'/><circle cx='50' cy='50' r='20' fill='%233B82F6'/></svg>">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -127,7 +127,6 @@
     <nav class="navbar" id="navbar" aria-label="Main navigation">
         <div class="nav-container">
             <a href="/" class="nav-logo" aria-label="Live Oil Prices — Home">
-                <span class="logo-icon">◆</span>
                 <span class="logo-text">LIVE<span class="logo-accent">OIL</span>PRICES</span>
             </a>
             <button class="mobile-menu-btn" id="mobileMenuBtn" aria-label="Toggle navigation menu" aria-expanded="false">
@@ -166,7 +165,7 @@
                     <div class="detail-symbol-badge" id="detailSymbol">{{.Meta.Symbol}}</div>
                     <div>
                         <h1 class="detail-name" id="detailName">{{.Meta.Name}} Price Today</h1>
-                        <p class="detail-subtitle">{{.Meta.Exchange}} · {{.Meta.Unit}} · Real-Time Data</p>
+                        <p class="detail-subtitle">{{.Meta.Exchange}} · {{.Meta.Unit}} · Latest Data</p>
                     </div>
                 </div>
                 <div class="detail-header-right">
@@ -175,7 +174,7 @@
                     <div class="detail-change {{if .IsPositive}}positive{{else}}negative{{end}}" id="detailChange">{{.Sign}}{{.Change}} ({{.Sign}}{{.ChangePct}}%)</div>
                     {{- else -}}
                     <div class="detail-price" id="detailPrice">—</div>
-                    <div class="detail-change" id="detailChange">—</div>
+                    <div class="detail-change" id="detailChange" style="display: none;"></div>
                     {{- end}}
                 </div>
             </header>
@@ -202,7 +201,7 @@
                 </div>
             </div>
             {{- else -}}
-            <div class="detail-stats" id="detailStats" role="list" aria-label="Price statistics"></div>
+            <div class="detail-stats" id="detailStats" role="list" aria-label="Price statistics" style="display: none;"></div>
             {{- end}}
         </div>
 
@@ -213,6 +212,7 @@
                         <h2 class="chart-panel-title" id="chartTitle">{{.Meta.Name}} Price Chart</h2>
                     </div>
                     <div class="chart-timeframes" id="chartTimeframes" role="tablist" aria-label="Chart timeframe">
+                        <button class="chart-tf-btn" data-days="1" role="tab">1D</button>
                         <button class="chart-tf-btn" data-days="7" role="tab">1W</button>
                         <button class="chart-tf-btn" data-days="30" role="tab">1M</button>
                         <button class="chart-tf-btn active" data-days="90" role="tab" aria-selected="true">3M</button>
@@ -236,7 +236,6 @@
             <a href="{{.PartnerURL}}" class="cross-link-card cross-link-card-partner cross-link-card-inline" target="_blank" rel="noopener sponsored">
                 <h3>Trade {{.Meta.ShortName}} on TradingView →</h3>
                 <p>Advanced {{.Meta.ShortName}} charts, 100+ indicators, real-time alerts and paper trading on the platform used by 60M+ traders worldwide.</p>
-                <span class="partner-disclosure">Affiliate partner &middot; <a href="/disclosure">how this works</a></span>
             </a>
         </section>
 
@@ -296,7 +295,7 @@
             <div class="footer-bottom" style="border-top: none;">
                 <p>&copy; 2026 Live Oil Prices. All rights reserved.</p>
                 <div class="footer-legal">
-                    <a href="#">Privacy Policy</a>
+                    <a href="/privacy">Privacy Policy</a>
                     <a href="#">Terms of Service</a>
                     <a href="#">Disclaimer</a>
                     <a href="/disclosure">Affiliate Disclosure</a>

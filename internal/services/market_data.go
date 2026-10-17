@@ -158,7 +158,6 @@ func (s *MarketDataService) GetPrices() []models.Price {
 	if s.pyth != nil {
 		pythData = s.pyth.GetQuotes()
 	}
-	now := time.Now().UTC().Format(time.RFC3339)
 	prices := make([]models.Price, len(allCommodities))
 
 	for i, c := range allCommodities {
@@ -178,44 +177,25 @@ func (s *MarketDataService) GetPrices() []models.Price {
 			prices[i] = yp
 			continue
 		}
-		// Synthetic fallback for commodities without a Yahoo Finance ticker
-		base := s.basePrices[c.symbol]
-		volatility := base * 0.008
-		change := (s.rng.Float64() - 0.45) * volatility
-		price := base + change
-		changePct := (change / base) * 100
-		dayVolatility := base * 0.02
-		high := price + s.rng.Float64()*dayVolatility
-		low := price - s.rng.Float64()*dayVolatility
-		volume := int64(500000 + s.rng.Intn(2000000))
+		// No real data available - return unavailable price
 		prices[i] = models.Price{
 			Symbol:    c.symbol,
 			Name:      c.name,
-			Price:     math.Round(price*100) / 100,
-			Change:    math.Round(change*100) / 100,
-			ChangePct: math.Round(changePct*100) / 100,
-			High:      math.Round(high*100) / 100,
-			Low:       math.Round(low*100) / 100,
-			Volume:    volume,
-			UpdatedAt: now,
-			Source:    "estimate",
+			Price:     0,
+			Change:    0,
+			ChangePct: 0,
+			High:      0,
+			Low:       0,
+			Volume:    0,
+			UpdatedAt: "",
+			Source:    "",
+			Available: false,
 		}
 	}
 	return prices
 }
 
 func (s *MarketDataService) GetChartData(symbol string, days int, interval string) models.ChartData {
-	base, ok := s.basePrices[symbol]
-	if !ok {
-		base = 72.0
-	}
-
-	if s.yahoo != nil {
-		if yp, ok := s.yahoo.GetPrices()[symbol]; ok {
-			base = yp.Price
-		}
-	}
-
 	name := symbol
 	if n, ok := commodityNames[symbol]; ok {
 		name = n
@@ -232,35 +212,120 @@ func (s *MarketDataService) GetChartData(symbol string, days int, interval strin
 		}
 	}
 
-	// Prefer REAL cached Yahoo OHLCV daily history when available. This
-	// is what the user sees on /charts and we want it to be actual market
-	// history, not a randomly regenerated series. If the cache hasn't
-	// loaded yet (cold start) or this symbol isn't tracked by Yahoo
-	// (estimates: OPEC, DUBAI, etc.), we fall through to the synthetic
-	// generator below.
-	if interval == "1d" && s.yahoo != nil {
-		if bars := s.yahoo.GetDailyHistory(symbol, days); len(bars) > 0 {
+	if s.yahoo == nil {
+		return models.ChartData{Symbol: symbol, Name: name, Interval: interval, Data: []models.OHLCV{}}
+	}
+
+	// For daily intervals, return real Yahoo daily history
+	if interval == "1d" {
+		if bars := s.yahoo.GetDailyHistoryByDate(symbol, days); len(bars) > 0 {
 			return models.ChartData{Symbol: symbol, Name: name, Interval: interval, Data: bars}
+		}
+		// No daily history - return empty
+		return models.ChartData{Symbol: symbol, Name: name, Interval: interval, Data: []models.OHLCV{}}
+	}
+
+	// For intraday intervals (2h, 4h), fetch Yahoo intraday for the full range
+	var yahooInterval, yahooRange string
+	var hoursPerCandle int
+	
+	switch {
+	case days <= 1:
+		// 1 day: fetch 2d of 5m bars, aggregate to 1h
+		yahooInterval = "5m"
+		yahooRange = "2d"
+		hoursPerCandle = 1
+		interval = "1h"
+	case days <= 7:
+		// 1 week: fetch 5d of 15m bars, aggregate to 2h
+		yahooInterval = "15m"
+		yahooRange = "5d"
+		hoursPerCandle = 2
+		interval = "2h"
+	case days <= 30:
+		// 1 month: fetch 1mo of 60m bars, aggregate to 4h
+		yahooInterval = "60m"
+		yahooRange = "1mo"
+		hoursPerCandle = 4
+		interval = "4h"
+	default:
+		// Fall back to daily
+		if bars := s.yahoo.GetDailyHistoryByDate(symbol, days); len(bars) > 0 {
+			return models.ChartData{Symbol: symbol, Name: name, Interval: "1d", Data: bars}
+		}
+		return models.ChartData{Symbol: symbol, Name: name, Interval: interval, Data: []models.OHLCV{}}
+	}
+
+	intradayBars := s.yahoo.FetchIntradayRange(symbol, yahooInterval, yahooRange)
+	if len(intradayBars) == 0 {
+		// Fall back to daily bars if available, sliced to the requested range
+		if bars := s.yahoo.GetDailyHistoryByDate(symbol, days); len(bars) > 0 {
+			return models.ChartData{Symbol: symbol, Name: name, Interval: "1d", Data: bars}
+		}
+		return models.ChartData{Symbol: symbol, Name: name, Interval: interval, Data: []models.OHLCV{}}
+	}
+
+	// Aggregate to requested interval
+	aggregated := aggregateBars(intradayBars, hoursPerCandle)
+	
+	// Slice to requested days by calendar date
+	if days > 0 && days < 100 {
+		cutoff := time.Now().UTC().Add(-time.Duration(days) * 24 * time.Hour).Unix()
+		filtered := make([]models.OHLCV, 0, len(aggregated))
+		for _, bar := range aggregated {
+			if bar.Time >= cutoff {
+				filtered = append(filtered, bar)
+			}
+		}
+		aggregated = filtered
+	}
+
+	return models.ChartData{Symbol: symbol, Name: name, Interval: interval, Data: aggregated}
+}
+
+// aggregateBars aggregates 5-min (or similar) bars into larger hourly candles
+func aggregateBars(bars []models.OHLCV, hoursPerCandle int) []models.OHLCV {
+	if len(bars) == 0 || hoursPerCandle <= 0 {
+		return bars
+	}
+
+	bucketSize := int64(hoursPerCandle * 3600)
+	var result []models.OHLCV
+	var currentBucket *models.OHLCV
+
+	for _, bar := range bars {
+		bucketStart := (bar.Time / bucketSize) * bucketSize
+
+		if currentBucket == nil || currentBucket.Time != bucketStart {
+			if currentBucket != nil {
+				result = append(result, *currentBucket)
+			}
+			currentBucket = &models.OHLCV{
+				Time:   bucketStart,
+				Open:   bar.Open,
+				High:   bar.High,
+				Low:    bar.Low,
+				Close:  bar.Close,
+				Volume: bar.Volume,
+			}
+		} else {
+			// Update the current bucket
+			if bar.High > currentBucket.High {
+				currentBucket.High = bar.High
+			}
+			if bar.Low < currentBucket.Low {
+				currentBucket.Low = bar.Low
+			}
+			currentBucket.Close = bar.Close
+			currentBucket.Volume += bar.Volume
 		}
 	}
 
-	// Synthetic fallback. We seed a per-call RNG with a hash of
-	// (symbol, days, today's UTC date) so flipping back and forth between
-	// tabs returns the SAME chart instead of a freshly randomised series.
-	// The series naturally rolls over once a day when the seed changes.
-	rng := rand.New(rand.NewSource(syntheticChartSeed(symbol, days, interval)))
-
-	var data []models.OHLCV
-	switch interval {
-	case "2h":
-		data = s.generateIntraday(rng, base, days, 2)
-	case "4h":
-		data = s.generateIntraday(rng, base, days, 4)
-	default:
-		data = s.generateDaily(rng, base, days)
+	if currentBucket != nil {
+		result = append(result, *currentBucket)
 	}
 
-	return models.ChartData{Symbol: symbol, Name: name, Interval: interval, Data: data}
+	return result
 }
 
 // syntheticChartSeed produces a stable per-day seed for the synthetic
@@ -400,13 +465,20 @@ func (s *MarketDataService) computePredictions() []models.Prediction {
 	prices := s.GetPrices()
 	pm := make(map[string]float64)
 	sources := make(map[string]string)
+	availMap := make(map[string]bool)
 	for _, p := range prices {
 		pm[p.Symbol] = p.Price
 		sources[p.Symbol] = p.Source
+		availMap[p.Symbol] = p.Available
 	}
 
 	out := make([]models.Prediction, 0, len(predictionSymbols))
 	for _, ps := range predictionSymbols {
+		// Skip if price is unavailable
+		if !availMap[ps.symbol] {
+			continue
+		}
+		
 		current := pm[ps.symbol]
 		var history []float64
 		if s.yahoo != nil {
@@ -467,9 +539,26 @@ func (s *MarketDataService) computePredictions() []models.Prediction {
 }
 
 // fallbackPrediction is returned when we don't yet have enough history loaded
-// (e.g. cold start, or Yahoo unreachable). The "predicted" value mirrors the
-// current price so the UI doesn't show a misleading move.
+// (e.g. cold start, or Yahoo unreachable). Returns an unavailable prediction
+// that won't render $0.00 in the UI.
 func fallbackPrediction(symbol, name string, current float64, horizon int) models.Prediction {
+	// If current price is unavailable/zero, mark prediction as unavailable
+	if current <= 0 {
+		return models.Prediction{
+			Symbol:     symbol,
+			Name:       name,
+			Current:    0,
+			Predicted:  0,
+			Timeframe:  fmt.Sprintf("%d days", horizon),
+			Confidence: 0.0,
+			Direction:  "neutral",
+			Analysis:   "Forecast unavailable — insufficient data.",
+			Model:      "fallback",
+			Source:     "", // Empty source signals unavailable
+			Disclaimer: predictionDisclaimer,
+		}
+	}
+	
 	return models.Prediction{
 		Symbol:     symbol,
 		Name:       name,
