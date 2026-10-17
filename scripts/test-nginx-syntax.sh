@@ -187,6 +187,7 @@ BEGIN {
 if echo "$ROLLBACK_CHECK" | grep -q "^GOOD:"; then
     echo "  ✓ .rollback location blocks access with return 404 or deny all (first directive)"
 elif echo "$ROLLBACK_CHECK" | grep -q "^BAD:"; then
+    # shellcheck disable=SC2001
     DIRECTIVE=$(echo "$ROLLBACK_CHECK" | sed 's/^BAD: //')
     echo "  ✗ .rollback location's first return/deny is not blocking: $DIRECTIVE"
     exit 1
