@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"html/template"
+	"live-oil-prices-go/internal/assets"
 	"live-oil-prices-go/internal/models"
 	"net/http"
 	"os"
@@ -204,6 +205,11 @@ func InitPageTemplates(dir string) error {
 			}
 			return m, nil
 		},
+		// assetURL returns a versioned URL for static assets. If the asset
+		// has a computed hash, it appends ?v=<hash> to enable immutable caching.
+		"assetURL": func(path string) string {
+			return assets.GetVersionedURL(path)
+		},
 	}
 
 	pages := []string{"home", "charts", "forecast", "news", "disclosure", "privacy"}
@@ -240,7 +246,7 @@ func (a *API) renderPage(w http.ResponseWriter, r *http.Request, name string, da
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Header().Set("Cache-Control", "public, max-age=15")
+	w.Header().Set("Cache-Control", "no-cache")
 	_, _ = buf.WriteTo(w)
 }
 

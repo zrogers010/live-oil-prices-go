@@ -1,0 +1,498 @@
+# Asset Versioning & Rollback Blocking (nginx change, apply at deploy)
+
+`deploy.sh` does not manage nginx, so this change has to be made on the
+server by hand after the Go code is deployed and tested. Nothing here has
+been applied to prod.
+
+## Problem
+
+Production nginx serves `/js/` and `/css/` with `expires 7d;` and
+`add_header Cache-Control "public, immutable";`, causing returning visitors
+to run stale JavaScript for up to 7 days. After PR #42 changed the polling
+logic, users with cached bundles continue polling every 2s, generating ~470
+req/min to `/api/charts/WTI` and `/api/charts/BRENT`.
+
+Additionally, rollback directories `web/static/js.rollback-20261016/`,
+`js.rollback-20261017/`, and `js.rollback-20261017b/` are publicly accessible.
+
+## Solution
+
+The Go application now computes content hashes at startup and renders
+versioned asset URLs in templates: `/js/app.js?v=abc123def456`. Nginx must:
+
+1. Serve versioned requests (`?v=<hash>`) with long immutable cache
+2. Serve unversioned requests with short cache (5 minutes)
+3. Return 404 for any path containing `.rollback`
+
+## Exact Diff Against Live Config
+
+This diff applies to `/etc/nginx/conf.d/liveoilprices.conf` as it exists
+after the apex redirect change (scripts/NGINX_APEX_REDIRECT.md).
+
+```diff
+ # Reference copy of /etc/nginx/conf.d/liveoilprices.conf on prod AFTER the
+-# apex -> www redirect change. It is the live certbot-managed file plus two
+-# edits (see scripts/NGINX_APEX_REDIRECT.md): the main server block answers
+-# only www.liveoilprices.com, and a new 443 block 301s the apex to www.
+-# deploy.sh does not install this file; apply it by hand per that doc.
++# apex -> www redirect change and asset versioning fix. It is the live
++# certbot-managed file plus edits documented in scripts/NGINX_APEX_REDIRECT.md
++# and scripts/NGINX_CACHE_VERSIONING.md.
++# deploy.sh does not install this file; apply it by hand per those docs.
++
++# Asset versioning: versioned requests with valid hash (?v=12-hex-chars) get
++# long immutable cache, everything else gets short cache. conf.d files are
++# included in http context, so this map is valid here.
++map $arg_v $lop_static_cc {
++    "~^[0-9a-f]{12}$" "public, max-age=31536000, immutable";
++    default           "public, max-age=300";
++}
++
+ server {
+     server_name www.liveoilprices.com;
+
+     gzip on;
+     gzip_types text/plain text/css application/json application/javascript text/xml application/xml text/javascript image/svg+xml;
+     gzip_min_length 256;
+     gzip_vary on;
+
++    # Block any path containing .rollback (case-insensitive, e.g.
++    # /js.rollback-20261017b/app.js or /css/x.ROLLBACK-1/styles.css).
++    # Regex location beats prefix locations /css/ and /js/, so it covers
++    # /js.rollback-*/... paths.
++    location ~* \.rollback {
++        return 404;
++    }
++
+     location /css/ {
+         alias /home/deploy/liveoilprices/web/static/css/;
+-        expires 7d;
+-        add_header Cache-Control "public, immutable";
++        add_header Cache-Control $lop_static_cc;
+         access_log off;
+     }
+
+     location /js/ {
+         alias /home/deploy/liveoilprices/web/static/js/;
+-        expires 7d;
+-        add_header Cache-Control "public, immutable";
++        add_header Cache-Control $lop_static_cc;
+         access_log off;
+     }
+```
+
+- The `map` directive validates that `$arg_v` is exactly 12 hexadecimal characters (matching the Go asset hasher's output). Only valid hashes get the long immutable cache; everything else (including empty, garbage, or wrong-length values) gets the short 300-second cache.
+- The `map` is placed at the top level of the conf.d file, which is included in nginx's `http` context, so it's valid there.
+- The `add_header` directive no longer has `always`, so 404 responses don't get cached for a year.
+- The `location ~* \.rollback` block uses `~*` for case-insensitive matching and is placed inside the main server block as the **first** location directive. Regex locations have higher precedence than prefix locations, so this catches any path containing `.rollback` anywhere (case-insensitive), including `/js.rollback-20261017b/app.js`, `/js/x.rollback-1/app.js`, and `/css/styles.ROLLBACK-2`.
+
+## Apply (on production server, before pulling PR #43 with new deploy.sh)
+
+### 0. Create manual snapshot BEFORE `git pull`
+
+**Why:** PR #43 changes `deploy.sh` to create automatic snapshots. But the first deploy after pulling PR #43 will use the **old** 268dd9b `deploy.sh` (which has no snapshot machinery). So create this manual snapshot **before** pulling, giving you a rollback point if the nginx changes or first new deploy break.
+
+```bash
+# On the EC2 host, as deploy user
+# Run in a subshell so any error aborts without closing your SSH session
+(
+set -euo pipefail
+
+cd /home/deploy/liveoilprices
+
+# Verify current commit is exactly 268dd9b
+COMMIT=$(git rev-parse HEAD)
+EXPECTED_COMMIT="268dd9b73a5395090b11c02335b3539711bd2c6e"
+if [ "$COMMIT" != "$EXPECTED_COMMIT" ]; then
+    echo "ERROR: Current commit $COMMIT is not the baseline 268dd9b" >&2
+    echo "This snapshot would be unfindable by the restore procedure." >&2
+    echo "Checkout 268dd9b first: git checkout $EXPECTED_COMMIT" >&2
+    exit 1
+fi
+
+ROLLBACK_DIR="/home/deploy/liveoilprices-rollbacks"
+mkdir -p "$ROLLBACK_DIR"
+TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+TEMP_SNAPSHOT="$ROLLBACK_DIR/.snapshot-$TIMESTAMP.tmp"
+FINAL_SNAPSHOT="$ROLLBACK_DIR/$TIMESTAMP"
+
+# Set up cleanup trap for temp directory
+cleanup() {
+    if [ -d "$TEMP_SNAPSHOT" ]; then
+        echo "Cleaning up temp snapshot..." >&2
+        rm -rf "$TEMP_SNAPSHOT"
+    fi
+}
+trap cleanup EXIT
+
+# Create temp snapshot directory
+mkdir -p "$TEMP_SNAPSHOT"
+
+# Snapshot the current running state (from 268dd9b)
+# All these files must exist or the snapshot is incomplete
+cp bin/server "$TEMP_SNAPSHOT/server"
+cp -r web/templates "$TEMP_SNAPSHOT/templates"
+cp -r web/static/js "$TEMP_SNAPSHOT/js"
+cp -r web/static/css "$TEMP_SNAPSHOT/css"
+
+# Record the git commit (268dd9b is the base)
+echo "$COMMIT" > "$TEMP_SNAPSHOT/COMMIT"
+
+# Validate all files were copied
+for file in server templates js css COMMIT; do
+    if [ ! -e "$TEMP_SNAPSHOT/$file" ]; then
+        echo "ERROR: Failed to copy $file" >&2
+        exit 1
+    fi
+done
+
+# Atomically move to final location (only on success)
+mv "$TEMP_SNAPSHOT" "$FINAL_SNAPSHOT"
+
+echo "Manual snapshot created at $FINAL_SNAPSHOT"
+ls -lh "$FINAL_SNAPSHOT"
+echo "Snapshot complete. Files:"
+ls -1 "$FINAL_SNAPSHOT"
+)
+```
+
+**To restore this manual snapshot:**
+
+```bash
+# Run in a subshell so any error aborts without closing your SSH session
+(
+set -euo pipefail
+
+cd /home/deploy/liveoilprices
+
+# Expected commit for the 268dd9b baseline snapshot
+EXPECTED_COMMIT="268dd9b73a5395090b11c02335b3539711bd2c6e"
+
+# Find snapshot with matching COMMIT file
+SNAPSHOT=""
+for snap in /home/deploy/liveoilprices-rollbacks/20*; do
+    if [ -f "$snap/COMMIT" ]; then
+        SNAP_COMMIT=$(cat "$snap/COMMIT")
+        if [ "$SNAP_COMMIT" = "$EXPECTED_COMMIT" ]; then
+            SNAPSHOT="$snap"
+            break
+        fi
+    fi
+done
+
+if [ -z "$SNAPSHOT" ]; then
+    echo "ERROR: No snapshot found for commit $EXPECTED_COMMIT"
+    echo "Run Step 0 first to create the manual 268dd9b snapshot"
+    echo "ERROR: Aborting - cannot restore without snapshot" >&2
+    exit 1
+fi
+echo "Restoring from: $SNAPSHOT"
+
+# Validate ALL required files exist BEFORE stopping the service
+MISSING=""
+for file in server templates js css COMMIT; do
+    if [ ! -e "$SNAPSHOT/$file" ]; then
+        MISSING="$MISSING $file"
+    fi
+done
+
+if [ -n "$MISSING" ]; then
+    echo "ERROR: Snapshot is incomplete. Missing:$MISSING"
+    echo "ERROR: Aborting - cannot restore from incomplete snapshot" >&2
+    exit 1
+fi
+
+SNAPSHOT_COMMIT=$(cat "$SNAPSHOT/COMMIT")
+if ! git rev-parse --verify "$SNAPSHOT_COMMIT" &>/dev/null; then
+    echo "ERROR: Snapshot commit $SNAPSHOT_COMMIT not found in git history"
+    echo "ERROR: Aborting - cannot restore to unknown commit" >&2
+    exit 1
+fi
+echo "  Snapshot commit: $SNAPSHOT_COMMIT"
+echo "  ✓ All snapshot files validated"
+
+# Now stop the service (snapshot fully validated)
+echo "Stopping service..."
+sudo systemctl stop liveoilprices
+
+# Restore binary
+echo "Restoring binary..."
+cp "$SNAPSHOT/server" bin/server
+
+# Restore the git commit (detached HEAD - stay here during restore)
+echo "Checking out snapshot commit $SNAPSHOT_COMMIT..."
+git checkout -f "$SNAPSHOT_COMMIT"
+
+# Restore templates AFTER checkout (so new templates from main don't come back)
+echo "Restoring templates, JS, CSS..."
+rm -rf web/templates
+cp -a "$SNAPSHOT/templates" web/templates
+
+# Restore JS (remove existing to avoid web/static/js/js nesting)
+rm -rf web/static/js
+cp -a "$SNAPSHOT/js" web/static/js
+
+# Restore CSS (remove existing to avoid nesting)
+rm -rf web/static/css
+cp -a "$SNAPSHOT/css" web/static/css
+
+# Restart the service
+echo "Restarting service..."
+sudo systemctl start liveoilprices
+sleep 2
+
+# Verify service is active
+if ! sudo systemctl is-active --quiet liveoilprices; then
+    echo "ERROR: Service failed to start after restore"
+    sudo systemctl status liveoilprices --no-pager || true
+    echo "ERROR: Restore failed" >&2
+    exit 1
+fi
+echo "  ✓ Service is active"
+
+# Verify health endpoint and home page
+HEALTH_STATUS=$(curl -sf --max-time 5 -o /dev/null -w "%{http_code}" http://127.0.0.1:8080/api/health 2>/dev/null || echo "000")
+HOME_STATUS=$(curl -sf --max-time 5 -o /dev/null -w "%{http_code}" http://127.0.0.1:8080/ 2>/dev/null || echo "000")
+
+if [ "$HEALTH_STATUS" = "200" ] && [ "$HOME_STATUS" = "200" ]; then
+    echo "  ✓ Health check passed (/api/health: $HEALTH_STATUS, /: $HOME_STATUS)"
+else
+    echo "ERROR: Health check failed (/api/health: $HEALTH_STATUS, /: $HOME_STATUS)"
+    echo "ERROR: Restore failed" >&2
+    exit 1
+fi
+
+echo ""
+echo "=== Restore complete ==="
+echo "  Restored to snapshot: $SNAPSHOT"
+echo "  Git HEAD: detached at $SNAPSHOT_COMMIT"
+echo ""
+echo "You are now in detached HEAD state at the old working version."
+echo "The service is running the OLD binary with OLD templates - this is SAFE."
+echo "You can restart the service freely while detached (systemctl restart liveoilprices)."
+echo ""
+echo "To deploy a fixed version:"
+echo "  1. Ensure 'main' has a working fix"
+echo "  2. Run: git checkout main && bash scripts/deploy.sh"
+echo "     (Run both commands together with no manual restart in between)"
+echo ""
+echo "DO NOT run 'git checkout main' alone - that would leave the old binary with new templates (crash-loop)."
+)
+```
+
+### 1. Move existing rollback directories out of web/static/
+
+**Use the provided script** to safely move legacy rollback directories. The script refuses to overwrite existing destinations and validates each move:
+
+```bash
+# On the EC2 host, as deploy user
+cd /home/deploy/liveoilprices
+
+# Run the one-time migration script
+bash scripts/move-legacy-rollbacks.sh
+```
+
+The script moves:
+- `web/static/js.rollback-20261016` → `/home/deploy/liveoilprices-rollbacks/legacy-20261016`
+- `web/static/js.rollback-20261017` → `/home/deploy/liveoilprices-rollbacks/legacy-20261017`
+- `web/static/js.rollback-20261017b` → `/home/deploy/liveoilprices-rollbacks/legacy-20261017b`
+- Any other `*.rollback-*` files under `web/static/js` or `web/static/css`
+
+The script will not overwrite existing destinations and reports a summary of moved/skipped/error items.
+
+### 2. Back up and apply nginx config
+
+Copy `scripts/nginx-prod.conf` from the repo to the server.
+
+**Step A: Review the changes**
+
+Paste this first to back up and review the diff (wrapped in subshell for paste safety):
+
+```bash
+# On the EC2 host - Step A: backup and review
+(
+set -e
+umask 077
+
+MARKER="$HOME/.nginx-backup-path"
+rm -f "$MARKER"
+
+BACKUP="/root/liveoilprices.conf.bak-$(date +%Y%m%d-%H%M%S)"
+if ! sudo cp -a /etc/nginx/conf.d/liveoilprices.conf "$BACKUP"; then
+    echo "ERROR: Failed to create backup" >&2
+    exit 1
+fi
+
+if ! echo "$BACKUP" > "$MARKER"; then
+    echo "ERROR: Failed to write marker file" >&2
+    sudo rm -f "$BACKUP"
+    exit 1
+fi
+
+echo "Backup saved to $BACKUP"
+
+# Copy candidate: scp scripts/nginx-prod.conf to /tmp/liveoilprices.conf first
+
+# Review the diff
+echo ""
+echo "=== Reviewing changes ==="
+diff -u /etc/nginx/conf.d/liveoilprices.conf /tmp/liveoilprices.conf || true
+echo ""
+echo "Review complete. If changes look good, proceed to Step B."
+)
+```
+
+**Step B: Install, test, and reload**
+
+After reviewing the diff, paste this to install (runs in a guarded subshell):
+
+```bash
+# On the EC2 host - Step B: install and reload
+(
+set -euo pipefail
+
+MARKER="$HOME/.nginx-backup-path"
+trap 'rm -f "$MARKER"' EXIT
+
+# Restore the backup path from Step A
+if [ ! -f "$MARKER" ]; then
+    echo "ERROR: No backup path found. Run Step A first." >&2
+    exit 1
+fi
+
+if [ -L "$MARKER" ] || [ ! -O "$MARKER" ]; then
+    echo "ERROR: $MARKER is a symlink or not owned by you; refusing" >&2
+    exit 1
+fi
+
+BACKUP=$(cat "$MARKER")
+
+# Verify backup exists (use sudo test for root-owned files)
+if ! sudo test -f "$BACKUP"; then
+    echo "ERROR: Backup file $BACKUP not found" >&2
+    exit 1
+fi
+
+# Check backup age (must be < 30 minutes)
+BACKUP_AGE=$(($(date +%s) - $(stat -c %Y "$MARKER")))
+if [ "$BACKUP_AGE" -gt 1800 ]; then
+    echo "WARNING: Backup marker is $((BACKUP_AGE / 60)) minutes old"
+    echo "Backup path: $BACKUP"
+    read -p "Continue anyway? (y/N) " confirm
+    if [ "$confirm" != "y" ]; then
+        echo "Aborted" >&2
+        exit 1
+    fi
+fi
+
+echo "Using backup: $BACKUP"
+
+# Install the candidate config
+sudo install -m 0644 -o root -g root /tmp/liveoilprices.conf /etc/nginx/conf.d/liveoilprices.conf
+
+# Test and automatically restore on failure
+if ! sudo nginx -t; then
+    echo "nginx -t failed, restoring backup"
+    sudo cp "$BACKUP" /etc/nginx/conf.d/liveoilprices.conf
+    echo "ERROR: nginx config invalid, backup restored" >&2
+    exit 1
+fi
+
+# Reload nginx
+sudo systemctl reload nginx
+echo "nginx reloaded successfully"
+)
+```
+
+**Important notes:**
+
+- Step B removes the marker on any exit (including Aborted or a failed nginx -t). Re-run Step A before retrying Step B.
+- Paste Step B on its own, not combined with other commands. The y/N prompt for stale backups reads the next input line.
+
+### 3. Verify the fix
+
+```bash
+# Test rollback paths return 404
+curl -I https://www.liveoilprices.com/js.rollback-20261017b/app.js
+# Expected: HTTP/1.1 404 Not Found
+
+curl -I https://www.liveoilprices.com/js.rollback-20261016/app.js
+# Expected: HTTP/1.1 404 Not Found
+
+# Test versioned assets get long immutable cache (use a real 12-hex hash)
+curl -I "https://www.liveoilprices.com/js/app.js?v=067f895cae30"
+# Expected: Cache-Control: public, max-age=31536000, immutable
+
+# Test unversioned assets get short cache
+curl -I https://www.liveoilprices.com/js/app.js
+# Expected: Cache-Control: public, max-age=300
+
+# Test HTML pages get no-cache (from Go, not nginx)
+curl -I https://www.liveoilprices.com/
+# Expected: Cache-Control: no-cache
+
+# Verify no duplicate Cache-Control headers
+curl -sI https://www.liveoilprices.com/js/app.js | grep -i cache-control
+# Should show exactly one Cache-Control header
+
+curl -sI "https://www.liveoilprices.com/js/app.js?v=test" | grep -i cache-control
+# Should show exactly one Cache-Control header
+
+# Verify no Expires header on /js/ or /css/ (we removed expires directive)
+curl -sI https://www.liveoilprices.com/js/app.js | grep -i expires
+# Should return nothing (no Expires header)
+```
+
+### 4. Verify the rollback directories moved correctly
+
+```bash
+ls -lh /home/deploy/liveoilprices-rollbacks/
+# Should show: legacy-20261016, legacy-20261017, legacy-20261017b
+
+# Verify they are not in web/static anymore
+ls web/static/ | grep rollback
+# Should return nothing
+```
+
+## Rollback
+
+If something breaks:
+
+```bash
+sudo cp -a /root/liveoilprices.conf.bak-<timestamp> /etc/nginx/conf.d/liveoilprices.conf
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+## Rate Limiting (Not Implemented)
+
+The user requested optional per-IP 429 rate limiting for `/api/charts/*` to
+prevent hot loops. This is **not included** in this change because:
+
+1. Without production traffic patterns, it's unclear what threshold would
+   constitute "far above normal polling"
+2. Enabling it risks breaking legitimate users
+3. The asset versioning fix should eliminate the stale-JS hot loops
+
+If rate limiting is needed later, add these blocks to the nginx config:
+
+```nginx
+# At http level (in nginx.conf or at the top of liveoilprices.conf)
+limit_req_zone $binary_remote_addr zone=api_charts_limit:10m rate=10r/s;
+
+# Inside the www.liveoilprices.com server block, before location /
+location ~ ^/api/charts/ {
+    limit_req zone=api_charts_limit burst=20 nodelay;
+    limit_req_status 429;
+    add_header Retry-After "10" always;
+    
+    proxy_pass http://127.0.0.1:8080;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+```
+
+This would allow 10 requests/second per IP with a burst of 20, returning 429
+for excess requests with a 10-second Retry-After header.

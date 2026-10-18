@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"live-oil-prices-go/internal/assets"
 	"live-oil-prices-go/internal/handlers"
 	"live-oil-prices-go/internal/middleware"
 	"live-oil-prices-go/internal/services"
@@ -10,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -24,6 +26,10 @@ func main() {
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
+	}
+
+	if err := assets.Init(); err != nil {
+		log.Fatalf("Failed to initialize asset hashes: %v", err)
 	}
 
 	if err := handlers.InitCommodityTemplate("web/templates/commodity.html"); err != nil {
@@ -115,7 +121,22 @@ func newServerHandler(market handlers.MarketDataClient, news handlers.NewsClient
 		fmt.Fprintf(w, "google.com, pub-%s, DIRECT, f08c47fec0942fa0\n", pubID)
 	})
 
-	mux.Handle("/", http.FileServer(http.Dir("web/static")))
+	// Redirect legacy /commodity.html to /commodity/WTI
+	mux.HandleFunc("GET /commodity.html", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/commodity/WTI", http.StatusMovedPermanently)
+	})
+
+	// Serve static files, but disable directory listings (return 404 for directories)
+	fileServer := http.FileServer(http.Dir("web/static"))
+	mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Check if the path is a directory
+		path := filepath.Join("web/static", filepath.Clean(r.URL.Path))
+		if info, err := os.Stat(path); err == nil && info.IsDir() {
+			http.NotFound(w, r)
+			return
+		}
+		fileServer.ServeHTTP(w, r)
+	}))
 
 	return middleware.Chain(mux)
 }
