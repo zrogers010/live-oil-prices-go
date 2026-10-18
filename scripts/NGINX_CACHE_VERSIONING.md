@@ -315,7 +315,7 @@ set -e
 umask 077
 
 MARKER="$HOME/.nginx-backup-path"
-trap 'rm -f "$MARKER"' EXIT
+rm -f "$MARKER"
 
 BACKUP="/root/liveoilprices.conf.bak-$(date +%Y%m%d-%H%M%S)"
 if ! sudo cp -a /etc/nginx/conf.d/liveoilprices.conf "$BACKUP"; then
@@ -360,6 +360,11 @@ if [ ! -f "$MARKER" ]; then
     exit 1
 fi
 
+if [ -L "$MARKER" ] || [ ! -O "$MARKER" ]; then
+    echo "ERROR: $MARKER is a symlink or not owned by you; refusing" >&2
+    exit 1
+fi
+
 BACKUP=$(cat "$MARKER")
 
 # Verify backup exists (use sudo test for root-owned files)
@@ -398,6 +403,11 @@ sudo systemctl reload nginx
 echo "nginx reloaded successfully"
 )
 ```
+
+**Important notes:**
+
+- Step B removes the marker on any exit (including Aborted or a failed nginx -t). Re-run Step A before retrying Step B.
+- Paste Step B on its own, not combined with other commands. The y/N prompt for stale backups reads the next input line.
 
 ### 3. Verify the fix
 
