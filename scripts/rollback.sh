@@ -194,22 +194,11 @@ sleep 2
 if sudo systemctl is-active --quiet "$SERVICE" 2>/dev/null || false; then
     echo "  ✓ Service is running"
 else
-    echo "  ERROR: Service failed to start!"
+    echo "  ERROR: Service failed to start after rollback!"
     sudo systemctl status "$SERVICE" --no-pager 2>&1 || true
     echo ""
-    echo "Attempting to restore from backup..."
-    if [ -f "$BACKUP_PATH/server" ]; then
-        TEMP_BIN="$(dirname "$BIN")/.server.tmp.$$"
-        cp "$BACKUP_PATH/server" "$TEMP_BIN"
-        chmod +x "$TEMP_BIN"
-        mv -f "$TEMP_BIN" "$BIN"
-        
-        if [ -d "$BACKUP_PATH/templates" ]; then
-            rm -rf web/templates
-            cp -r "$BACKUP_PATH/templates" web/
-        fi
-        sudo systemctl restart "$SERVICE"
-    fi
+    echo "Rolled-back version also fails to start."
+    echo "Manual intervention required."
     exit 1
 fi
 

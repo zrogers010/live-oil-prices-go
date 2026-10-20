@@ -462,6 +462,7 @@ git commit -q -m "change for test c"
 git push -q
 
 bash "$TEST_DIR/deploy-test.sh" > "$TEST_DIR/deploy-output-c.txt" 2>&1 || true
+
 if ! grep -q "Service failed to start" "$TEST_DIR/deploy-output-c.txt"; then
     echo "✗ Test (c) failed - no error on crash loop"
     echo "Deploy output:"
@@ -469,12 +470,21 @@ if ! grep -q "Service failed to start" "$TEST_DIR/deploy-output-c.txt"; then
     exit 1
 fi
 
-# Check rollback happened
+# Verify rollback attempted (even if final restart failed due to persistent crash marker)
+if ! grep -q "Attempting automatic rollback" "$TEST_DIR/deploy-output-c.txt"; then
+    echo "✗ No rollback attempted"
+    exit 1
+fi
+
+# Clear crash marker before checking binary
+rm -f "$TEST_DIR/crash_loop"
+
+# Check rollback restored the binary (even if service won't start)
 CURRENT_BINARY_HASH=$(md5sum bin/server | cut -d' ' -f1)
 if [ "$CURRENT_BINARY_HASH" = "$GOOD_BINARY_HASH" ]; then
-    echo "✓ Binary rolled back on crash loop"
+    echo "✓ Binary rolled back despite crash (exit 3 didn't abort rollback)"
 else
-    echo "✗ Binary not rolled back on crash loop"
+    echo "✗ Binary not rolled back"
     echo "  Expected hash: $GOOD_BINARY_HASH"
     echo "  Actual hash:   $CURRENT_BINARY_HASH"
     exit 1
@@ -633,7 +643,8 @@ git commit -q -m "setup for test f"
 git push -q
 bash "$TEST_DIR/deploy-test.sh" > /dev/null 2>&1
 
-OLD_BINARY=$(head -1 bin/server)
+# Save hashes before making changes
+OLD_BINARY_HASH=$(md5sum bin/server | cut -d' ' -f1)
 OLD_JS=$(head -1 web/static/js/app.js)
 
 # Make binary unreadable to cause cp failure during snapshot
@@ -653,15 +664,15 @@ if grep -qE "(Failed to back up|Permission denied)" "$TEST_DIR/deploy-output-f.t
     echo "✓ Snapshot failure detected"
     
     # Verify nothing was changed (deploy aborted)
-    CURRENT_BINARY=$(cat bin/server)
-    CURRENT_JS=$(cat web/static/js/app.js)
+    CURRENT_BINARY_HASH=$(md5sum bin/server 2>/dev/null | cut -d' ' -f1 || echo "missing")
+    CURRENT_JS=$(head -1 web/static/js/app.js 2>/dev/null || echo "missing")
     
-    if [ "$CURRENT_BINARY" = "$OLD_BINARY" ] && [ "$CURRENT_JS" = "$OLD_JS" ]; then
+    if [ "$CURRENT_BINARY_HASH" = "$OLD_BINARY_HASH" ] && [ "$CURRENT_JS" = "$OLD_JS" ]; then
         echo "✓ No changes made (deploy aborted before swap)"
     else
         echo "✗ Deploy made changes despite snapshot failure"
-        echo "Binary changed: $([ "$CURRENT_BINARY" != "$OLD_BINARY" ] && echo "YES" || echo "NO")"
-        echo "JS changed: $([ "$CURRENT_JS" != "$OLD_JS" ] && echo "YES" || echo "NO")"
+        echo "  Binary: $OLD_BINARY_HASH -> $CURRENT_BINARY_HASH"
+        echo "  JS: changed"
         exit 1
     fi
     
