@@ -825,7 +825,12 @@ bash "$TEST_DIR/deploy-test.sh" > /dev/null 2>&1
 GOOD_CSS=$(cat web/static/css/styles.css)
 
 # Make CSS change upstream in separate clone
-cd "$TEST_DIR/upstream-clone/upstream"
+mkdir -p "$TEST_DIR/upstream-clone"
+cd "$TEST_DIR/upstream-clone"
+if [ ! -d "upstream" ]; then
+    git clone "$TEST_DIR/remote-repo.git" upstream -q
+fi
+cd upstream
 git pull -q
 echo "change-h2" >> cmd/server/main.go
 echo "/* css-h2 */" > web/static/css/styles.css

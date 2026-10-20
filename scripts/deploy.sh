@@ -250,6 +250,7 @@ if git rev-parse --is-inside-work-tree &>/dev/null 2>&1; then
     if [ -f "web/static/css/styles.css" ]; then
         CSS_BACKUP="$(mktemp)"
         cp "web/static/css/styles.css" "$CSS_BACKUP"
+        echo "  CSS backed up before pull"
     fi
     
     # Pull latest code (tree must be clean)
@@ -264,6 +265,7 @@ if git rev-parse --is-inside-work-tree &>/dev/null 2>&1; then
     # After pull, restore old CSS bytes so running server can keep serving CSS matching its cached hash
     if [ -n "$CSS_BACKUP" ] && [ -f "$CSS_BACKUP" ]; then
         cp "$CSS_BACKUP" "web/static/css/styles.css"
+        echo "  CSS restored after pull (keeping old bytes on disk)"
     fi
 else
     echo "[2/6] Not a git repo, skipping pull."
@@ -308,12 +310,6 @@ if ! OUTDIR="$FRONTEND_BUILD_TEMP" npm run build:to; then
     echo "ERROR: Frontend build failed"
     DEPLOY_FAILED=1
     exit 1
-fi
-
-# After building with new CSS, restore old CSS to temp build dir
-# This ensures old CSS is swapped into place with the new binary
-if [ -n "$CSS_BACKUP" ] && [ -f "$CSS_BACKUP" ]; then
-    cp "$CSS_BACKUP" "$FRONTEND_BUILD_TEMP/css/styles.css"
 fi
 
 echo "  Frontend built in temp directory."
