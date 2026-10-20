@@ -845,7 +845,7 @@ cd "$TEST_DIR/repo"
 # Only check during build phase (before asset swap), not during health checks
 (
     sleep 2
-    for i in {1..5}; do  # Reduced from 10 to 5 to finish before asset swap
+    for _ in {1..5}; do  # Reduced from 10 to 5 to finish before asset swap
         DURING_CSS=$(cat web/static/css/styles.css 2>/dev/null || echo "missing")
         if [ "$DURING_CSS" != "$GOOD_CSS" ] && [ "$DURING_CSS" != "missing" ]; then
             echo "MISMATCH: $DURING_CSS" > "$TEST_DIR/css-mismatch.txt"
