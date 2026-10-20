@@ -155,13 +155,12 @@ case "\$1" in
         if [ "\$2" = "build:to" ]; then
             # Build to OUTDIR (deploy.sh's temp location)
             # Include git commit to make each build unique
+            # Note: CSS is handled by deploy.sh (git show HEAD:...), not by the build script
             if [ -n "\$OUTDIR" ]; then
-                mkdir -p "\$OUTDIR/js" "\$OUTDIR/css"
+                mkdir -p "\$OUTDIR/js"
                 GIT_COMMIT=\$(git rev-parse HEAD 2>/dev/null || echo "unknown")
                 echo "/* Built from commit: \$GIT_COMMIT */" > "\$OUTDIR/js/app.js"
                 echo "new-js" >> "\$OUTDIR/js/app.js"
-                echo "/* Built from commit: \$GIT_COMMIT */" > "\$OUTDIR/css/styles.css"
-                echo "new-css" >> "\$OUTDIR/css/styles.css"
             fi
         fi
         exit 0
@@ -845,12 +844,13 @@ cd "$TEST_DIR/repo"
 # Only check during build phase (before asset swap), not during health checks
 (
     sleep 2
-    for _ in {1..5}; do  # Reduced from 10 to 5 to finish before asset swap
+    for _ in {1..3}; do  # Check 3 times during npm ci / go build
         DURING_CSS=$(cat web/static/css/styles.css 2>/dev/null || echo "missing")
         if [ "$DURING_CSS" != "$GOOD_CSS" ] && [ "$DURING_CSS" != "missing" ]; then
             echo "MISMATCH: $DURING_CSS" > "$TEST_DIR/css-mismatch.txt"
+            break  # Stop checking after first mismatch
         fi
-        sleep 0.5  # Check more frequently
+        sleep 1
     done
 ) &
 MONITOR_PID=$!
