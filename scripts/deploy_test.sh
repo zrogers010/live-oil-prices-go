@@ -1022,7 +1022,7 @@ if grep -q "Rollback also failed\|ROLLBACK FAILED" "$TEST_DIR/deploy-output-k.tx
     echo "✓ Rollback failure detected and reported"
 else
     echo "✗ Rollback failure not properly reported"
-    cat "$TEST_DIR/deploy-output-k.txt" | grep -i rollback | tail -5
+    grep -i rollback "$TEST_DIR/deploy-output-k.txt" | tail -5
     exit 1
 fi
 
