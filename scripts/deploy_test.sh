@@ -706,7 +706,6 @@ if ! bash "$TEST_DIR/deploy-test.sh" > /dev/null 2>&1; then
 fi
 
 GOOD_COMMIT=$(git rev-parse HEAD)
-GOOD_CSS=$(head -1 web/static/css/styles.css)
 
 # Simulate rollback by manually putting system in detached HEAD at snapshot
 # shellcheck disable=SC2012
