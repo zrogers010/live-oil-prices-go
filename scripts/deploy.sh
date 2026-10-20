@@ -310,6 +310,12 @@ if ! OUTDIR="$FRONTEND_BUILD_TEMP" npm run build:to; then
     exit 1
 fi
 
+# After building with new CSS, restore old CSS to temp build dir
+# This ensures old CSS is swapped into place with the new binary
+if [ -n "$CSS_BACKUP" ] && [ -f "$CSS_BACKUP" ]; then
+    cp "$CSS_BACKUP" "$FRONTEND_BUILD_TEMP/css/styles.css"
+fi
+
 echo "  Frontend built in temp directory."
 
 # ---------- Lint and test ----------
