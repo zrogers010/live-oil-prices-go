@@ -270,7 +270,11 @@ if git rev-parse --is-inside-work-tree &>/dev/null 2>&1; then
     # After pull, restore old CSS bytes so running server can keep serving CSS matching its cached hash
     if [ -n "$CSS_BACKUP" ] && [ -f "$CSS_BACKUP" ]; then
         cp "$CSS_BACKUP" "web/static/css/styles.css"
+        touch /tmp/css-restore-done.marker  # DEBUG
         echo "  CSS restored after pull (keeping old bytes on disk)"
+    else
+        touch /tmp/css-restore-skipped.marker  # DEBUG
+        echo "  WARNING: CSS backup not available for restore!"
     fi
 else
     echo "[2/6] Not a git repo, skipping pull."

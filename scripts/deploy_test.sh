@@ -853,18 +853,19 @@ cd "$TEST_DIR/repo"
 ) &
 MONITOR_PID=$!
 
-rm -f /tmp/css-backup-*.marker  # Clear markers before deploy
+rm -f /tmp/css-*.marker  # Clear markers before deploy
 bash "$TEST_DIR/deploy-test.sh" > /dev/null 2>&1
 
 wait $MONITOR_PID 2>/dev/null || true
 
-# DEBUG: Check if CSS backup code ran
+# DEBUG: Check if CSS backup/restore code ran
 if [ -f /tmp/css-backup-created.marker ]; then
-    echo "  DEBUG: CSS backup code DID run"
-elif [ -f /tmp/css-backup-NOT-found.marker ]; then
-    echo "  DEBUG: CSS backup code ran but file not found"
-else
-    echo "  DEBUG: CSS backup code did NOT run at all!"
+    echo "  DEBUG: CSS backup created"
+fi
+if [ -f /tmp/css-restore-done.marker ]; then
+    echo "  DEBUG: CSS restore done"
+elif [ -f /tmp/css-restore-skipped.marker ]; then
+    echo "  DEBUG: CSS restore SKIPPED"
 fi
 
 if [ -f "$TEST_DIR/css-mismatch.txt" ]; then
