@@ -1042,18 +1042,24 @@ echo "change-l1" >> cmd/server/main.go
 git add -A
 git commit -q -m "test l setup"
 git push -q
+GOOD_COMMIT=$(git rev-parse HEAD)
 bash "$TEST_DIR/deploy-test.sh" > /dev/null 2>&1
 
-# Corrupt the snapshot COMMIT file
-SNAPSHOT_DIR=$(find "$TEST_DIR/rollbacks" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | head -1)
-if [ -n "$SNAPSHOT_DIR" ]; then
-    echo "invalid-commit-hash" > "$TEST_DIR/rollbacks/$SNAPSHOT_DIR/COMMIT"
-fi
+# Make another commit so we can checkout to a different commit than what's in the snapshot
+echo "change-l2" >> cmd/server/main.go
+git add -A
+git commit -q -m "test l: second commit"
+DIFFERENT_COMMIT=$(git rev-parse HEAD)
 
-# Checkout to detached HEAD at the corrupted "commit"
-git checkout -q HEAD
+# Corrupt ALL snapshot COMMIT files to point to this different commit
+find "$TEST_DIR/rollbacks" -mindepth 1 -maxdepth 1 -type d -name '20*' | while read -r SNAPSHOT_PATH; do
+    echo "$DIFFERENT_COMMIT" > "$SNAPSHOT_PATH/COMMIT"
+done
 
-# Try to deploy from this corrupted rollback state
+# Checkout to detached HEAD at the GOOD commit (not in any snapshot now)
+git checkout -q "$GOOD_COMMIT"
+
+# Try to deploy from this state - should detect we're at an unknown commit
 bash "$TEST_DIR/deploy-test.sh" > "$TEST_DIR/deploy-output-l.txt" 2>&1 || true
 
 # Should detect unknown commit and refuse
