@@ -631,8 +631,8 @@ git commit -q -m "setup for test f"
 git push -q
 bash "$TEST_DIR/deploy-test.sh" > /dev/null 2>&1
 
-OLD_BINARY=$(cat bin/server | head -1)
-OLD_JS=$(cat web/static/js/app.js | head -1)
+OLD_BINARY=$(head -1 bin/server)
+OLD_JS=$(head -1 web/static/js/app.js)
 
 # Make binary unreadable to cause cp failure during snapshot
 chmod 000 bin/server

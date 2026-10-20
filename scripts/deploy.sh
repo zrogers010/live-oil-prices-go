@@ -94,8 +94,6 @@ if git rev-parse --is-inside-work-tree &>/dev/null 2>&1; then
     # Save the running commit BEFORE any checkout operations
     # This represents what's actually deployed and should be in the snapshot
     RUNNING_COMMIT="$CURRENT_COMMIT"
-    DETACHED=false
-    git symbolic-ref HEAD &>/dev/null || DETACHED=true
     
     # Check for dirty tree
     if ! git diff --quiet || ! git diff --cached --quiet; then
