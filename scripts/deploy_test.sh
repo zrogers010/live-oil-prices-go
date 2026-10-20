@@ -765,7 +765,7 @@ fi
 echo "✓ Tree is clean"
 
 # Verify HEAD == origin/branch
-ORIGIN_HEAD=$(git rev-parse origin/$REMOTE_BRANCH)
+ORIGIN_HEAD=$(git rev-parse "origin/$REMOTE_BRANCH")
 if [ "$CURRENT_COMMIT" = "$ORIGIN_HEAD" ]; then
     echo "✓ HEAD matches origin/$REMOTE_BRANCH"
 else
