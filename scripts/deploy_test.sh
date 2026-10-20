@@ -726,6 +726,12 @@ GOOD_COMMIT=$(git rev-parse HEAD)
 SNAPSHOT_TS=$(ls "$TEST_DIR/rollbacks" | head -1)
 SNAPSHOT_COMMIT=$(cat "$TEST_DIR/rollbacks/$SNAPSHOT_TS/COMMIT")
 
+# The rolled-back commit stays at the local branch tip with different CSS, as after a
+# real auto-rollback; `git checkout -f` of the branch then puts that CSS on disk
+echo "/* css-v1-rolled-back */" > web/static/css/styles.css
+git commit -q -am "test g: rolled-back tip"
+git push -q
+
 # Create separate clone to make upstream changes
 mkdir -p "$TEST_DIR/upstream-clone"
 cd "$TEST_DIR/upstream-clone"
