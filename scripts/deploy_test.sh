@@ -1010,8 +1010,10 @@ git commit -q -m "test k bad deploy"
 git push -q
 
 # Make rollback fail by removing snapshot
-SNAPSHOT_DIR=$(ls -1 "$TEST_DIR/rollbacks" | head -1)
-rm -rf "$TEST_DIR/rollbacks/$SNAPSHOT_DIR"
+SNAPSHOT_DIR=$(find "$TEST_DIR/rollbacks" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | head -1)
+if [ -n "$SNAPSHOT_DIR" ]; then
+    rm -rf "$TEST_DIR/rollbacks/$SNAPSHOT_DIR"
+fi
 
 bash "$TEST_DIR/deploy-test.sh" > "$TEST_DIR/deploy-output-k.txt" 2>&1 || true
 
@@ -1042,8 +1044,10 @@ git push -q
 bash "$TEST_DIR/deploy-test.sh" > /dev/null 2>&1
 
 # Corrupt the snapshot COMMIT file
-SNAPSHOT_DIR=$(ls -1 "$TEST_DIR/rollbacks" | head -1)
-echo "invalid-commit-hash" > "$TEST_DIR/rollbacks/$SNAPSHOT_DIR/COMMIT"
+SNAPSHOT_DIR=$(find "$TEST_DIR/rollbacks" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | head -1)
+if [ -n "$SNAPSHOT_DIR" ]; then
+    echo "invalid-commit-hash" > "$TEST_DIR/rollbacks/$SNAPSHOT_DIR/COMMIT"
+fi
 
 # Checkout to detached HEAD at the corrupted "commit"
 git checkout -q HEAD
