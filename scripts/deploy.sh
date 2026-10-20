@@ -105,6 +105,31 @@ if git rev-parse --is-inside-work-tree &>/dev/null 2>&1; then
         DEPLOY_FAILED=1
         exit 1
     fi
+
+    # Detached HEAD must be a known snapshot commit. Check BEFORE step 1 writes
+    # this deploy's own snapshot (whose COMMIT is the current HEAD), otherwise
+    # the check always matches that new snapshot and can never refuse.
+    if ! git symbolic-ref -q HEAD >/dev/null; then
+        ROLLBACK_STATE=false
+        if [ -n "$CURRENT_COMMIT" ]; then
+            for snapshot in "$ROLLBACK_DIR"/*/COMMIT; do
+                if [ -f "$snapshot" ]; then
+                    SNAP_COMMIT=$(cat "$snapshot" 2>/dev/null || echo "")
+                    if [ "$SNAP_COMMIT" = "$CURRENT_COMMIT" ]; then
+                        ROLLBACK_STATE=true
+                        break
+                    fi
+                fi
+            done 2>/dev/null || true
+        fi
+
+        if [ "$ROLLBACK_STATE" = false ]; then
+            echo "ERROR: Detached HEAD at unknown commit $CURRENT_COMMIT"
+            echo "       Either checkout a branch or rollback to a known snapshot"
+            DEPLOY_FAILED=1
+            exit 1
+        fi
+    fi
 fi
 
 # ---------- Create rollback snapshot BEFORE git pull ----------
@@ -209,33 +234,20 @@ fi
 if git rev-parse --is-inside-work-tree &>/dev/null 2>&1; then
     echo "[2/6] Pulling latest code..."
     
+    # Back up the CSS bytes the running server is serving, BEFORE any checkout or
+    # pull: in rollback state `git checkout -f $DEPLOY_BRANCH` would otherwise
+    # replace them with the branch tip's (rolled-back) CSS first.
+    if [ -f "web/static/css/styles.css" ]; then
+        CSS_BACKUP="$(mktemp)"
+        cp "web/static/css/styles.css" "$CSS_BACKUP"
+    fi
+    
     # Check if we're in detached HEAD (e.g., after a rollback)
     if ! git symbolic-ref -q HEAD >/dev/null; then
-        # Verify this is a known snapshot commit
-        ROLLBACK_STATE=false
-        if [ -n "$CURRENT_COMMIT" ]; then
-            for snapshot in "$ROLLBACK_DIR"/*/COMMIT; do
-                if [ -f "$snapshot" ]; then
-                    SNAP_COMMIT=$(cat "$snapshot" 2>/dev/null || echo "")
-                    if [ "$SNAP_COMMIT" = "$CURRENT_COMMIT" ]; then
-                        ROLLBACK_STATE=true
-                        break
-                    fi
-                fi
-            done 2>/dev/null || true
-        fi
-        
-        if [ "$ROLLBACK_STATE" = false ]; then
-            echo "ERROR: Detached HEAD at unknown commit $CURRENT_COMMIT"
-            echo "       Either checkout a branch or rollback to a known snapshot"
-            DEPLOY_FAILED=1
-            exit 1
-        fi
-        
         echo "  Detected rollback state (detached at snapshot commit $CURRENT_COMMIT)"
         echo "  Returning to branch $DEPLOY_BRANCH..."
         
-        # Checkout branch (tree now has new CSS from branch)
+        # Checkout branch (tree now has the branch tip's CSS; old bytes restored after pull)
         git checkout -f "$DEPLOY_BRANCH" || {
             echo "ERROR: Failed to checkout $DEPLOY_BRANCH"
             DEPLOY_FAILED=1
@@ -244,12 +256,6 @@ if git rev-parse --is-inside-work-tree &>/dev/null 2>&1; then
         
         # Mark tree as changed immediately after checkout
         GIT_TREE_CHANGED=1
-    fi
-    
-    # Back up current CSS bytes before pull (running server needs old CSS under old hash)
-    if [ -f "web/static/css/styles.css" ]; then
-        CSS_BACKUP="$(mktemp)"
-        cp "web/static/css/styles.css" "$CSS_BACKUP"
     fi
     
     # Pull latest code (tree must be clean)
@@ -351,9 +357,7 @@ fi
 echo "[6/6] Swapping binary and frontend assets, then restarting service..."
 
 # Stop service before swapping assets to prevent old binary serving new CSS
-# Downtime window: stop -> mv files (typically <100ms) -> start
 echo "  Stopping service before asset swap..."
-SWAP_START=$(date +%s%N)
 sudo systemctl stop "$SERVICE" 2>&1 || true
 
 # Atomically swap the new binary into place
@@ -397,10 +401,6 @@ if ! sudo systemctl start "$SERVICE" 2>&1; then
     DEPLOY_FAILED=1
     exit 1
 fi
-
-SWAP_END=$(date +%s%N)
-SWAP_DURATION_MS=$(( (SWAP_END - SWAP_START) / 1000000 ))
-echo "  Service downtime during swap: ${SWAP_DURATION_MS}ms"
 
 sleep 2
 

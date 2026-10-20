@@ -6,6 +6,9 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 TEST_DIR=$(mktemp -d)
+# Private TMPDIR so test (n) sees every mktemp made by deploy.sh (and only ours)
+export TMPDIR="$TEST_DIR/tmp"
+mkdir -p "$TMPDIR"
 
 cleanup() {
     # Kill any mock service processes
@@ -107,6 +110,10 @@ case "$1" in
             
             # Include git commit to make each build unique
             GIT_COMMIT=$(git rev-parse HEAD 2>/dev/null || echo "unknown")
+            # Record the on-disk CSS while the old binary is still serving it (in-flight invariant)
+            if [ -f web/static/css/styles.css ]; then
+                md5sum < web/static/css/styles.css | awk '{print $1}' >> "TEST_DIR_PLACEHOLDER/css-at-build.log"
+            fi
             if [ -f "TEST_DIR_PLACEHOLDER/fail_asset_check" ]; then
                 # This binary will fail asset checks
                 cat > "$OUTPUT" <<'FAILBIN'
@@ -746,6 +753,10 @@ if [ -f "$TEST_DIR/rollbacks/$SNAPSHOT_TS/css/styles.css" ]; then
     cp "$TEST_DIR/rollbacks/$SNAPSHOT_TS/css/styles.css" web/static/css/styles.css
 fi
 
+# CSS bytes the (rolled-back) running server serves; they must stay on disk until the swap
+RUNNING_CSS_HASH_G=$(md5sum < web/static/css/styles.css | awk '{print $1}')
+: > "$TEST_DIR/css-at-build.log"
+
 # Deploy from rollback state should succeed
 if ! bash "$TEST_DIR/deploy-test.sh" > "$TEST_DIR/deploy-output-g.txt" 2>&1; then
     echo "✗ Deploy from rollback state failed"
@@ -761,6 +772,13 @@ if [ "$CURRENT_COMMIT" != "$NEW_COMMIT" ]; then
     exit 1
 fi
 echo "✓ Deployed to new commit"
+
+if [ "$(head -1 "$TEST_DIR/css-at-build.log")" = "$RUNNING_CSS_HASH_G" ]; then
+    echo "✓ Running server's CSS stayed on disk during the build (rollback state)"
+else
+    echo "✗ CSS on disk during build was not the running server's CSS (rollback state)"
+    exit 1
+fi
 
 # Verify tree is clean
 if ! git diff --quiet || ! git diff --cached --quiet; then
@@ -886,9 +904,16 @@ echo "$NEW_HASH" > "$TEST_DIR/new-hash.txt"
 ) &
 MONITOR_PID=$!
 
+: > "$TEST_DIR/css-at-build.log"
 bash "$TEST_DIR/deploy-test.sh" > /dev/null 2>&1
 
 wait $MONITOR_PID 2>/dev/null || true
+
+if [ "$(head -1 "$TEST_DIR/css-at-build.log")" != "$INITIAL_HASH" ]; then
+    echo "✗ CSS on disk during build was not the running server's CSS (normal path)"
+    exit 1
+fi
+echo "✓ Running server's CSS stayed on disk during the build (normal path)"
 
 if [ -f "$TEST_DIR/css-hash-mismatch.txt" ]; then
     echo "✗ $(cat "$TEST_DIR/css-hash-mismatch.txt")"
@@ -1031,42 +1056,45 @@ rm -f "$TEST_DIR/health_fail"
 echo "✓ Test (k) passed"
 
 echo ""
-echo "=== Test (l): M3 - Corrupt snapshot commit refused ==="
+echo "=== Test (l): M3 - Detached HEAD at non-snapshot commit refused ==="
 
 git checkout master -q 2>/dev/null || git checkout main -q
 rm -rf "$TEST_DIR/rollbacks"/*
 rm -rf bin
 
-# Create snapshot with working commit
+# Create a commit and snapshot
 echo "change-l1" >> cmd/server/main.go
 git add -A
-git commit -q -m "test l setup"
+git commit -q -m "test l commit 1"
 git push -q
-GOOD_COMMIT=$(git rev-parse HEAD)
 bash "$TEST_DIR/deploy-test.sh" > /dev/null 2>&1
 
-# Make another commit so we can checkout to a different commit than what's in the snapshot
+# Create another commit (this one won't have a snapshot)
 echo "change-l2" >> cmd/server/main.go
 git add -A
-git commit -q -m "test l: second commit"
-DIFFERENT_COMMIT=$(git rev-parse HEAD)
+git commit -q -m "test l commit 2"
+git push -q
+UNKNOWN_COMMIT=$(git rev-parse HEAD)
 
-# Corrupt ALL snapshot COMMIT files to point to this different commit
-find "$TEST_DIR/rollbacks" -mindepth 1 -maxdepth 1 -type d -name '20*' | while read -r SNAPSHOT_PATH; do
-    echo "$DIFFERENT_COMMIT" > "$SNAPSHOT_PATH/COMMIT"
-done
+# Go to detached HEAD at this unknown commit (no snapshot for it)
+git checkout -q "$UNKNOWN_COMMIT"
 
-# Checkout to detached HEAD at the GOOD commit (not in any snapshot now)
-git checkout -q "$GOOD_COMMIT"
+# Try to deploy - should refuse because we're detached at a commit with no snapshot
+SNAPS_BEFORE=$(find "$TEST_DIR/rollbacks" -mindepth 1 -maxdepth 1 | wc -l)
+RC_L=0
+bash "$TEST_DIR/deploy-test.sh" > "$TEST_DIR/deploy-output-l.txt" 2>&1 || RC_L=$?
+SNAPS_AFTER=$(find "$TEST_DIR/rollbacks" -mindepth 1 -maxdepth 1 | wc -l)
 
-# Try to deploy from this state - should detect we're at an unknown commit
-bash "$TEST_DIR/deploy-test.sh" > "$TEST_DIR/deploy-output-l.txt" 2>&1 || true
-
-# Should detect unknown commit and refuse
-if grep -q "unknown commit\|Detached HEAD at unknown commit" "$TEST_DIR/deploy-output-l.txt"; then
-    echo "✓ Corrupted snapshot commit detected"
+# Should detect unknown commit and refuse: non-zero exit, still detached at
+# UNKNOWN_COMMIT, and no snapshot written (a new snapshot would make it "known")
+if [ "$RC_L" -ne 0 ] \
+    && grep -q "Detached HEAD at unknown commit" "$TEST_DIR/deploy-output-l.txt" \
+    && [ "$(git rev-parse HEAD)" = "$UNKNOWN_COMMIT" ] \
+    && [ "$SNAPS_AFTER" -eq "$SNAPS_BEFORE" ]; then
+    echo "✓ Non-snapshot commit refused"
 else
-    echo "✗ Corrupted snapshot commit not detected"
+    echo "✗ Non-snapshot commit not refused (rc=$RC_L, snapshots $SNAPS_BEFORE -> $SNAPS_AFTER)"
+    cat "$TEST_DIR/deploy-output-l.txt"
     exit 1
 fi
 
@@ -1079,27 +1107,44 @@ git checkout master -q 2>/dev/null || git checkout main -q
 rm -rf "$TEST_DIR/rollbacks"/*
 rm -rf bin
 
-# This test is already covered by test (f) - Snapshot copy failure aborts deploy
-# Verify no partial directories exist
-PARTIAL_DIRS=$(find "$TEST_DIR/rollbacks" -mindepth 1 -maxdepth 1 -type d ! -name "pre-rollback-*" 2>/dev/null | wc -l)
-if [ "$PARTIAL_DIRS" -eq 0 ]; then
-    echo "✓ No partial snapshot directories from test (f)"
+# Deploy once so a binary exists, then make the snapshot copy fail mid-way
+echo "change-m1" >> cmd/server/main.go
+git add -A
+git commit -q -m "test m setup"
+git push -q
+bash "$TEST_DIR/deploy-test.sh" > /dev/null 2>&1
+SNAPS_BEFORE=$(find "$TEST_DIR/rollbacks" -mindepth 1 -maxdepth 1 | sort)
+chmod 000 web/static/js/app.js
+echo "change-m2" >> cmd/server/main.go
+git add -A
+git commit -q -m "test m snapshot fails"
+git push -q
+RC_M=0
+bash "$TEST_DIR/deploy-test.sh" > "$TEST_DIR/deploy-output-m.txt" 2>&1 || RC_M=$?
+chmod 644 web/static/js/app.js
+SNAPS_AFTER=$(find "$TEST_DIR/rollbacks" -mindepth 1 -maxdepth 1 | sort)
+if [ "$RC_M" -ne 0 ] && grep -q "Failed to back up js" "$TEST_DIR/deploy-output-m.txt" \
+    && [ "$SNAPS_AFTER" = "$SNAPS_BEFORE" ]; then
+    echo "✓ No partial snapshot directories after snapshot failure"
 else
-    echo "✗ Found $PARTIAL_DIRS partial directories"
+    echo "✗ Snapshot failure left partial state (rc=$RC_M)"
+    echo "  before: $SNAPS_BEFORE"
+    echo "  after:  $SNAPS_AFTER"
+    cat "$TEST_DIR/deploy-output-m.txt"
     exit 1
 fi
+git reset -q --hard HEAD~1
+git push -q -f
 
 echo "✓ Test (m) passed"
 
 echo ""
 echo "=== Test (n): No /tmp leaks after tests ==="
 
-# Count temp files created during the test run
-TMP_FILES=$(find /tmp -maxdepth 1 -name 'tmp.*' -newer "$TEST_DIR" 2>/dev/null || true)
-TMP_COUNT=$(echo "$TMP_FILES" | grep -c '.' || echo 0)
-
-if [ "$TMP_COUNT" -gt 0 ]; then
-    echo "✗ Leaked $TMP_COUNT temp file(s) in /tmp:"
+# Every mktemp in deploy.sh landed in our private TMPDIR; it must be empty now
+TMP_FILES=$(find "$TMPDIR" -mindepth 1 -maxdepth 1)
+if [ -n "$TMP_FILES" ]; then
+    echo "✗ Leaked temp file(s):"
     echo "$TMP_FILES"
     exit 1
 fi
