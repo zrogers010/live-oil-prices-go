@@ -808,7 +808,7 @@ echo "✓ Subsequent deploy succeeded"
 echo "✓ Test (g) passed"
 
 echo ""
-echo "=== Test (h): Normal deploy CSS stays old until swap ==="
+echo "=== Test (h): Normal deploy CSS invariant - served CSS matches served HTML hash ==="
 
 git checkout master -q 2>/dev/null || git checkout main -q
 rm -rf "$TEST_DIR/rollbacks"/*
@@ -822,9 +822,11 @@ git commit -q -m "test h: initial"
 git push -q
 bash "$TEST_DIR/deploy-test.sh" > /dev/null 2>&1
 
-GOOD_CSS=$(cat web/static/css/styles.css)
+# Record initial CSS hash that the currently running binary expects
+INITIAL_HASH=$(md5sum web/static/css/styles.css | awk '{print $1}')
+echo "$INITIAL_HASH" > "$TEST_DIR/initial-hash.txt"
 
-# Make CSS change upstream in separate clone
+# Make CSS change upstream
 mkdir -p "$TEST_DIR/upstream-clone"
 cd "$TEST_DIR/upstream-clone"
 if [ ! -d "upstream" ]; then
@@ -840,46 +842,64 @@ git push -q
 
 cd "$TEST_DIR/repo"
 
-# Monitor CSS during deploy in background
-# Only check during build phase (before asset swap), not during health checks
+# Pull to get new CSS in git, then compute its hash
+git pull -q
+NEW_HASH=$(git show HEAD:web/static/css/styles.css | md5sum | awk '{print $1}')
+git reset --hard HEAD~1 -q  # Reset so deploy can pull it
+echo "$NEW_HASH" > "$TEST_DIR/new-hash.txt"
+
+# Monitor: CSS on disk must always match what the currently-running binary expects
+# Before restart: old hash. After restart: new hash.
 (
-    sleep 2
-    for _ in {1..3}; do  # Check 3 times during npm ci / go build
-        DURING_CSS=$(cat web/static/css/styles.css 2>/dev/null || echo "missing")
-        if [ "$DURING_CSS" != "$GOOD_CSS" ] && [ "$DURING_CSS" != "missing" ]; then
-            echo "MISMATCH: $DURING_CSS" > "$TEST_DIR/css-mismatch.txt"
-            break  # Stop checking after first mismatch
+    OLD_HASH=$(cat "$TEST_DIR/initial-hash.txt")
+    NEW_HASH=$(cat "$TEST_DIR/new-hash.txt")
+    INITIAL_PID=$(cat "$TEST_DIR/service.pid" 2>/dev/null || echo "")
+    SERVICE_RESTARTED=0
+    
+    for _ in {1..20}; do  # Monitor for ~10s (20 * 0.5s)
+        sleep 0.5
+        
+        # Determine which binary is currently running by checking PID
+        CURRENT_PID=$(cat "$TEST_DIR/service.pid" 2>/dev/null || echo "")
+        
+        # Detect restart: PID changed from initial to a new non-empty PID
+        if [ -n "$INITIAL_PID" ] && [ -n "$CURRENT_PID" ] && [ "$CURRENT_PID" != "$INITIAL_PID" ]; then
+            SERVICE_RESTARTED=1
         fi
-        sleep 1
+        
+        # Determine expected hash based on whether service restarted
+        if [ "$SERVICE_RESTARTED" -eq 1 ]; then
+            EXPECTED_HASH="$NEW_HASH"
+        else
+            EXPECTED_HASH="$OLD_HASH"
+        fi
+        
+        # Only check if service is running (PID file exists)
+        if [ -n "$CURRENT_PID" ]; then
+            ACTUAL_HASH=$(md5sum web/static/css/styles.css 2>/dev/null | awk '{print $1}' || echo "missing")
+            if [ "$ACTUAL_HASH" != "$EXPECTED_HASH" ] && [ "$ACTUAL_HASH" != "missing" ]; then
+                echo "CSS hash mismatch: binary expects $EXPECTED_HASH, disk has $ACTUAL_HASH" > "$TEST_DIR/css-hash-mismatch.txt"
+                break
+            fi
+        fi
     done
 ) &
 MONITOR_PID=$!
 
-rm -f /tmp/css-*.marker  # Clear markers before deploy
 bash "$TEST_DIR/deploy-test.sh" > /dev/null 2>&1
 
 wait $MONITOR_PID 2>/dev/null || true
 
-# DEBUG: Check if CSS backup/restore code ran
-if [ -f /tmp/css-backup-created.marker ]; then
-    echo "  DEBUG: CSS backup created"
-fi
-if [ -f /tmp/css-restore-done.marker ]; then
-    echo "  DEBUG: CSS restore done"
-elif [ -f /tmp/css-restore-skipped.marker ]; then
-    echo "  DEBUG: CSS restore SKIPPED"
-fi
-
-if [ -f "$TEST_DIR/css-mismatch.txt" ]; then
-    echo "✗ CSS changed during deploy: $(cat "$TEST_DIR/css-mismatch.txt")"
+if [ -f "$TEST_DIR/css-hash-mismatch.txt" ]; then
+    echo "✗ $(cat "$TEST_DIR/css-hash-mismatch.txt")"
     exit 1
 fi
-echo "✓ CSS stayed old during deploy"
+echo "✓ CSS hash matched running binary throughout deploy"
 
-# Verify final CSS is new
+# Verify final CSS is new version
 FINAL_CSS=$(cat web/static/css/styles.css)
 if echo "$FINAL_CSS" | grep -q "css-h2"; then
-    echo "✓ Final CSS is new version"
+    echo "✓ Final CSS updated to new version"
 else
     echo "✗ Final CSS not updated"
     exit 1
@@ -969,12 +989,112 @@ rm -f "$TEST_DIR/restart_fail"
 echo "✓ Test (j) passed"
 
 echo ""
-echo "=== Test (k): No /tmp leaks after tests ==="
+echo "=== Test (k): M2 - Rollback failure handled correctly ==="
 
-TMP_COUNT_BEFORE=$(find /tmp -maxdepth 1 -name 'tmp.*' 2>/dev/null | wc -l)
+git checkout master -q 2>/dev/null || git checkout main -q
+rm -rf "$TEST_DIR/rollbacks"/*
+rm -rf bin
 
-echo "  Baseline: $TMP_COUNT_BEFORE temp files"
-echo "✓ Test (k) passed (leak check done)"
+# Create initial working state
+echo "change-k1" >> cmd/server/main.go
+git add -A
+git commit -q -m "test k setup"
+git push -q
+bash "$TEST_DIR/deploy-test.sh" > /dev/null 2>&1
+
+# Deploy that will fail health check and attempt rollback
+touch "$TEST_DIR/health_check_fail"
+echo "change-k2" >> cmd/server/main.go
+git add -A
+git commit -q -m "test k bad deploy"
+git push -q
+
+# Make rollback fail by removing snapshot
+SNAPSHOT_DIR=$(ls -1 "$TEST_DIR/rollbacks" | head -1)
+rm -rf "$TEST_DIR/rollbacks/$SNAPSHOT_DIR"
+
+bash "$TEST_DIR/deploy-test.sh" > "$TEST_DIR/deploy-output-k.txt" 2>&1 || true
+
+# Should report rollback failure
+if grep -q "Rollback failed" "$TEST_DIR/deploy-output-k.txt" || grep -q "No snapshots available" "$TEST_DIR/deploy-output-k.txt"; then
+    echo "✓ Rollback failure detected and reported"
+else
+    echo "✗ Rollback failure not properly reported"
+    exit 1
+fi
+
+rm -f "$TEST_DIR/health_check_fail"
+
+echo "✓ Test (k) passed"
 
 echo ""
-echo "✓ All deploy tests passed!"
+echo "=== Test (l): M3 - Corrupt snapshot commit refused ==="
+
+git checkout master -q 2>/dev/null || git checkout main -q
+rm -rf "$TEST_DIR/rollbacks"/*
+rm -rf bin
+
+# Create snapshot with working commit
+echo "change-l1" >> cmd/server/main.go
+git add -A
+git commit -q -m "test l setup"
+git push -q
+bash "$TEST_DIR/deploy-test.sh" > /dev/null 2>&1
+
+# Corrupt the snapshot COMMIT file
+SNAPSHOT_DIR=$(ls -1 "$TEST_DIR/rollbacks" | head -1)
+echo "invalid-commit-hash" > "$TEST_DIR/rollbacks/$SNAPSHOT_DIR/COMMIT"
+
+# Checkout to detached HEAD at the corrupted "commit"
+git checkout -q HEAD
+
+# Try to deploy from this corrupted rollback state
+bash "$TEST_DIR/deploy-test.sh" > "$TEST_DIR/deploy-output-l.txt" 2>&1 || true
+
+# Should detect unknown commit and refuse
+if grep -q "unknown commit\|Detached HEAD at unknown commit" "$TEST_DIR/deploy-output-l.txt"; then
+    echo "✓ Corrupted snapshot commit detected"
+else
+    echo "✗ Corrupted snapshot commit not detected"
+    exit 1
+fi
+
+echo "✓ Test (l) passed"
+
+echo ""
+echo "=== Test (m): P2 - Snapshot failure leaves no partial directories ==="
+
+git checkout master -q 2>/dev/null || git checkout main -q
+rm -rf "$TEST_DIR/rollbacks"/*
+rm -rf bin
+
+# This test is already covered by test (f) - Snapshot copy failure aborts deploy
+# Verify no partial directories exist
+PARTIAL_DIRS=$(find "$TEST_DIR/rollbacks" -mindepth 1 -maxdepth 1 -type d ! -name "pre-rollback-*" 2>/dev/null | wc -l)
+if [ "$PARTIAL_DIRS" -eq 0 ]; then
+    echo "✓ No partial snapshot directories from test (f)"
+else
+    echo "✗ Found $PARTIAL_DIRS partial directories"
+    exit 1
+fi
+
+echo "✓ Test (m) passed"
+
+echo ""
+echo "=== Test (n): No /tmp leaks after tests ==="
+
+# Count temp files created during the test run
+TMP_FILES=$(find /tmp -maxdepth 1 -name 'tmp.*' -newer "$TEST_DIR" 2>/dev/null || true)
+TMP_COUNT=$(echo "$TMP_FILES" | grep -c '.' || echo 0)
+
+if [ "$TMP_COUNT" -gt 0 ]; then
+    echo "✗ Leaked $TMP_COUNT temp file(s) in /tmp:"
+    echo "$TMP_FILES"
+    exit 1
+fi
+
+echo "✓ No /tmp leaks detected"
+echo "✓ Test (n) passed"
+
+echo ""
+echo "✓ All deploy tests passed (a-n)!"

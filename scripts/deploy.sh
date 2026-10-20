@@ -250,12 +250,6 @@ if git rev-parse --is-inside-work-tree &>/dev/null 2>&1; then
     if [ -f "web/static/css/styles.css" ]; then
         CSS_BACKUP="$(mktemp)"
         cp "web/static/css/styles.css" "$CSS_BACKUP"
-        touch /tmp/css-backup-created.marker  # DEBUG
-        echo "  CSS backed up before pull: $(head -c 50 "web/static/css/styles.css")"
-    else
-        touch /tmp/css-backup-NOT-found.marker  # DEBUG
-        echo "  WARNING: web/static/css/styles.css not found before pull!"
-        ls -la web/static/css/ 2>&1 || echo "  (web/static/css/ does not exist)"
     fi
     
     # Pull latest code (tree must be clean)
@@ -270,11 +264,6 @@ if git rev-parse --is-inside-work-tree &>/dev/null 2>&1; then
     # After pull, restore old CSS bytes so running server can keep serving CSS matching its cached hash
     if [ -n "$CSS_BACKUP" ] && [ -f "$CSS_BACKUP" ]; then
         cp "$CSS_BACKUP" "web/static/css/styles.css"
-        touch /tmp/css-restore-done.marker  # DEBUG
-        echo "  CSS restored after pull (keeping old bytes on disk)"
-    else
-        touch /tmp/css-restore-skipped.marker  # DEBUG
-        echo "  WARNING: CSS backup not available for restore!"
     fi
 else
     echo "[2/6] Not a git repo, skipping pull."
@@ -361,6 +350,10 @@ fi
 # ---------- Swap binary and frontend assets, then restart ----------
 echo "[6/6] Swapping binary and frontend assets, then restarting service..."
 
+# Stop service before swapping assets to prevent old binary serving new CSS
+echo "  Stopping service before asset swap..."
+sudo systemctl stop "$SERVICE" 2>&1 || true
+
 # Atomically swap the new binary into place
 mv -f "$BIN.new" "$BIN"
 echo "  ✓ Binary swapped"
@@ -377,12 +370,14 @@ if [ -d "$FRONTEND_BUILD_TEMP/css" ]; then
     mv "$FRONTEND_BUILD_TEMP/css" web/static/
 fi
 
+echo "  ✓ Assets swapped"
+
 # Clean up temp directory
 rm -rf "$FRONTEND_BUILD_TEMP"
 
-# Restart service (P1: guard against restart failure)
-if ! sudo systemctl restart "$SERVICE" 2>&1; then
-    echo "  ERROR: systemctl restart failed!"
+# Start service with new binary and assets (P1: guard against start failure)
+if ! sudo systemctl start "$SERVICE" 2>&1; then
+    echo "  ERROR: systemctl start failed!"
     sudo systemctl status "$SERVICE" --no-pager 2>&1 || true
     
     # Auto-rollback on failed restart
