@@ -23,6 +23,40 @@ var commoditySymbols = []string{
 }
 
 func main() {
+	// Check for --check-assets flag (used by deploy.sh to validate before swapping)
+	// Accepts optional --static-root=<path> to validate against a temp build directory
+	if len(os.Args) > 1 && os.Args[1] == "--check-assets" {
+		staticRoot := "web/static"
+		templatesPath := "web/templates"
+
+		// Parse optional --static-root flag
+		for _, arg := range os.Args[2:] {
+			if strings.HasPrefix(arg, "--static-root=") {
+				staticRoot = strings.TrimPrefix(arg, "--static-root=")
+			}
+			if strings.HasPrefix(arg, "--templates=") {
+				templatesPath = strings.TrimPrefix(arg, "--templates=")
+			}
+		}
+
+		// Initialize assets from the specified root
+		if err := assets.InitWithRoot(staticRoot); err != nil {
+			log.Fatalf("Asset check failed: %v", err)
+		}
+
+		commodityTemplate := filepath.Join(templatesPath, "commodity.html")
+		if err := handlers.InitCommodityTemplate(commodityTemplate); err != nil {
+			log.Fatalf("Template check failed (commodity): %v", err)
+		}
+
+		if err := handlers.InitPageTemplates(templatesPath); err != nil {
+			log.Fatalf("Template check failed (pages): %v", err)
+		}
+
+		fmt.Println("✓ Asset and template check passed")
+		os.Exit(0)
+	}
+
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
