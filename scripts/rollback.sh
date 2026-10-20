@@ -230,24 +230,81 @@ else
     exit 1
 fi
 
-# Health check
+# Health check with stability window (aligned with deploy.sh)
 echo ""
 echo "Running health check..."
-RETRIES=5
-for i in $(seq 1 $RETRIES); do
+HEALTH_CHECK_TIMEOUT="${HEALTH_CHECK_TIMEOUT:-30}"
+HEALTH_CHECK_INTERVAL=3
+STABILITY_WINDOW="${STABILITY_WINDOW:-15}"
+
+# Get initial service state for restart detection
+INITIAL_PID=""
+if sudo systemctl is-active --quiet "$SERVICE" 2>/dev/null || false; then
+    INITIAL_PID=$(sudo systemctl show "$SERVICE" --property=MainPID --value 2>/dev/null || echo "")
+fi
+
+FIRST_SUCCESS_TIME=0
+CURRENT_TIME=0
+MAX_TIME_FOR_FIRST_SUCCESS=$HEALTH_CHECK_TIMEOUT
+i=1
+
+while true; do
+    CURRENT_TIME=$((i * HEALTH_CHECK_INTERVAL))
+    
     STATUS=$(curl -s --max-time 5 -o /dev/null -w "%{http_code}" "http://127.0.0.1:8080/api/health" 2>&1) || STATUS="000"
     if [ "$STATUS" = "200" ]; then
-        echo "  ✓ Health check passed"
-        break
+        if [ "$FIRST_SUCCESS_TIME" -eq 0 ]; then
+            FIRST_SUCCESS_TIME=$CURRENT_TIME
+            echo "  ✓ Initial health check passed at ${CURRENT_TIME}s. Monitoring stability for ${STABILITY_WINDOW}s..."
+        fi
+        
+        # Check if stability window elapsed
+        ELAPSED=$((CURRENT_TIME - FIRST_SUCCESS_TIME))
+        if [ "$ELAPSED" -ge "$STABILITY_WINDOW" ]; then
+            # Final checks - service still active and hasn't restarted
+            if ! sudo systemctl is-active --quiet "$SERVICE" 2>/dev/null || false; then
+                echo "  ERROR: Service became inactive during stability window!"
+                sudo systemctl status "$SERVICE" --no-pager 2>&1 || true
+                FIRST_SUCCESS_TIME=0
+            else
+                # Check if service restarted (PID changed)
+                CURRENT_PID=$(sudo systemctl show "$SERVICE" --property=MainPID --value 2>/dev/null || echo "")
+                if [ -n "$INITIAL_PID" ] && [ -n "$CURRENT_PID" ] && [ "$CURRENT_PID" != "$INITIAL_PID" ]; then
+                    echo "  ERROR: Service restarted during stability window (PID $INITIAL_PID -> $CURRENT_PID)!"
+                    sudo systemctl status "$SERVICE" --no-pager 2>&1 || true
+                    echo ""
+                    echo "=== Rollback failed (service restarted) ==="
+                    exit 1
+                else
+                    echo "  ✓ Stability verified after ${ELAPSED}s."
+                    break
+                fi
+            fi
+        fi
+    else
+        FIRST_SUCCESS_TIME=0
     fi
-    if [ "$i" = "$RETRIES" ]; then
-        echo "  ERROR: Health check failed after $RETRIES attempts (HTTP $STATUS)"
+    
+    # Check if service crashed
+    if ! sudo systemctl is-active --quiet "$SERVICE" 2>/dev/null || false; then
+        echo "  ERROR: Service crashed during health check at ${CURRENT_TIME}s!"
+        sudo systemctl status "$SERVICE" --no-pager 2>&1 || true
+        echo ""
+        echo "=== Rollback failed (service crashed) ==="
+        exit 1
+    fi
+    
+    # Check timeout (only applies before first success)
+    if [ "$FIRST_SUCCESS_TIME" -eq 0 ] && [ "$CURRENT_TIME" -ge "$MAX_TIME_FOR_FIRST_SUCCESS" ]; then
+        echo "  ERROR: Health check failed after ${HEALTH_CHECK_TIMEOUT}s (HTTP $STATUS)"
         echo "  Check logs: sudo journalctl -u $SERVICE --no-pager -n 50"
         echo ""
         echo "=== Rollback failed (unhealthy) ==="
         exit 1
     fi
-    sleep 3
+    
+    sleep $HEALTH_CHECK_INTERVAL
+    i=$((i + 1))
 done
 
 echo ""

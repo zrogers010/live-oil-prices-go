@@ -21,15 +21,7 @@ DEPLOY_FAILED=0
 GIT_TREE_CHANGED=0
 AUTO_ROLLBACK_HAPPENED=0
 ROLLBACK_FAILED=0
-CSS_ROLLBACK_BACKUP=""
-CSS_TEMP_BACKUP=""
-
-# Cleanup CSS temp files on exit (M1 fix)
-cleanup_css_temps() {
-    [ -n "$CSS_ROLLBACK_BACKUP" ] && [ -f "$CSS_ROLLBACK_BACKUP" ] && rm -f "$CSS_ROLLBACK_BACKUP"
-    [ -n "$CSS_TEMP_BACKUP" ] && [ -f "$CSS_TEMP_BACKUP" ] && rm -f "$CSS_TEMP_BACKUP"
-}
-trap cleanup_css_temps EXIT
+CSS_BACKUP=""
 
 # Safety check: ROLLBACK_DIR must be absolute and non-empty
 if [ -z "$ROLLBACK_DIR" ] || [[ ! "$ROLLBACK_DIR" = /* ]]; then
@@ -43,8 +35,11 @@ if [[ "$ROLLBACK_DIR" != /* ]]; then
     exit 1
 fi
 
-# Cleanup function to restore state on failure
-cleanup_on_failure() {
+# Cleanup function to restore state and remove temp files
+cleanup_on_exit() {
+    # Clean up CSS backup temp file
+    [ -n "$CSS_BACKUP" ] && [ -f "$CSS_BACKUP" ] && rm -f "$CSS_BACKUP"
+    
     if [ "$DEPLOY_FAILED" -eq 1 ]; then
         echo ""
         echo "=== Deploy failed, cleaning up ==="
@@ -78,7 +73,7 @@ cleanup_on_failure() {
     fi
 }
 
-trap cleanup_on_failure EXIT
+trap cleanup_on_exit EXIT
 
 echo ""
 echo "=== Live Oil Prices Deploy ==="
@@ -214,10 +209,6 @@ fi
 if git rev-parse --is-inside-work-tree &>/dev/null 2>&1; then
     echo "[2/6] Pulling latest code..."
     
-    # Initialize CSS backup variables
-    CSS_ROLLBACK_BACKUP=""
-    CSS_TEMP_BACKUP=""
-    
     # Check if we're in detached HEAD (e.g., after a rollback)
     if ! git symbolic-ref -q HEAD >/dev/null; then
         # Verify this is a known snapshot commit
@@ -244,12 +235,6 @@ if git rev-parse --is-inside-work-tree &>/dev/null 2>&1; then
         echo "  Detected rollback state (detached at snapshot commit $CURRENT_COMMIT)"
         echo "  Returning to branch $DEPLOY_BRANCH..."
         
-        # M1: Back up old CSS bytes before checkout (running server needs old CSS under old hash)
-        if [ -f "web/static/css/styles.css" ]; then
-            CSS_ROLLBACK_BACKUP="$(mktemp)"
-            cp "web/static/css/styles.css" "$CSS_ROLLBACK_BACKUP"
-        fi
-        
         # Checkout branch (tree now has new CSS from branch)
         git checkout -f "$DEPLOY_BRANCH" || {
             echo "ERROR: Failed to checkout $DEPLOY_BRANCH"
@@ -261,6 +246,12 @@ if git rev-parse --is-inside-work-tree &>/dev/null 2>&1; then
         GIT_TREE_CHANGED=1
     fi
     
+    # Back up current CSS bytes before pull (running server needs old CSS under old hash)
+    if [ -f "web/static/css/styles.css" ]; then
+        CSS_BACKUP="$(mktemp)"
+        cp "web/static/css/styles.css" "$CSS_BACKUP"
+    fi
+    
     # Pull latest code (tree must be clean)
     if ! git pull --ff-only; then
         echo "ERROR: git pull failed. Aborting deploy."
@@ -270,10 +261,9 @@ if git rev-parse --is-inside-work-tree &>/dev/null 2>&1; then
     
     GIT_TREE_CHANGED=1
     
-    # After pull, restore old CSS bytes if we backed them up from rollback state
-    # This allows old server to keep serving CSS matching its cached hash
-    if [ -n "$CSS_ROLLBACK_BACKUP" ] && [ -f "$CSS_ROLLBACK_BACKUP" ]; then
-        cp "$CSS_ROLLBACK_BACKUP" "web/static/css/styles.css"
+    # After pull, restore old CSS bytes so running server can keep serving CSS matching its cached hash
+    if [ -n "$CSS_BACKUP" ] && [ -f "$CSS_BACKUP" ]; then
+        cp "$CSS_BACKUP" "web/static/css/styles.css"
     fi
 else
     echo "[2/6] Not a git repo, skipping pull."
@@ -541,9 +531,9 @@ done
 # Success - disable cleanup trap
 DEPLOY_FAILED=0
 
-# M1: Restore committed CSS now that new binary is healthy
-# This ensures served CSS matches the new hash
-if [ -n "$CSS_ROLLBACK_BACKUP" ] && [ -f "web/static/css/styles.css" ]; then
+# Restore committed CSS now that new binary is healthy and serving
+# This ensures the on-disk CSS matches what git has (and what the new binary's hash expects)
+if [ -n "$CSS_BACKUP" ] && [ -f "web/static/css/styles.css" ]; then
     if git rev-parse --is-inside-work-tree &>/dev/null 2>&1; then
         git checkout -- web/static/css/styles.css 2>/dev/null || true
     fi

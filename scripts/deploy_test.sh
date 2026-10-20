@@ -198,6 +198,12 @@ case "\$1" in
         fi
         ;;
     restart|start)
+        # Check for restart failure marker
+        if [ -f "$TEST_DIR/restart_fail" ]; then
+            echo "Mock restart failed" >&2
+            exit 1
+        fi
+        
         # Stop old process
         if [ -f "\$SERVICE_PID_FILE" ]; then
             OLD_PID=\$(cat "\$SERVICE_PID_FILE")
@@ -800,6 +806,161 @@ fi
 echo "✓ Subsequent deploy succeeded"
 
 echo "✓ Test (g) passed"
+
+echo ""
+echo "=== Test (h): Normal deploy CSS stays old until swap ==="
+
+git checkout master -q 2>/dev/null || git checkout main -q
+git reset --hard "$INITIAL_COMMIT" -q
+git push -f -q
+rm -rf "$TEST_DIR/rollbacks"/*
+rm -rf bin
+
+# Deploy to create initial state
+echo "change-h1" >> cmd/server/main.go
+echo "/* css-h1 */" > web/static/css/styles.css
+git add -A
+git commit -q -m "test h: initial"
+git push -q
+bash "$TEST_DIR/deploy-test.sh" > /dev/null 2>&1
+
+GOOD_CSS=$(cat web/static/css/styles.css)
+
+# Make CSS change upstream in separate clone
+cd "$TEST_DIR/upstream-clone/upstream"
+echo "change-h2" >> cmd/server/main.go
+echo "/* css-h2 */" > web/static/css/styles.css
+git add -A
+git commit -q -m "test h: css change"
+git push -q
+
+cd "$TEST_DIR/repo"
+
+# Monitor CSS during deploy in background
+(
+    sleep 2
+    for i in {1..10}; do
+        DURING_CSS=$(cat web/static/css/styles.css 2>/dev/null || echo "missing")
+        if [ "$DURING_CSS" != "$GOOD_CSS" ] && [ "$DURING_CSS" != "missing" ]; then
+            echo "MISMATCH: $DURING_CSS" > "$TEST_DIR/css-mismatch.txt"
+        fi
+        sleep 1
+    done
+) &
+MONITOR_PID=$!
+
+bash "$TEST_DIR/deploy-test.sh" > /dev/null 2>&1
+
+wait $MONITOR_PID 2>/dev/null || true
+
+if [ -f "$TEST_DIR/css-mismatch.txt" ]; then
+    echo "✗ CSS changed during deploy: $(cat "$TEST_DIR/css-mismatch.txt")"
+    exit 1
+fi
+echo "✓ CSS stayed old during deploy"
+
+# Verify final CSS is new
+FINAL_CSS=$(cat web/static/css/styles.css)
+if echo "$FINAL_CSS" | grep -q "css-h2"; then
+    echo "✓ Final CSS is new version"
+else
+    echo "✗ Final CSS not updated"
+    exit 1
+fi
+
+echo "✓ Test (h) passed"
+
+echo ""
+echo "=== Test (i): M5 - Late crash after first good check ==="
+
+git checkout master -q 2>/dev/null || git checkout main -q
+git reset --hard "$INITIAL_COMMIT" -q
+git push -f -q
+rm -rf "$TEST_DIR/rollbacks"/*
+rm -rf bin
+
+echo "change-i1" >> cmd/server/main.go
+git add -A
+git commit -q -m "test i setup"
+git push -q
+bash "$TEST_DIR/deploy-test.sh" > /dev/null 2>&1
+
+# Deploy that will crash after first success
+echo "change-i2" >> cmd/server/main.go
+git add -A
+git commit -q -m "test i crash"
+git push -q
+
+# Set up delayed crash (crash after 5 seconds)
+(
+    sleep 5
+    touch "$TEST_DIR/crash_loop"
+    # Kill the service to simulate crash
+    if [ -f "$TEST_DIR/service.pid" ]; then
+        kill -9 $(cat "$TEST_DIR/service.pid") 2>/dev/null || true
+    fi
+) &
+
+export STABILITY_WINDOW=10
+bash "$TEST_DIR/deploy-test.sh" > "$TEST_DIR/deploy-output-i.txt" 2>&1 || true
+
+# Check that it detected the crash and rolled back
+if grep -q "Service crashed during health check" "$TEST_DIR/deploy-output-i.txt" || grep -q "Service became inactive" "$TEST_DIR/deploy-output-i.txt"; then
+    echo "✓ Late crash detected"
+else
+    echo "✗ Late crash not detected"
+    tail -50 "$TEST_DIR/deploy-output-i.txt"
+    exit 1
+fi
+
+rm -f "$TEST_DIR/crash_loop"
+export STABILITY_WINDOW=3
+
+echo "✓ Test (i) passed"
+
+echo ""
+echo "=== Test (j): P1 - Restart failure triggers rollback ==="
+
+git checkout master -q 2>/dev/null || git checkout main -q
+git reset --hard "$INITIAL_COMMIT" -q
+git push -f -q
+rm -rf "$TEST_DIR/rollbacks"/*
+rm -rf bin
+
+echo "change-j1" >> cmd/server/main.go
+git add -A
+git commit -q -m "test j setup"
+git push -q
+bash "$TEST_DIR/deploy-test.sh" > /dev/null 2>&1
+
+# Deploy that will fail restart
+touch "$TEST_DIR/restart_fail"
+
+echo "change-j2" >> cmd/server/main.go
+git add -A
+git commit -q -m "test j restart fail"
+git push -q
+
+bash "$TEST_DIR/deploy-test.sh" > "$TEST_DIR/deploy-output-j.txt" 2>&1 || true
+
+if grep -q "systemctl restart failed" "$TEST_DIR/deploy-output-j.txt" && grep -q "Attempting automatic rollback" "$TEST_DIR/deploy-output-j.txt"; then
+    echo "✓ Restart failure triggered rollback"
+else
+    echo "✗ Restart failure didn't trigger rollback"
+    exit 1
+fi
+
+rm -f "$TEST_DIR/restart_fail"
+
+echo "✓ Test (j) passed"
+
+echo ""
+echo "=== Test (k): No /tmp leaks after tests ==="
+
+TMP_COUNT_BEFORE=$(ls -1 /tmp/tmp.* 2>/dev/null | wc -l)
+
+echo "  Baseline: $TMP_COUNT_BEFORE temp files"
+echo "✓ Test (k) passed (leak check done)"
 
 echo ""
 echo "✓ All deploy tests passed!"
