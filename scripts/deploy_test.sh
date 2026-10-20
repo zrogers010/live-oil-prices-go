@@ -811,8 +811,6 @@ echo ""
 echo "=== Test (h): Normal deploy CSS stays old until swap ==="
 
 git checkout master -q 2>/dev/null || git checkout main -q
-git reset --hard "$INITIAL_COMMIT" -q
-git push -f -q
 rm -rf "$TEST_DIR/rollbacks"/*
 rm -rf bin
 
@@ -828,6 +826,7 @@ GOOD_CSS=$(cat web/static/css/styles.css)
 
 # Make CSS change upstream in separate clone
 cd "$TEST_DIR/upstream-clone/upstream"
+git pull -q
 echo "change-h2" >> cmd/server/main.go
 echo "/* css-h2 */" > web/static/css/styles.css
 git add -A
@@ -874,8 +873,6 @@ echo ""
 echo "=== Test (i): M5 - Late crash after first good check ==="
 
 git checkout master -q 2>/dev/null || git checkout main -q
-git reset --hard "$INITIAL_COMMIT" -q
-git push -f -q
 rm -rf "$TEST_DIR/rollbacks"/*
 rm -rf bin
 
@@ -923,8 +920,6 @@ echo ""
 echo "=== Test (j): P1 - Restart failure triggers rollback ==="
 
 git checkout master -q 2>/dev/null || git checkout main -q
-git reset --hard "$INITIAL_COMMIT" -q
-git push -f -q
 rm -rf "$TEST_DIR/rollbacks"/*
 rm -rf bin
 
