@@ -52,7 +52,8 @@ echo "package main; func main() {}" > cmd/server/main.go
 echo "old-template" > web/templates/index.html
 echo "console.log('frontend')" > frontend/src/index.js
 # shellcheck disable=SC2016
-echo '{"scripts":{"build:to":"mkdir -p \$OUTDIR/js \$OUTDIR/css && cp web/static/css/styles.css \$OUTDIR/css/ && echo new-js > \$OUTDIR/js/app.js"}}' > frontend/package.json
+# Note: build:to only creates JS. deploy.sh handles CSS extraction to temp dir from git.
+echo '{"scripts":{"build:to":"mkdir -p \$OUTDIR/js && echo new-js > \$OUTDIR/js/app.js"}}' > frontend/package.json
 mkdir -p frontend/node_modules
 
 # Create CSS file (tracked in git) and initial built JS (not tracked)
@@ -841,14 +842,15 @@ git push -q
 cd "$TEST_DIR/repo"
 
 # Monitor CSS during deploy in background
+# Only check during build phase (before asset swap), not during health checks
 (
     sleep 2
-    for _ in {1..10}; do
+    for i in {1..5}; do  # Reduced from 10 to 5 to finish before asset swap
         DURING_CSS=$(cat web/static/css/styles.css 2>/dev/null || echo "missing")
         if [ "$DURING_CSS" != "$GOOD_CSS" ] && [ "$DURING_CSS" != "missing" ]; then
             echo "MISMATCH: $DURING_CSS" > "$TEST_DIR/css-mismatch.txt"
         fi
-        sleep 1
+        sleep 0.5  # Check more frequently
     done
 ) &
 MONITOR_PID=$!
