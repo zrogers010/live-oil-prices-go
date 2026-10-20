@@ -351,7 +351,9 @@ fi
 echo "[6/6] Swapping binary and frontend assets, then restarting service..."
 
 # Stop service before swapping assets to prevent old binary serving new CSS
+# Downtime window: stop -> mv files (typically <100ms) -> start
 echo "  Stopping service before asset swap..."
+SWAP_START=$(date +%s%N)
 sudo systemctl stop "$SERVICE" 2>&1 || true
 
 # Atomically swap the new binary into place
@@ -395,6 +397,10 @@ if ! sudo systemctl start "$SERVICE" 2>&1; then
     DEPLOY_FAILED=1
     exit 1
 fi
+
+SWAP_END=$(date +%s%N)
+SWAP_DURATION_MS=$(( (SWAP_END - SWAP_START) / 1000000 ))
+echo "  Service downtime during swap: ${SWAP_DURATION_MS}ms"
 
 sleep 2
 
