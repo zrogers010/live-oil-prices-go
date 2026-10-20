@@ -839,7 +839,7 @@ cd "$TEST_DIR/repo"
 # Monitor CSS during deploy in background
 (
     sleep 2
-    for i in {1..10}; do
+    for _ in {1..10}; do
         DURING_CSS=$(cat web/static/css/styles.css 2>/dev/null || echo "missing")
         if [ "$DURING_CSS" != "$GOOD_CSS" ] && [ "$DURING_CSS" != "missing" ]; then
             echo "MISMATCH: $DURING_CSS" > "$TEST_DIR/css-mismatch.txt"
@@ -897,7 +897,8 @@ git push -q
     touch "$TEST_DIR/crash_loop"
     # Kill the service to simulate crash
     if [ -f "$TEST_DIR/service.pid" ]; then
-        kill -9 $(cat "$TEST_DIR/service.pid") 2>/dev/null || true
+        PID=$(cat "$TEST_DIR/service.pid")
+        kill -9 "$PID" 2>/dev/null || true
     fi
 ) &
 
@@ -957,7 +958,7 @@ echo "✓ Test (j) passed"
 echo ""
 echo "=== Test (k): No /tmp leaks after tests ==="
 
-TMP_COUNT_BEFORE=$(ls -1 /tmp/tmp.* 2>/dev/null | wc -l)
+TMP_COUNT_BEFORE=$(find /tmp -maxdepth 1 -name 'tmp.*' 2>/dev/null | wc -l)
 
 echo "  Baseline: $TMP_COUNT_BEFORE temp files"
 echo "✓ Test (k) passed (leak check done)"
