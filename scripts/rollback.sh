@@ -153,15 +153,31 @@ if [ -f "$ROLLBACK_PATH/COMMIT" ]; then
     if git rev-parse --is-inside-work-tree &>/dev/null 2>&1; then
         if git rev-parse --verify "$SNAPSHOT_COMMIT" &>/dev/null 2>&1; then
             echo "  Checking out commit $SNAPSHOT_COMMIT in detached HEAD..."
-            # Use detached HEAD checkout to avoid leaving staged changes
+            # Use -f to force checkout over modified tracked files
             # deploy.sh will detect this and checkout the branch before pulling
-            git checkout -q "$SNAPSHOT_COMMIT" 2>/dev/null || {
-                echo "  WARNING: Failed to checkout $SNAPSHOT_COMMIT"
-                echo "           Tracked files restored from snapshot only"
-            }
+            if ! git checkout -f "$SNAPSHOT_COMMIT" 2>/dev/null; then
+                echo "  ERROR: Failed to checkout $SNAPSHOT_COMMIT"
+                exit 1
+            fi
+            
+            # Verify HEAD matches snapshot commit
+            CURRENT_HEAD=$(git rev-parse HEAD)
+            if [ "$CURRENT_HEAD" != "$SNAPSHOT_COMMIT" ]; then
+                echo "  ERROR: HEAD is $CURRENT_HEAD but expected $SNAPSHOT_COMMIT"
+                exit 1
+            fi
+            
+            # Verify tree is clean
+            if ! git diff --quiet || ! git diff --cached --quiet; then
+                echo "  ERROR: Working tree is dirty after checkout"
+                git status --short
+                exit 1
+            fi
+            
+            echo "  ✓ Git tree restored to $SNAPSHOT_COMMIT"
         else
-            echo "  WARNING: Commit $SNAPSHOT_COMMIT not found in git history"
-            echo "           Tracked files restored from snapshot only"
+            echo "  ERROR: Commit $SNAPSHOT_COMMIT not found in git history"
+            exit 1
         fi
     else
         echo "  WARNING: Not a git repo, tracked files restored from snapshot only"

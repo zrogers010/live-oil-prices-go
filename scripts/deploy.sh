@@ -18,6 +18,9 @@ FRONTEND_BUILD_TEMP="$PROJECT_DIR/.build-tmp"
 DEPLOY_BRANCH="${DEPLOY_BRANCH:-main}"
 SNAPSHOT_COMMIT=""
 DEPLOY_FAILED=0
+GIT_TREE_CHANGED=0
+AUTO_ROLLBACK_HAPPENED=0
+ROLLBACK_FAILED=0
 
 # Safety check: ROLLBACK_DIR must be absolute and non-empty
 if [ -z "$ROLLBACK_DIR" ] || [[ ! "$ROLLBACK_DIR" = /* ]]; then
@@ -37,21 +40,32 @@ cleanup_on_failure() {
         echo ""
         echo "=== Deploy failed, cleaning up ==="
         
-        # Restore git tree to running commit if we have one
-        if [ -n "$RUNNING_COMMIT" ] && git rev-parse --verify "$RUNNING_COMMIT" &>/dev/null 2>&1; then
-            echo "  Restoring git tree to $RUNNING_COMMIT..."
-            git checkout -f "$RUNNING_COMMIT" 2>/dev/null || true
+        # Only restore git tree if we actually changed it (after pull)
+        # and if on-disk files still match what's running
+        if [ "$GIT_TREE_CHANGED" -eq 1 ] && [ "$AUTO_ROLLBACK_HAPPENED" -eq 0 ]; then
+            if [ -n "$RUNNING_COMMIT" ] && git rev-parse --verify "$RUNNING_COMMIT" &>/dev/null 2>&1; then
+                echo "  Restoring git tree to $RUNNING_COMMIT..."
+                git checkout -f "$RUNNING_COMMIT" 2>/dev/null || true
+            fi
         fi
         
         # Remove temp files
         rm -f "$BIN.new"
         rm -rf "$FRONTEND_BUILD_TEMP"
         
-        # Track if an auto-rollback happened
-        if [ "${AUTO_ROLLBACK_HAPPENED:-0}" -eq 1 ]; then
-            echo "  Cleanup complete. Service was automatically rolled back."
+        # Report status
+        if [ "$AUTO_ROLLBACK_HAPPENED" -eq 1 ]; then
+            if [ "$ROLLBACK_FAILED" -eq 1 ]; then
+                echo "  Cleanup complete. ROLLBACK FAILED - service may be in inconsistent state."
+            else
+                echo "  Cleanup complete. Service was automatically rolled back."
+            fi
         else
-            echo "  Cleanup complete. Service unchanged."
+            if [ "$GIT_TREE_CHANGED" -eq 0 ]; then
+                echo "  Cleanup complete. No changes were made."
+            else
+                echo "  Cleanup complete. Partial changes may exist."
+            fi
         fi
     fi
 }
@@ -83,37 +97,8 @@ if git rev-parse --is-inside-work-tree &>/dev/null 2>&1; then
     DETACHED=false
     git symbolic-ref HEAD &>/dev/null || DETACHED=true
     
-    # Check if we're at a recorded snapshot commit (rollback state)
-    ROLLBACK_STATE=false
-    if [ "$DETACHED" = true ] && [ -n "$CURRENT_COMMIT" ]; then
-        # Look in regular snapshots and legacy/manual snapshots
-        for snapshot in "$ROLLBACK_DIR"/*/COMMIT; do
-            if [ -f "$snapshot" ]; then
-                SNAP_COMMIT=$(cat "$snapshot" 2>/dev/null || echo "")
-                if [ "$SNAP_COMMIT" = "$CURRENT_COMMIT" ]; then
-                    ROLLBACK_STATE=true
-                    break
-                fi
-            fi
-        done 2>/dev/null || true
-    fi
-    
-    if [ "$DETACHED" = true ]; then
-        if [ "$ROLLBACK_STATE" = true ]; then
-            echo "  Detected rollback state (detached at snapshot commit $CURRENT_COMMIT)"
-            echo "  Returning to branch $DEPLOY_BRANCH..."
-            git checkout -f "$DEPLOY_BRANCH" || {
-                echo "ERROR: Failed to checkout $DEPLOY_BRANCH"
-                DEPLOY_FAILED=1
-                exit 1
-            }
-        else
-            echo "ERROR: Detached HEAD at unknown commit $CURRENT_COMMIT"
-            echo "       Either checkout a branch or rollback to a known snapshot"
-            DEPLOY_FAILED=1
-            exit 1
-        fi
-    elif ! git diff --quiet || ! git diff --cached --quiet; then
+    # Check for dirty tree
+    if ! git diff --quiet || ! git diff --cached --quiet; then
         echo "ERROR: Working tree is dirty. Commit or stash changes before deploying."
         git status --short
         DEPLOY_FAILED=1
@@ -203,10 +188,51 @@ if git rev-parse --is-inside-work-tree &>/dev/null 2>&1; then
     
     # Check if we're in detached HEAD (e.g., after a rollback)
     if ! git symbolic-ref -q HEAD >/dev/null; then
-        echo "  Detected rollback state (detached HEAD). Checking out $DEPLOY_BRANCH..."
-        # Clean up any local changes from rollback before checkout
-        git reset --hard
-        git checkout "$DEPLOY_BRANCH"
+        # Verify this is a known snapshot commit
+        ROLLBACK_STATE=false
+        if [ -n "$CURRENT_COMMIT" ]; then
+            for snapshot in "$ROLLBACK_DIR"/*/COMMIT; do
+                if [ -f "$snapshot" ]; then
+                    SNAP_COMMIT=$(cat "$snapshot" 2>/dev/null || echo "")
+                    if [ "$SNAP_COMMIT" = "$CURRENT_COMMIT" ]; then
+                        ROLLBACK_STATE=true
+                        break
+                    fi
+                fi
+            done 2>/dev/null || true
+        fi
+        
+        if [ "$ROLLBACK_STATE" = false ]; then
+            echo "ERROR: Detached HEAD at unknown commit $CURRENT_COMMIT"
+            echo "       Either checkout a branch or rollback to a known snapshot"
+            DEPLOY_FAILED=1
+            exit 1
+        fi
+        
+        echo "  Detected rollback state (detached at snapshot commit $CURRENT_COMMIT)"
+        echo "  Returning to branch $DEPLOY_BRANCH..."
+        
+        # Snapshot CSS before checkout to prevent new CSS going live under old hash
+        CSS_TEMP_BACKUP=""
+        if [ -f "web/static/css/styles.css" ]; then
+            CSS_TEMP_BACKUP="$(mktemp)"
+            cp "web/static/css/styles.css" "$CSS_TEMP_BACKUP"
+        fi
+        
+        git checkout -f "$DEPLOY_BRANCH" || {
+            echo "ERROR: Failed to checkout $DEPLOY_BRANCH"
+            if [ -n "$CSS_TEMP_BACKUP" ] && [ -f "$CSS_TEMP_BACKUP" ]; then
+                cp "$CSS_TEMP_BACKUP" "web/static/css/styles.css"
+                rm -f "$CSS_TEMP_BACKUP"
+            fi
+            DEPLOY_FAILED=1
+            exit 1
+        }
+        
+        # Restore old CSS temporarily (old server still serving with old hash)
+        if [ -n "$CSS_TEMP_BACKUP" ] && [ -f "$CSS_TEMP_BACKUP" ]; then
+            cp "$CSS_TEMP_BACKUP" "web/static/css/styles.css"
+        fi
     fi
     
     # Snapshot CSS before pull to prevent new CSS going live under old hash
@@ -226,6 +252,8 @@ if git rev-parse --is-inside-work-tree &>/dev/null 2>&1; then
         fi
         exit 1
     fi
+    
+    GIT_TREE_CHANGED=1
     
     # Restore old CSS temporarily (old server still serving with old hash)
     if [ -n "$CSS_TEMP_BACKUP" ] && [ -f "$CSS_TEMP_BACKUP" ]; then
@@ -360,11 +388,12 @@ if ! sudo systemctl is-active --quiet "$SERVICE" 2>/dev/null || false; then
     if [ -n "$ROLLBACK_PATH" ] && [ -d "$ROLLBACK_PATH" ]; then
         echo ""
         echo "  Attempting automatic rollback to $TIMESTAMP..."
-        if "$SCRIPT_DIR/rollback.sh" "$TIMESTAMP"; then
+        if bash "$SCRIPT_DIR/rollback.sh" "$TIMESTAMP"; then
             echo "  Rollback successful, but deploy failed."
             AUTO_ROLLBACK_HAPPENED=1
         else
             echo "  ERROR: Rollback also failed!"
+            ROLLBACK_FAILED=1
         fi
     fi
     DEPLOY_FAILED=1
@@ -402,13 +431,15 @@ for i in $(seq 1 $MAX_HEALTH_CHECKS); do
         if [ -n "$ROLLBACK_PATH" ] && [ -d "$ROLLBACK_PATH" ]; then
             echo ""
             echo "  Attempting automatic rollback to $TIMESTAMP..."
-            if "$SCRIPT_DIR/rollback.sh" "$TIMESTAMP"; then
+            if bash "$SCRIPT_DIR/rollback.sh" "$TIMESTAMP"; then
                 echo "  Rollback successful, but deploy failed."
                 AUTO_ROLLBACK_HAPPENED=1
             else
                 echo "  ERROR: Rollback also failed!"
+                ROLLBACK_FAILED=1
             fi
         fi
+        DEPLOY_FAILED=1
         exit 1
     fi
     
@@ -421,11 +452,12 @@ for i in $(seq 1 $MAX_HEALTH_CHECKS); do
         if [ -n "$ROLLBACK_PATH" ] && [ -d "$ROLLBACK_PATH" ]; then
             echo ""
             echo "  Attempting automatic rollback to $TIMESTAMP..."
-            if "$SCRIPT_DIR/rollback.sh" "$TIMESTAMP"; then
+            if bash "$SCRIPT_DIR/rollback.sh" "$TIMESTAMP"; then
                 echo "  Rollback successful, but deploy failed."
                 AUTO_ROLLBACK_HAPPENED=1
             else
                 echo "  ERROR: Rollback also failed!"
+                ROLLBACK_FAILED=1
             fi
         fi
         DEPLOY_FAILED=1

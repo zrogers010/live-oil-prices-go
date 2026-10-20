@@ -40,17 +40,26 @@ git config user.name "Test User"
 mkdir -p bin cmd/server web/templates web/static/js web/static/css frontend/src
 mkdir -p "$TEST_DIR/rollbacks"
 
+# Create .gitignore like prod
+cat > .gitignore <<EOF
+bin/
+node_modules/
+web/static/js/*.js
+EOF
+
 # Create initial files
 echo "package main; func main() {}" > cmd/server/main.go
 echo "old-template" > web/templates/index.html
-echo "old-js" > web/static/js/app.js
-echo "old-css" > web/static/css/styles.css
 echo "console.log('frontend')" > frontend/src/index.js
 # shellcheck disable=SC2016
-echo '{"scripts":{"build:to":"mkdir -p \$OUTDIR/js \$OUTDIR/css && echo new-js > \$OUTDIR/js/app.js && echo new-css > \$OUTDIR/css/styles.css"}}' > frontend/package.json
+echo '{"scripts":{"build:to":"mkdir -p \$OUTDIR/js \$OUTDIR/css && cp web/static/css/styles.css \$OUTDIR/css/ && echo new-js > \$OUTDIR/js/app.js"}}' > frontend/package.json
 mkdir -p frontend/node_modules
 
-# Initial commit
+# Create CSS file (tracked in git) and initial built JS (not tracked)
+mkdir -p web/static/js web/static/css
+echo "/* initial css */" > web/static/css/styles.css
+
+# Initial commit - CSS is tracked, JS is not
 git add -A
 git commit -q -m "initial"
 INITIAL_COMMIT=$(git rev-parse HEAD)
@@ -61,8 +70,18 @@ mkdir -p "$TEST_DIR/remote-repo.git"
 git remote add origin "$TEST_DIR/remote-repo.git"
 git push -u origin master -q 2>/dev/null || git push -u origin main -q 2>/dev/null
 
-# Create initial binary
-echo "old-binary" > bin/server
+# Create initial binary (not in git, like prod)
+mkdir -p bin
+cat > bin/server <<'INITIAL_BIN'
+#!/usr/bin/env bash
+# Initial binary
+if [ "$1" = "--check-assets" ]; then
+    echo "✓ Asset and template check passed"
+    exit 0
+fi
+echo "Initial binary running"
+sleep 99999
+INITIAL_BIN
 chmod +x bin/server
 
 # Mock binaries
@@ -182,9 +201,15 @@ case "\$1" in
             kill "\$OLD_PID" 2>/dev/null || true
             rm -f "\$SERVICE_PID_FILE"
         fi
-        # Start mock service
-        sleep 99999 &
-        echo \$! > "\$SERVICE_PID_FILE"
+        # Start real binary to test ETXTBSY
+        if [ -f "$TEST_DIR/repo/bin/server" ]; then
+            "$TEST_DIR/repo/bin/server" >/dev/null 2>&1 &
+            echo \$! > "\$SERVICE_PID_FILE"
+        else
+            # Fallback for tests before binary exists
+            sleep 99999 &
+            echo \$! > "\$SERVICE_PID_FILE"
+        fi
         exit 0
         ;;
     stop)
@@ -196,7 +221,13 @@ case "\$1" in
         exit 0
         ;;
     status)
-        # Like real systemd: exit 3 when inactive
+        # Like real systemd: exit 3 when inactive, same as is-active
+        if [ -f "$TEST_DIR/crash_loop" ]; then
+            echo "● liveoilprices.service - Mock service"
+            echo "   Active: failed"
+            exit 3
+        fi
+        
         if [ -f "\$SERVICE_PID_FILE" ] && kill -0 \$(cat "\$SERVICE_PID_FILE") 2>/dev/null; then
             echo "● liveoilprices.service - Mock service"
             echo "   Active: active (running)"
@@ -230,20 +261,17 @@ exit 0
 EOF
 chmod +x "$TEST_DIR/journalctl"
 
-# Create deploy script with test paths
-# Note: Use a marker to replace PROJECT_DIR since the original has special chars
+# Create deploy script with test paths (use as-is from repo to test real permissions)
 sed -e "s|ROLLBACK_DIR=\"/home/deploy/liveoilprices-rollbacks\"|ROLLBACK_DIR=\"$TEST_DIR/rollbacks\"|g" \
     -e "9s|.*|PROJECT_DIR=\"$TEST_DIR/repo\"|" \
     -e "10s|^cd .*|# cd suppressed|" \
     "$SCRIPT_DIR/deploy.sh" > "$TEST_DIR/deploy-test.sh"
-chmod +x "$TEST_DIR/deploy-test.sh"
 
-# Create rollback script with test paths
+# Create rollback script with test paths (use as-is from repo to test real permissions)
 sed -e "s|ROLLBACK_DIR=\"/home/deploy/liveoilprices-rollbacks\"|ROLLBACK_DIR=\"$TEST_DIR/rollbacks\"|g" \
     -e "s|PROJECT_DIR=.*|PROJECT_DIR=\"$TEST_DIR/repo\"|g" \
     -e "s|cd \"\$PROJECT_DIR\"|# cd suppressed for test|g" \
     "$SCRIPT_DIR/rollback.sh" > "$TEST_DIR/rollback.sh"
-chmod +x "$TEST_DIR/rollback.sh"
 
 export PATH="$TEST_DIR:$PATH"
 export HEALTH_CHECK_TIMEOUT=6
@@ -345,8 +373,10 @@ git add -A
 git commit -q -m "change for test b setup"
 git push -q
 
-if ! bash "$TEST_DIR/deploy-test.sh" > /dev/null 2>&1; then
+if ! bash "$TEST_DIR/deploy-test.sh" > "$TEST_DIR/deploy-output-b-setup.txt" 2>&1; then
     echo "✗ Test (b) failed - initial deploy didn't succeed"
+    echo "Deploy output:"
+    cat "$TEST_DIR/deploy-output-b-setup.txt"
     exit 1
 fi
 
@@ -398,14 +428,19 @@ fi
 
 # Verify commit restored
 CURRENT_COMMIT=$(git rev-parse HEAD)
-if [ "$CURRENT_COMMIT" = "$GOOD_COMMIT" ]; then
-    echo "✓ Git commit restored"
-else
-    echo "  WARNING: Git commit differs (expected $GOOD_COMMIT, got $CURRENT_COMMIT)"
-    # This is OK as long as binary and assets match - the git tree might be at a different point
-    # but the deployed files are correct. The important thing is the next deploy will rebuild from HEAD.
-    echo "✓ Git commit state acceptable (binary and assets verified)"
+if [ "$CURRENT_COMMIT" != "$GOOD_COMMIT" ]; then
+    echo "✗ Git commit not restored (expected $GOOD_COMMIT, got $CURRENT_COMMIT)"
+    exit 1
 fi
+echo "✓ Git commit restored"
+
+# Verify tree is clean
+if ! git diff --quiet || ! git diff --cached --quiet; then
+    echo "✗ Working tree is dirty after rollback"
+    git status --short
+    exit 1
+fi
+echo "✓ Git tree is clean"
 
 echo "✓ Test (b) passed"
 
@@ -589,11 +624,18 @@ git reset --hard "$INITIAL_COMMIT" -q
 git push -f -q
 rm -rf "$TEST_DIR/rollbacks"/*
 
-# Make rollback directory read-only to cause cp failures
-chmod 555 "$TEST_DIR/rollbacks"
+# First do a successful deploy to have a binary
+echo "change7a" >> cmd/server/main.go
+git add -A
+git commit -q -m "setup for test f"
+git push -q
+bash "$TEST_DIR/deploy-test.sh" > /dev/null 2>&1
 
-OLD_BINARY=$(cat bin/server)
-OLD_JS=$(cat web/static/js/app.js)
+OLD_BINARY=$(cat bin/server | head -1)
+OLD_JS=$(cat web/static/js/app.js | head -1)
+
+# Make binary unreadable to cause cp failure during snapshot
+chmod 000 bin/server
 
 echo "change8" >> cmd/server/main.go
 git add -A
@@ -603,9 +645,9 @@ git push -q
 bash "$TEST_DIR/deploy-test.sh" > "$TEST_DIR/deploy-output-f.txt" 2>&1 || true
 
 # Restore permissions
-chmod 755 "$TEST_DIR/rollbacks"
+chmod 755 bin/server 2>/dev/null || true
 
-if grep -qE "(Failed to back up|cannot create directory|Permission denied)" "$TEST_DIR/deploy-output-f.txt"; then
+if grep -qE "(Failed to back up|Permission denied)" "$TEST_DIR/deploy-output-f.txt"; then
     echo "✓ Snapshot failure detected"
     
     # Verify nothing was changed (deploy aborted)
