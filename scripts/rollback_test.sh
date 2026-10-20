@@ -177,11 +177,16 @@ if [ -f "$TEST_DIR/service.pid" ]; then
     rm -f "$TEST_DIR/service.pid"
 fi
 
+# Kill any remaining children
+pkill -P $$ 2>/dev/null || true
+sleep 0.2
+pkill -9 -P $$ 2>/dev/null || true
+
 # Verify no child processes remain from mock service
 REMAINING=$(pgrep -P $$ 2>/dev/null | wc -l)
 if [ "$REMAINING" -gt 0 ]; then
-    echo "WARNING: $REMAINING child processes still running"
-    pgrep -P $$ 2>/dev/null || true
+    echo "WARNING: $REMAINING child processes still running after cleanup"
+    pkill -9 -P $$ 2>/dev/null || true
 fi
 
 # Check that old content was restored

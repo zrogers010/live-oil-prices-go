@@ -120,6 +120,29 @@ fi
 echo ""
 echo "[3/4] Restoring from snapshot..."
 
+# Verify git commit exists before swapping files (M3)
+SNAPSHOT_COMMIT=""
+if [ -f "$ROLLBACK_PATH/COMMIT" ]; then
+    SNAPSHOT_COMMIT=$(cat "$ROLLBACK_PATH/COMMIT")
+    if git rev-parse --is-inside-work-tree &>/dev/null 2>&1; then
+        if ! git cat-file -e "$SNAPSHOT_COMMIT^{commit}" 2>/dev/null; then
+            echo "ERROR: Snapshot commit $SNAPSHOT_COMMIT not found in git history"
+            exit 1
+        fi
+    fi
+fi
+
+restore_from_backup() {
+    echo "  Attempting to restore from pre-rollback backup..."
+    if [ -f "$BACKUP_PATH/server" ]; then
+        TEMP_BIN="$(dirname "$BIN")/.server.tmp.$$"
+        cp "$BACKUP_PATH/server" "$TEMP_BIN" && chmod +x "$TEMP_BIN" && mv -f "$TEMP_BIN" "$BIN"
+        [ -d "$BACKUP_PATH/templates" ] && rm -rf web/templates && cp -r "$BACKUP_PATH/templates" web/
+        [ -d "$BACKUP_PATH/js" ] && rm -rf web/static/js && cp -r "$BACKUP_PATH/js" web/static/
+        [ -d "$BACKUP_PATH/css" ] && rm -rf web/static/css && cp -r "$BACKUP_PATH/css" web/static/
+    fi
+}
+
 # Restore binary (copy to temp then mv to avoid "Text file busy" if service is running)
 mkdir -p "$(dirname "$BIN")"
 TEMP_BIN="$(dirname "$BIN")/.server.tmp.$$"
@@ -146,39 +169,36 @@ if [ -d "$ROLLBACK_PATH/css" ]; then
 fi
 
 # Restore git commit if recorded
-if [ -f "$ROLLBACK_PATH/COMMIT" ]; then
-    SNAPSHOT_COMMIT=$(cat "$ROLLBACK_PATH/COMMIT")
+if [ -n "$SNAPSHOT_COMMIT" ]; then
     echo "  Snapshot commit: $SNAPSHOT_COMMIT"
     
     if git rev-parse --is-inside-work-tree &>/dev/null 2>&1; then
-        if git rev-parse --verify "$SNAPSHOT_COMMIT" &>/dev/null 2>&1; then
-            echo "  Checking out commit $SNAPSHOT_COMMIT in detached HEAD..."
-            # Use -f to force checkout over modified tracked files
-            # deploy.sh will detect this and checkout the branch before pulling
-            if ! git checkout -f "$SNAPSHOT_COMMIT" 2>/dev/null; then
-                echo "  ERROR: Failed to checkout $SNAPSHOT_COMMIT"
-                exit 1
-            fi
-            
-            # Verify HEAD matches snapshot commit
-            CURRENT_HEAD=$(git rev-parse HEAD)
-            if [ "$CURRENT_HEAD" != "$SNAPSHOT_COMMIT" ]; then
-                echo "  ERROR: HEAD is $CURRENT_HEAD but expected $SNAPSHOT_COMMIT"
-                exit 1
-            fi
-            
-            # Verify tree is clean
-            if ! git diff --quiet || ! git diff --cached --quiet; then
-                echo "  ERROR: Working tree is dirty after checkout"
-                git status --short
-                exit 1
-            fi
-            
-            echo "  ✓ Git tree restored to $SNAPSHOT_COMMIT"
-        else
-            echo "  ERROR: Commit $SNAPSHOT_COMMIT not found in git history"
+        echo "  Checking out commit $SNAPSHOT_COMMIT in detached HEAD..."
+        # Use -f to force checkout over modified tracked files
+        # deploy.sh will detect this and checkout the branch before pulling
+        if ! git checkout -f "$SNAPSHOT_COMMIT" 2>/dev/null; then
+            echo "  ERROR: Failed to checkout $SNAPSHOT_COMMIT"
+            restore_from_backup
             exit 1
         fi
+        
+        # Verify HEAD matches snapshot commit
+        CURRENT_HEAD=$(git rev-parse HEAD)
+        if [ "$CURRENT_HEAD" != "$SNAPSHOT_COMMIT" ]; then
+            echo "  ERROR: HEAD is $CURRENT_HEAD but expected $SNAPSHOT_COMMIT"
+            restore_from_backup
+            exit 1
+        fi
+        
+        # Verify tree is clean
+        if ! git diff --quiet || ! git diff --cached --quiet; then
+            echo "  ERROR: Working tree is dirty after checkout"
+            git status --short
+            restore_from_backup
+            exit 1
+        fi
+        
+        echo "  ✓ Git tree restored to $SNAPSHOT_COMMIT"
     else
         echo "  WARNING: Not a git repo, tracked files restored from snapshot only"
     fi
@@ -187,7 +207,15 @@ fi
 # Restart service
 echo ""
 echo "[4/4] Restarting service..."
-sudo systemctl restart "$SERVICE"
+if ! sudo systemctl restart "$SERVICE" 2>&1; then
+    echo "  ERROR: systemctl restart failed!"
+    sudo systemctl status "$SERVICE" --no-pager 2>&1 || true
+    echo ""
+    echo "Failed to restart after rollback."
+    echo "Manual intervention required."
+    exit 1
+fi
+
 sleep 2
 
 # Check service status (guard against exit 3 under set -e)
@@ -207,7 +235,7 @@ echo ""
 echo "Running health check..."
 RETRIES=5
 for i in $(seq 1 $RETRIES); do
-    STATUS=$(curl -sf --max-time 5 -o /dev/null -w "%{http_code}" "http://127.0.0.1:8080/api/health" 2>/dev/null || echo "000")
+    STATUS=$(curl -s --max-time 5 -o /dev/null -w "%{http_code}" "http://127.0.0.1:8080/api/health" 2>&1) || STATUS="000"
     if [ "$STATUS" = "200" ]; then
         echo "  ✓ Health check passed"
         break

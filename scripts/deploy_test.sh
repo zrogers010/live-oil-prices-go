@@ -685,4 +685,79 @@ else
 fi
 
 echo ""
+echo "=== Test (g): Deploy from rollback state with upstream CSS change (M1) ==="
+
+git checkout master -q 2>/dev/null || git checkout main -q
+git reset --hard "$INITIAL_COMMIT" -q
+git push -f -q
+rm -rf "$TEST_DIR/rollbacks"/*
+rm -rf bin
+
+# Deploy to create known-good state
+echo "change-g1" >> cmd/server/main.go
+echo "/* css-v1 */" > web/static/css/styles.css
+git add -A
+git commit -q -m "test g: initial"
+git push -q
+
+if ! bash "$TEST_DIR/deploy-test.sh" > /dev/null 2>&1; then
+    echo "✗ Test (g) setup failed"
+    exit 1
+fi
+
+GOOD_COMMIT=$(git rev-parse HEAD)
+GOOD_CSS=$(head -1 web/static/css/styles.css)
+
+# Simulate rollback by manually putting system in detached HEAD at snapshot
+# shellcheck disable=SC2012
+SNAPSHOT_TS=$(ls "$TEST_DIR/rollbacks" | head -1)
+SNAPSHOT_COMMIT=$(cat "$TEST_DIR/rollbacks/$SNAPSHOT_TS/COMMIT")
+git checkout "$SNAPSHOT_COMMIT" -q
+
+# Make upstream change to CSS on main
+git checkout master -q 2>/dev/null || git checkout main -q
+echo "change-g2" >> cmd/server/main.go
+echo "/* css-v2 */" > web/static/css/styles.css
+git add -A
+git commit -q -m "test g: upstream css change"
+git push -q
+
+NEW_COMMIT=$(git rev-parse HEAD)
+EXPECTED_CSS=$(head -1 web/static/css/styles.css)
+
+# Go back to detached HEAD (rollback state)
+git checkout "$SNAPSHOT_COMMIT" -q
+
+# Deploy from rollback state should succeed
+if ! bash "$TEST_DIR/deploy-test.sh" > "$TEST_DIR/deploy-output-g.txt" 2>&1; then
+    echo "✗ Deploy from rollback state failed"
+    echo "Output:"
+    tail -50 "$TEST_DIR/deploy-output-g.txt"
+    exit 1
+fi
+
+# Verify we're on the new commit
+CURRENT_COMMIT=$(git rev-parse HEAD)
+if [ "$CURRENT_COMMIT" != "$NEW_COMMIT" ]; then
+    echo "✗ Not at new commit (expected $NEW_COMMIT, got $CURRENT_COMMIT)"
+    exit 1
+fi
+echo "✓ Deployed to new commit"
+
+# Verify CSS matches new version (built CSS includes commit hash)
+CURRENT_CSS=$(head -1 web/static/css/styles.css)
+EXPECTED_CSS_PATTERN="/* Built from commit: $NEW_COMMIT */"
+if [ "$CURRENT_CSS" = "$EXPECTED_CSS_PATTERN" ]; then
+    echo "✓ CSS updated to new version"
+else
+    echo "✗ CSS mismatch (expected '$EXPECTED_CSS_PATTERN', got '$CURRENT_CSS')"
+    exit 1
+fi
+
+# Note: Tree may be dirty with built CSS, which is acceptable
+# as the test focuses on CSS handling during rollback-state deploy
+
+echo "✓ Test (g) passed"
+
+echo ""
 echo "✓ All deploy tests passed!"
