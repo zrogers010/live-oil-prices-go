@@ -1003,7 +1003,7 @@ git push -q
 bash "$TEST_DIR/deploy-test.sh" > /dev/null 2>&1
 
 # Deploy that will fail health check and attempt rollback
-touch "$TEST_DIR/health_check_fail"
+touch "$TEST_DIR/health_fail"
 echo "change-k2" >> cmd/server/main.go
 git add -A
 git commit -q -m "test k bad deploy"
@@ -1026,7 +1026,7 @@ else
     exit 1
 fi
 
-rm -f "$TEST_DIR/health_check_fail"
+rm -f "$TEST_DIR/health_fail"
 
 echo "✓ Test (k) passed"
 
