@@ -182,8 +182,9 @@ pkill -P $$ 2>/dev/null || true
 sleep 0.2
 pkill -9 -P $$ 2>/dev/null || true
 
-# Verify no child processes remain from mock service
-REMAINING=$(pgrep -P $$ 2>/dev/null | wc -l)
+# Verify no child processes remain from mock service (write to file to avoid counting subshell)
+pgrep -P $$ > "$TEST_DIR/children.txt" 2>/dev/null || true
+REMAINING=$(wc -l < "$TEST_DIR/children.txt" 2>/dev/null || echo "0")
 if [ "$REMAINING" -gt 0 ]; then
     echo "WARNING: $REMAINING child processes still running after cleanup"
     pkill -9 -P $$ 2>/dev/null || true

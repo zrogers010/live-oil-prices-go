@@ -273,6 +273,7 @@ sed -e "s|ROLLBACK_DIR=\"/home/deploy/liveoilprices-rollbacks\"|ROLLBACK_DIR=\"$
 
 export PATH="$TEST_DIR:$PATH"
 export HEALTH_CHECK_TIMEOUT=6
+export STABILITY_WINDOW=3
 export DEPLOY_BRANCH=master
 
 cd "$TEST_DIR/repo"
@@ -707,24 +708,37 @@ fi
 
 GOOD_COMMIT=$(git rev-parse HEAD)
 
-# Simulate rollback by manually putting system in detached HEAD at snapshot
+# Get snapshot commit
 # shellcheck disable=SC2012
 SNAPSHOT_TS=$(ls "$TEST_DIR/rollbacks" | head -1)
 SNAPSHOT_COMMIT=$(cat "$TEST_DIR/rollbacks/$SNAPSHOT_TS/COMMIT")
-git checkout "$SNAPSHOT_COMMIT" -q
 
-# Make upstream change to CSS on main
-git checkout master -q 2>/dev/null || git checkout main -q
+# Create separate clone to make upstream changes
+mkdir -p "$TEST_DIR/upstream-clone"
+cd "$TEST_DIR/upstream-clone"
+git clone -q "$TEST_DIR/remote-repo.git" upstream
+cd upstream
+git config user.email "test@example.com"
+git config user.name "Test User"
+
+# Make upstream CSS change
 echo "change-g2" >> cmd/server/main.go
 echo "/* css-v2 */" > web/static/css/styles.css
 git add -A
 git commit -q -m "test g: upstream css change"
-git push -q
+git push -q origin master 2>/dev/null || git push -q origin main
 
 NEW_COMMIT=$(git rev-parse HEAD)
+REMOTE_BRANCH=$(git branch --show-current)
 
-# Go back to detached HEAD (rollback state)
+# Go back to main test repo in detached HEAD (rollback state)
+cd "$TEST_DIR/repo"
 git checkout "$SNAPSHOT_COMMIT" -q
+
+# Restore CSS from snapshot to clean the tree (simulate real rollback state)
+if [ -f "$TEST_DIR/rollbacks/$SNAPSHOT_TS/css/styles.css" ]; then
+    cp "$TEST_DIR/rollbacks/$SNAPSHOT_TS/css/styles.css" web/static/css/styles.css
+fi
 
 # Deploy from rollback state should succeed
 if ! bash "$TEST_DIR/deploy-test.sh" > "$TEST_DIR/deploy-output-g.txt" 2>&1; then
@@ -742,18 +756,48 @@ if [ "$CURRENT_COMMIT" != "$NEW_COMMIT" ]; then
 fi
 echo "✓ Deployed to new commit"
 
-# Verify CSS matches new version (built CSS includes commit hash)
-CURRENT_CSS=$(head -1 web/static/css/styles.css)
-EXPECTED_CSS_PATTERN="/* Built from commit: $NEW_COMMIT */"
-if [ "$CURRENT_CSS" = "$EXPECTED_CSS_PATTERN" ]; then
-    echo "✓ CSS updated to new version"
+# Verify tree is clean
+if ! git diff --quiet || ! git diff --cached --quiet; then
+    echo "✗ Tree is dirty after deploy"
+    git status --short
+    exit 1
+fi
+echo "✓ Tree is clean"
+
+# Verify HEAD == origin/branch
+ORIGIN_HEAD=$(git rev-parse origin/$REMOTE_BRANCH)
+if [ "$CURRENT_COMMIT" = "$ORIGIN_HEAD" ]; then
+    echo "✓ HEAD matches origin/$REMOTE_BRANCH"
 else
-    echo "✗ CSS mismatch (expected '$EXPECTED_CSS_PATTERN', got '$CURRENT_CSS')"
+    echo "✗ HEAD doesn't match origin (expected $ORIGIN_HEAD, got $CURRENT_COMMIT)"
     exit 1
 fi
 
-# Note: Tree may be dirty with built CSS, which is acceptable
-# as the test focuses on CSS handling during rollback-state deploy
+# Verify CSS content matches what's in git at new commit
+# (deploy.sh restores committed CSS after successful deploy)
+CURRENT_CSS=$(head -1 web/static/css/styles.css)
+EXPECTED_CSS="/* css-v2 */"
+if [ "$CURRENT_CSS" = "$EXPECTED_CSS" ]; then
+    echo "✓ CSS content matches committed version"
+else
+    echo "✗ CSS mismatch (expected '$EXPECTED_CSS', got '$CURRENT_CSS')"
+    exit 1
+fi
+
+# Test subsequent deploy also works
+echo "  Testing subsequent deploy..."
+cd "$TEST_DIR/upstream-clone/upstream"
+echo "change-g3" >> cmd/server/main.go
+git add -A
+git commit -q -m "test g: another change"
+git push -q
+
+cd "$TEST_DIR/repo"
+if ! bash "$TEST_DIR/deploy-test.sh" > /dev/null 2>&1; then
+    echo "✗ Subsequent deploy failed"
+    exit 1
+fi
+echo "✓ Subsequent deploy succeeded"
 
 echo "✓ Test (g) passed"
 

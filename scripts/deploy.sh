@@ -21,6 +21,15 @@ DEPLOY_FAILED=0
 GIT_TREE_CHANGED=0
 AUTO_ROLLBACK_HAPPENED=0
 ROLLBACK_FAILED=0
+CSS_ROLLBACK_BACKUP=""
+CSS_TEMP_BACKUP=""
+
+# Cleanup CSS temp files on exit (M1 fix)
+cleanup_css_temps() {
+    [ -n "$CSS_ROLLBACK_BACKUP" ] && [ -f "$CSS_ROLLBACK_BACKUP" ] && rm -f "$CSS_ROLLBACK_BACKUP"
+    [ -n "$CSS_TEMP_BACKUP" ] && [ -f "$CSS_TEMP_BACKUP" ] && rm -f "$CSS_TEMP_BACKUP"
+}
+trap cleanup_css_temps EXIT
 
 # Safety check: ROLLBACK_DIR must be absolute and non-empty
 if [ -z "$ROLLBACK_DIR" ] || [[ ! "$ROLLBACK_DIR" = /* ]]; then
@@ -235,59 +244,36 @@ if git rev-parse --is-inside-work-tree &>/dev/null 2>&1; then
         echo "  Detected rollback state (detached at snapshot commit $CURRENT_COMMIT)"
         echo "  Returning to branch $DEPLOY_BRANCH..."
         
-        # Back up CSS once before checkout to prevent new CSS going live under old hash
+        # M1: Back up old CSS bytes before checkout (running server needs old CSS under old hash)
         if [ -f "web/static/css/styles.css" ]; then
             CSS_ROLLBACK_BACKUP="$(mktemp)"
             cp "web/static/css/styles.css" "$CSS_ROLLBACK_BACKUP"
         fi
         
+        # Checkout branch (tree now has new CSS from branch)
         git checkout -f "$DEPLOY_BRANCH" || {
             echo "ERROR: Failed to checkout $DEPLOY_BRANCH"
-            if [ -n "$CSS_ROLLBACK_BACKUP" ] && [ -f "$CSS_ROLLBACK_BACKUP" ]; then
-                cp "$CSS_ROLLBACK_BACKUP" "web/static/css/styles.css"
-                rm -f "$CSS_ROLLBACK_BACKUP"
-            fi
             DEPLOY_FAILED=1
             exit 1
         }
         
         # Mark tree as changed immediately after checkout
         GIT_TREE_CHANGED=1
-        
-        # Restore old CSS so pull can proceed cleanly
-        if [ -n "$CSS_ROLLBACK_BACKUP" ] && [ -f "$CSS_ROLLBACK_BACKUP" ]; then
-            cp "$CSS_ROLLBACK_BACKUP" "web/static/css/styles.css"
-        fi
     fi
     
-    # Snapshot CSS before pull to prevent new CSS going live under old hash
-    if [ -f "web/static/css/styles.css" ]; then
-        CSS_TEMP_BACKUP="$(mktemp)"
-        cp "web/static/css/styles.css" "$CSS_TEMP_BACKUP"
-    fi
-    
+    # Pull latest code (tree must be clean)
     if ! git pull --ff-only; then
         echo "ERROR: git pull failed. Aborting deploy."
         DEPLOY_FAILED=1
-        # Restore CSS if we snapshotted it
-        if [ -n "$CSS_TEMP_BACKUP" ] && [ -f "$CSS_TEMP_BACKUP" ]; then
-            cp "$CSS_TEMP_BACKUP" "web/static/css/styles.css"
-            rm -f "$CSS_TEMP_BACKUP"
-        fi
         exit 1
     fi
     
     GIT_TREE_CHANGED=1
     
-    # Restore old CSS temporarily (old server still serving with old hash)
-    if [ -n "$CSS_TEMP_BACKUP" ] && [ -f "$CSS_TEMP_BACKUP" ]; then
-        cp "$CSS_TEMP_BACKUP" "web/static/css/styles.css"
-        rm -f "$CSS_TEMP_BACKUP"
-    fi
-    
-    # Clean up rollback CSS backup (P3 fix)
+    # After pull, restore old CSS bytes if we backed them up from rollback state
+    # This allows old server to keep serving CSS matching its cached hash
     if [ -n "$CSS_ROLLBACK_BACKUP" ] && [ -f "$CSS_ROLLBACK_BACKUP" ]; then
-        rm -f "$CSS_ROLLBACK_BACKUP"
+        cp "$CSS_ROLLBACK_BACKUP" "web/static/css/styles.css"
     fi
 else
     echo "[2/6] Not a git repo, skipping pull."
@@ -301,10 +287,6 @@ rm -rf node_modules
 if ! npm ci; then
     echo "ERROR: npm ci failed"
     DEPLOY_FAILED=1
-    # Clean up temp CSS backup if it exists
-    if [ -n "$CSS_TEMP_BACKUP" ] && [ -f "$CSS_TEMP_BACKUP" ]; then
-        rm -f "$CSS_TEMP_BACKUP"
-    fi
     exit 1
 fi
 
@@ -318,10 +300,6 @@ if git rev-parse --is-inside-work-tree &>/dev/null 2>&1; then
     git show HEAD:web/static/css/styles.css > "$FRONTEND_BUILD_TEMP/css/styles.css" || {
         echo "ERROR: Failed to extract CSS from git"
         DEPLOY_FAILED=1
-        # Clean up temp CSS backup
-        if [ -n "$CSS_TEMP_BACKUP" ] && [ -f "$CSS_TEMP_BACKUP" ]; then
-            rm -f "$CSS_TEMP_BACKUP"
-        fi
         exit 1
     }
 else
@@ -333,11 +311,6 @@ else
             exit 1
         }
     fi
-fi
-
-# Clean up temp CSS backup
-if [ -n "$CSS_TEMP_BACKUP" ] && [ -f "$CSS_TEMP_BACKUP" ]; then
-    rm -f "$CSS_TEMP_BACKUP"
 fi
 
 # Build JS bundles using package.json scripts (single source of truth for build flags)
@@ -454,18 +427,28 @@ fi
 echo "  Service started. Running health checks..."
 HEALTH_CHECK_TIMEOUT="${HEALTH_CHECK_TIMEOUT:-30}"
 HEALTH_CHECK_INTERVAL=3
-STABILITY_WINDOW="${STABILITY_WINDOW:-6}"
-MAX_HEALTH_CHECKS=$((HEALTH_CHECK_TIMEOUT / HEALTH_CHECK_INTERVAL))
+STABILITY_WINDOW="${STABILITY_WINDOW:-35}"
 
 # Enforce minimum timeout (M5)
 if [ "$HEALTH_CHECK_TIMEOUT" -lt 9 ]; then
     echo "  WARNING: HEALTH_CHECK_TIMEOUT=$HEALTH_CHECK_TIMEOUT too low, using 9"
     HEALTH_CHECK_TIMEOUT=9
-    MAX_HEALTH_CHECKS=$((HEALTH_CHECK_TIMEOUT / HEALTH_CHECK_INTERVAL))
 fi
 
-FIRST_SUCCESS=0
-for i in $(seq 1 $MAX_HEALTH_CHECKS); do
+# M5: Get initial service state for restart detection
+INITIAL_PID=""
+if sudo systemctl is-active --quiet "$SERVICE" 2>/dev/null || false; then
+    INITIAL_PID=$(sudo systemctl show "$SERVICE" --property=MainPID --value 2>/dev/null || echo "")
+fi
+
+FIRST_SUCCESS_TIME=0
+CURRENT_TIME=0
+MAX_TIME_FOR_FIRST_SUCCESS=$HEALTH_CHECK_TIMEOUT
+i=1
+
+while true; do
+    CURRENT_TIME=$((i * HEALTH_CHECK_INTERVAL))
+    # Check for health
     STATUS=$(curl -s --max-time 5 -o /dev/null -w "%{http_code}" "http://127.0.0.1:8080/api/health" 2>&1) || STATUS="000"
     if [ "$STATUS" = "200" ]; then
         # Also check home page and a commodity page
@@ -473,38 +456,44 @@ for i in $(seq 1 $MAX_HEALTH_CHECKS); do
         COMMODITY_STATUS=$(curl -s --max-time 5 -o /dev/null -w "%{http_code}" "http://127.0.0.1:8080/commodity/WTI" 2>&1) || COMMODITY_STATUS="000"
         
         if [ "$HOME_STATUS" = "200" ] && [ "$COMMODITY_STATUS" = "200" ]; then
-            if [ "$FIRST_SUCCESS" -eq 0 ]; then
-                FIRST_SUCCESS=$i
-                echo "  ✓ Initial health check passed at $((i * HEALTH_CHECK_INTERVAL))s. Monitoring stability for ${STABILITY_WINDOW}s..."
+            if [ "$FIRST_SUCCESS_TIME" -eq 0 ]; then
+                FIRST_SUCCESS_TIME=$CURRENT_TIME
+                echo "  ✓ Initial health check passed at ${CURRENT_TIME}s. Monitoring stability for ${STABILITY_WINDOW}s..."
             fi
             
-            # Check if stability window elapsed
-            ELAPSED=$((i - FIRST_SUCCESS))
-            ELAPSED_TIME=$((ELAPSED * HEALTH_CHECK_INTERVAL))
-            if [ "$ELAPSED_TIME" -ge "$STABILITY_WINDOW" ]; then
-                # Final check: ensure service is still active (guard against exit 3)
+            # Check if stability window elapsed since first success
+            ELAPSED=$((CURRENT_TIME - FIRST_SUCCESS_TIME))
+            if [ "$ELAPSED" -ge "$STABILITY_WINDOW" ]; then
+                # M5: Final checks - service still active and hasn't restarted
                 if ! sudo systemctl is-active --quiet "$SERVICE" 2>/dev/null || false; then
                     echo "  ERROR: Service became inactive during stability window!"
                     sudo systemctl status "$SERVICE" --no-pager 2>&1 || true
-                    STATUS="000"
-                    FIRST_SUCCESS=0
+                    FIRST_SUCCESS_TIME=0
                 else
-                    echo "  ✓ Stability verified after ${ELAPSED_TIME}s."
-                    break
+                    # Check if service restarted (PID changed)
+                    CURRENT_PID=$(sudo systemctl show "$SERVICE" --property=MainPID --value 2>/dev/null || echo "")
+                    if [ -n "$INITIAL_PID" ] && [ -n "$CURRENT_PID" ] && [ "$CURRENT_PID" != "$INITIAL_PID" ]; then
+                        echo "  ERROR: Service restarted during stability window (PID $INITIAL_PID -> $CURRENT_PID)!"
+                        sudo systemctl status "$SERVICE" --no-pager 2>&1 || true
+                        FIRST_SUCCESS_TIME=0
+                        INITIAL_PID="$CURRENT_PID"
+                    else
+                        echo "  ✓ Stability verified after ${ELAPSED}s."
+                        break
+                    fi
                 fi
             fi
         else
             echo "  WARNING: /api/health OK but pages not OK (home: $HOME_STATUS, commodity: $COMMODITY_STATUS)"
-            STATUS="000"
-            FIRST_SUCCESS=0
+            FIRST_SUCCESS_TIME=0
         fi
     else
-        FIRST_SUCCESS=0
+        FIRST_SUCCESS_TIME=0
     fi
     
     # Check if service crashed (guard against exit 3 under set -e)
     if ! sudo systemctl is-active --quiet "$SERVICE" 2>/dev/null || false; then
-        echo "  ERROR: Service crashed during health check!"
+        echo "  ERROR: Service crashed during health check at ${CURRENT_TIME}s!"
         sudo systemctl status "$SERVICE" --no-pager 2>&1 || true
         
         # Auto-rollback on crash
@@ -523,7 +512,8 @@ for i in $(seq 1 $MAX_HEALTH_CHECKS); do
         exit 1
     fi
     
-    if [ "$i" = "$MAX_HEALTH_CHECKS" ]; then
+    # Check timeout (only applies before first success)
+    if [ "$FIRST_SUCCESS_TIME" -eq 0 ] && [ "$CURRENT_TIME" -ge "$MAX_TIME_FOR_FIRST_SUCCESS" ]; then
         echo "  ERROR: Health check failed after ${HEALTH_CHECK_TIMEOUT}s (HTTP $STATUS)."
         echo "  Service is running but not responding correctly."
         sudo journalctl -u "$SERVICE" --no-pager -n 50 || true
@@ -543,11 +533,21 @@ for i in $(seq 1 $MAX_HEALTH_CHECKS); do
         DEPLOY_FAILED=1
         exit 1
     fi
+    
     sleep $HEALTH_CHECK_INTERVAL
+    i=$((i + 1))
 done
 
 # Success - disable cleanup trap
 DEPLOY_FAILED=0
+
+# M1: Restore committed CSS now that new binary is healthy
+# This ensures served CSS matches the new hash
+if [ -n "$CSS_ROLLBACK_BACKUP" ] && [ -f "web/static/css/styles.css" ]; then
+    if git rev-parse --is-inside-work-tree &>/dev/null 2>&1; then
+        git checkout -- web/static/css/styles.css 2>/dev/null || true
+    fi
+fi
 
 echo ""
 echo "=== Deploy complete ==="
