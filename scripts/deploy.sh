@@ -250,8 +250,10 @@ if git rev-parse --is-inside-work-tree &>/dev/null 2>&1; then
     if [ -f "web/static/css/styles.css" ]; then
         CSS_BACKUP="$(mktemp)"
         cp "web/static/css/styles.css" "$CSS_BACKUP"
+        touch /tmp/css-backup-created.marker  # DEBUG
         echo "  CSS backed up before pull: $(head -c 50 "web/static/css/styles.css")"
     else
+        touch /tmp/css-backup-NOT-found.marker  # DEBUG
         echo "  WARNING: web/static/css/styles.css not found before pull!"
         ls -la web/static/css/ 2>&1 || echo "  (web/static/css/ does not exist)"
     fi
