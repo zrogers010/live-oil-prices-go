@@ -83,24 +83,38 @@ BACKUP_PATH="$ROLLBACK_DIR/pre-rollback-$BACKUP_TIMESTAMP"
 mkdir -p "$BACKUP_PATH"
 
 if [ -f "$BIN" ]; then
-    cp "$BIN" "$BACKUP_PATH/server"
+    if ! cp "$BIN" "$BACKUP_PATH/server"; then
+        echo "ERROR: Failed to backup binary" >&2
+        exit 1
+    fi
 fi
 if [ -d "web/templates" ]; then
-    cp -r web/templates "$BACKUP_PATH/"
+    if ! cp -r web/templates "$BACKUP_PATH/"; then
+        echo "ERROR: Failed to backup templates" >&2
+        exit 1
+    fi
 fi
 if [ -d "web/static/js" ]; then
-    cp -r web/static/js "$BACKUP_PATH/"
+    if ! cp -r web/static/js "$BACKUP_PATH/"; then
+        echo "ERROR: Failed to backup js" >&2
+        exit 1
+    fi
 fi
 if [ -d "web/static/css" ]; then
-    cp -r web/static/css "$BACKUP_PATH/"
+    if ! cp -r web/static/css "$BACKUP_PATH/"; then
+        echo "ERROR: Failed to backup css" >&2
+        exit 1
+    fi
 fi
 echo "  Current state backed up to $BACKUP_PATH"
 
 # Prune old pre-rollback backups, keeping only the 3 newest
-find "$ROLLBACK_DIR" -mindepth 1 -maxdepth 1 -type d -name 'pre-rollback-*' -print0 \
-    | sort -zr \
-    | tail -zn +4 \
-    | xargs -0r rm -rf --
+if [ -n "$ROLLBACK_DIR" ] && [ -d "$ROLLBACK_DIR" ]; then
+    find "$ROLLBACK_DIR" -mindepth 1 -maxdepth 1 -type d -name 'pre-rollback-*' -print0 \
+        | sort -z \
+        | head -zn -3 \
+        | xargs -0 -r rm -rf
+fi
 
 # Restore from snapshot
 echo ""
@@ -160,11 +174,12 @@ echo "[4/4] Restarting service..."
 sudo systemctl restart "$SERVICE"
 sleep 2
 
-if sudo systemctl is-active --quiet "$SERVICE"; then
+# Check service status (guard against exit 3 under set -e)
+if sudo systemctl is-active --quiet "$SERVICE" 2>/dev/null || false; then
     echo "  ✓ Service is running"
 else
     echo "  ERROR: Service failed to start!"
-    sudo systemctl status "$SERVICE" --no-pager || true
+    sudo systemctl status "$SERVICE" --no-pager 2>&1 || true
     echo ""
     echo "Attempting to restore from backup..."
     if [ -f "$BACKUP_PATH/server" ]; then

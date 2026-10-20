@@ -129,7 +129,10 @@ mkdir -p "$ROLLBACK_DIR"
 # Back up current state (binary, templates, and built assets) if they exist
 if [ -f "$BIN" ] || [ -f "web/static/js/app.js" ]; then
     ROLLBACK_PATH="$ROLLBACK_DIR/$TIMESTAMP"
-    mkdir -p "$ROLLBACK_PATH"
+    if ! mkdir -p "$ROLLBACK_PATH"; then
+        echo "ERROR: Failed to create rollback snapshot directory"
+        exit 1
+    fi
     
     # Copy binary if it exists
     if [ -f "$BIN" ]; then
@@ -181,12 +184,14 @@ if [ -f "$BIN" ] || [ -f "web/static/js/app.js" ]; then
     
     echo "  Rollback snapshot saved to $ROLLBACK_PATH"
     
-    # Keep only the 10 most recent rollbacks (sort by name, not mtime)
-    # Using find with -print0 for safety against spaces in names
-    find "$ROLLBACK_DIR" -mindepth 1 -maxdepth 1 -type d -name '20*' -print0 \
-        | sort -zr \
-        | tail -zn +11 \
-        | xargs -0r rm -rf --
+    # Keep only the 10 most recent rollbacks (sort by name for timestamp order)
+    # Using find with -print0 for NUL-safe handling
+    if [ -n "$ROLLBACK_DIR" ] && [ -d "$ROLLBACK_DIR" ]; then
+        find "$ROLLBACK_DIR" -mindepth 1 -maxdepth 1 -type d -name '20*' -print0 \
+            | sort -z \
+            | head -zn -10 \
+            | xargs -0 -r rm -rf
+    fi
 else
     echo "  No existing binary or assets to back up (first deploy or clean build)."
     ROLLBACK_PATH=""
@@ -195,6 +200,14 @@ fi
 # ---------- Pull latest code ----------
 if git rev-parse --is-inside-work-tree &>/dev/null 2>&1; then
     echo "[2/6] Pulling latest code..."
+    
+    # Check if we're in detached HEAD (e.g., after a rollback)
+    if ! git symbolic-ref -q HEAD >/dev/null; then
+        echo "  Detected rollback state (detached HEAD). Checking out $DEPLOY_BRANCH..."
+        # Clean up any local changes from rollback before checkout
+        git reset --hard
+        git checkout "$DEPLOY_BRANCH"
+    fi
     
     # Snapshot CSS before pull to prevent new CSS going live under old hash
     CSS_TEMP_BACKUP=""
@@ -338,10 +351,10 @@ rm -rf "$FRONTEND_BUILD_TEMP"
 sudo systemctl restart "$SERVICE"
 sleep 2
 
-# Check if service started
-if ! sudo systemctl is-active --quiet "$SERVICE"; then
+# Check if service started (guard against exit 3 under set -e)
+if ! sudo systemctl is-active --quiet "$SERVICE" 2>/dev/null || false; then
     echo "  ERROR: Service failed to start!"
-    sudo systemctl status "$SERVICE" --no-pager || true
+    sudo systemctl status "$SERVICE" --no-pager 2>&1 || true
     
     # Auto-rollback on failed start
     if [ -n "$ROLLBACK_PATH" ] && [ -d "$ROLLBACK_PATH" ]; then
@@ -380,10 +393,10 @@ for i in $(seq 1 $MAX_HEALTH_CHECKS); do
         fi
     fi
     
-    # Check if service crashed
-    if ! sudo systemctl is-active --quiet "$SERVICE"; then
+    # Check if service crashed (guard against exit 3 under set -e)
+    if ! sudo systemctl is-active --quiet "$SERVICE" 2>/dev/null || false; then
         echo "  ERROR: Service crashed during health check!"
-        sudo systemctl status "$SERVICE" --no-pager || true
+        sudo systemctl status "$SERVICE" --no-pager 2>&1 || true
         
         # Auto-rollback on crash
         if [ -n "$ROLLBACK_PATH" ] && [ -d "$ROLLBACK_PATH" ]; then

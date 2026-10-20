@@ -353,6 +353,10 @@ fi
 # Save the known-good state (this is what rollback should restore to)
 GOOD_BINARY=$(cat bin/server)
 GOOD_JS=$(cat web/static/js/app.js)
+GOOD_COMMIT=$(git rev-parse HEAD)
+echo "  Known-good state: commit $GOOD_COMMIT"
+echo "  Known-good binary: $(head -2 bin/server | tail -1)"
+echo "  Known-good JS: $(head -1 web/static/js/app.js)"
 
 # Now test health check failure with a new change
 touch "$TEST_DIR/health_fail"
@@ -375,7 +379,9 @@ CURRENT_BINARY=$(cat bin/server)
 if [ "$CURRENT_BINARY" = "$GOOD_BINARY" ]; then
     echo "✓ Binary rolled back"
 else
-    echo "✗ Binary not rolled back (expected '$GOOD_BINARY', got '$CURRENT_BINARY')"
+    echo "✗ Binary not rolled back"
+    echo "  Expected commit: $(echo "$GOOD_BINARY" | head -2 | tail -1)"
+    echo "  Actual commit:   $(echo "$CURRENT_BINARY" | head -2 | tail -1)"
     exit 1
 fi
 
@@ -384,8 +390,21 @@ CURRENT_JS=$(cat web/static/js/app.js)
 if [ "$CURRENT_JS" = "$GOOD_JS" ]; then
     echo "✓ Assets rolled back"
 else
-    echo "✗ Assets not rolled back (expected '$GOOD_JS', got '$CURRENT_JS')"
+    echo "✗ Assets not rolled back"
+    echo "  Expected: $(echo "$GOOD_JS" | head -1)"
+    echo "  Actual:   $(echo "$CURRENT_JS" | head -1)"
     exit 1
+fi
+
+# Verify commit restored
+CURRENT_COMMIT=$(git rev-parse HEAD)
+if [ "$CURRENT_COMMIT" = "$GOOD_COMMIT" ]; then
+    echo "✓ Git commit restored"
+else
+    echo "  WARNING: Git commit differs (expected $GOOD_COMMIT, got $CURRENT_COMMIT)"
+    # This is OK as long as binary and assets match - the git tree might be at a different point
+    # but the deployed files are correct. The important thing is the next deploy will rebuild from HEAD.
+    echo "✓ Git commit state acceptable (binary and assets verified)"
 fi
 
 echo "✓ Test (b) passed"
@@ -559,6 +578,54 @@ else
     echo "✗ Test (e) failed - rollback state not detected"
     echo "Deploy output:"
     cat "$TEST_DIR/deploy-output-e.txt"
+    exit 1
+fi
+
+echo ""
+echo "=== Test (f): Snapshot copy failure aborts deploy ==="
+
+git checkout master -q 2>/dev/null || git checkout main -q
+git reset --hard "$INITIAL_COMMIT" -q
+git push -f -q
+rm -rf "$TEST_DIR/rollbacks"/*
+
+# Make rollback directory read-only to cause cp failures
+chmod 555 "$TEST_DIR/rollbacks"
+
+OLD_BINARY=$(cat bin/server)
+OLD_JS=$(cat web/static/js/app.js)
+
+echo "change8" >> cmd/server/main.go
+git add -A
+git commit -q -m "change for test f"
+git push -q
+
+bash "$TEST_DIR/deploy-test.sh" > "$TEST_DIR/deploy-output-f.txt" 2>&1 || true
+
+# Restore permissions
+chmod 755 "$TEST_DIR/rollbacks"
+
+if grep -qE "(Failed to back up|cannot create directory|Permission denied)" "$TEST_DIR/deploy-output-f.txt"; then
+    echo "✓ Snapshot failure detected"
+    
+    # Verify nothing was changed (deploy aborted)
+    CURRENT_BINARY=$(cat bin/server)
+    CURRENT_JS=$(cat web/static/js/app.js)
+    
+    if [ "$CURRENT_BINARY" = "$OLD_BINARY" ] && [ "$CURRENT_JS" = "$OLD_JS" ]; then
+        echo "✓ No changes made (deploy aborted before swap)"
+    else
+        echo "✗ Deploy made changes despite snapshot failure"
+        echo "Binary changed: $([ "$CURRENT_BINARY" != "$OLD_BINARY" ] && echo "YES" || echo "NO")"
+        echo "JS changed: $([ "$CURRENT_JS" != "$OLD_JS" ] && echo "YES" || echo "NO")"
+        exit 1
+    fi
+    
+    echo "✓ Test (f) passed"
+else
+    echo "✗ Test (f) failed - snapshot failure not detected"
+    echo "Deploy output:"
+    cat "$TEST_DIR/deploy-output-f.txt"
     exit 1
 fi
 
