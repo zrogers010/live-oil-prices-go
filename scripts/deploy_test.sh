@@ -1018,10 +1018,11 @@ fi
 bash "$TEST_DIR/deploy-test.sh" > "$TEST_DIR/deploy-output-k.txt" 2>&1 || true
 
 # Should report rollback failure
-if grep -q "Rollback failed" "$TEST_DIR/deploy-output-k.txt" || grep -q "No snapshots available" "$TEST_DIR/deploy-output-k.txt"; then
+if grep -q "Rollback also failed\|ROLLBACK FAILED" "$TEST_DIR/deploy-output-k.txt"; then
     echo "✓ Rollback failure detected and reported"
 else
     echo "✗ Rollback failure not properly reported"
+    cat "$TEST_DIR/deploy-output-k.txt" | grep -i rollback | tail -5
     exit 1
 fi
 
