@@ -723,7 +723,6 @@ git commit -q -m "test g: upstream css change"
 git push -q
 
 NEW_COMMIT=$(git rev-parse HEAD)
-EXPECTED_CSS=$(head -1 web/static/css/styles.css)
 
 # Go back to detached HEAD (rollback state)
 git checkout "$SNAPSHOT_COMMIT" -q
