@@ -1037,10 +1037,11 @@ git push -q
 
 bash "$TEST_DIR/deploy-test.sh" > "$TEST_DIR/deploy-output-j.txt" 2>&1 || true
 
-if grep -q "systemctl restart failed" "$TEST_DIR/deploy-output-j.txt" && grep -q "Attempting automatic rollback" "$TEST_DIR/deploy-output-j.txt"; then
-    echo "✓ Restart failure triggered rollback"
+if grep -q "systemctl start failed" "$TEST_DIR/deploy-output-j.txt" && grep -q "Attempting automatic rollback" "$TEST_DIR/deploy-output-j.txt"; then
+    echo "✓ Start failure triggered rollback"
 else
-    echo "✗ Restart failure didn't trigger rollback"
+    echo "✗ Start failure didn't trigger rollback"
+    cat "$TEST_DIR/deploy-output-j.txt"
     exit 1
 fi
 
