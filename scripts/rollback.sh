@@ -143,12 +143,14 @@ restore_from_backup() {
     fi
 }
 
-# Restore binary (copy to temp then mv to avoid "Text file busy" if service is running)
+# Stop service before swapping files (mirrors deploy.sh stop-before-swap)
+echo "  Stopping service before file restoration..."
+sudo systemctl stop "$SERVICE" 2>&1 || true
+
+# Restore binary
 mkdir -p "$(dirname "$BIN")"
-TEMP_BIN="$(dirname "$BIN")/.server.tmp.$$"
-cp "$ROLLBACK_PATH/server" "$TEMP_BIN"
-chmod +x "$TEMP_BIN"
-mv -f "$TEMP_BIN" "$BIN"
+cp "$ROLLBACK_PATH/server" "$BIN"
+chmod +x "$BIN"
 echo "  ✓ Restored binary"
 
 # Restore templates
@@ -204,14 +206,14 @@ if [ -n "$SNAPSHOT_COMMIT" ]; then
     fi
 fi
 
-# Restart service
+# Start service (already stopped before file restoration)
 echo ""
-echo "[4/4] Restarting service..."
-if ! sudo systemctl restart "$SERVICE" 2>&1; then
-    echo "  ERROR: systemctl restart failed!"
+echo "[4/4] Starting service..."
+if ! sudo systemctl start "$SERVICE" 2>&1; then
+    echo "  ERROR: systemctl start failed!"
     sudo systemctl status "$SERVICE" --no-pager 2>&1 || true
     echo ""
-    echo "Failed to restart after rollback."
+    echo "Failed to start after rollback."
     echo "Manual intervention required."
     exit 1
 fi

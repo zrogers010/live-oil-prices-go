@@ -2,6 +2,9 @@
   "name": "live-oil-prices",
   "version": "1.0.0",
   "private": true,
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "build": "esbuild web/src/app.ts --bundle --outfile=web/static/js/app.js --minify --sourcemap --target=es2020 && esbuild web/src/detail.ts --bundle --outfile=web/static/js/detail.js --minify --sourcemap --target=es2020",
     "build:to": "esbuild web/src/app.ts --bundle --outfile=\"${OUTDIR}/js/app.js\" --minify --sourcemap --target=es2020 && esbuild web/src/detail.ts --bundle --outfile=\"${OUTDIR}/js/detail.js\" --minify --sourcemap --target=es2020",
