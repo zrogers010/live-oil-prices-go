@@ -1195,16 +1195,24 @@ git checkout master -q 2>/dev/null || git checkout main -q
 rm -rf "$TEST_DIR/rollbacks"/*
 rm -rf bin
 
-# Create two commits: one good, one bad
+# Create initial commit and deploy to establish baseline (no snapshot yet - no pre-existing binary)
+echo "change-o0" >> cmd/server/main.go
+git add -A
+git commit -q -m "test o setup"
+git push -q
+bash "$TEST_DIR/deploy-test.sh" > /dev/null 2>&1
+
+# Create good commit and deploy (this creates first snapshot from the setup binary)
 echo "change-o1" >> cmd/server/main.go
 git add -A
 git commit -q -m "test o good"
 git push -q
 bash "$TEST_DIR/deploy-test.sh" > /dev/null 2>&1
 
-# Get the snapshot timestamp (only timestamped snapshots, not pre-rollback-*)
+# Get the first snapshot timestamp (the "good" snapshot to rollback to)
 SNAPSHOT_O=$(find "$TEST_DIR/rollbacks" -mindepth 1 -maxdepth 1 -type d -name '[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]-[0-9][0-9][0-9][0-9][0-9][0-9]' -printf '%f\n' | sort | head -1)
 
+# Create bad commit and deploy (this creates second snapshot)
 echo "change-o2" >> cmd/server/main.go
 git add -A
 git commit -q -m "test o bad"
@@ -1244,16 +1252,24 @@ git checkout master -q 2>/dev/null || git checkout main -q
 rm -rf "$TEST_DIR/rollbacks"/*
 rm -rf bin
 
-# Create two commits
+# Create initial commit and deploy (no snapshot - no pre-existing binary)
+echo "change-p0" >> cmd/server/main.go
+git add -A
+git commit -q -m "test p setup"
+git push -q
+bash "$TEST_DIR/deploy-test.sh" > /dev/null 2>&1
+
+# Create snapshot commit and deploy (creates first snapshot)
 echo "change-p1" >> cmd/server/main.go
 git add -A
 git commit -q -m "test p snapshot"
 git push -q
 bash "$TEST_DIR/deploy-test.sh" > /dev/null 2>&1
 
-# Get the snapshot (only timestamped snapshots, not pre-rollback-*)
+# Get the snapshot (the first timestamped snapshot)
 SNAPSHOT_P=$(find "$TEST_DIR/rollbacks" -mindepth 1 -maxdepth 1 -type d -name '[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]-[0-9][0-9][0-9][0-9][0-9][0-9]' -printf '%f\n' | sort | head -1)
 
+# Create current commit and deploy (creates second snapshot)
 echo "change-p2" >> cmd/server/main.go
 git add -A
 git commit -q -m "test p current"
