@@ -1212,6 +1212,12 @@ bash "$TEST_DIR/deploy-test.sh" > /dev/null 2>&1
 # Get the first snapshot timestamp (the "good" snapshot to rollback to)
 SNAPSHOT_O=$(find "$TEST_DIR/rollbacks" -mindepth 1 -maxdepth 1 -type d -name '[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]-[0-9][0-9][0-9][0-9][0-9][0-9]' -printf '%f\n' | sort | head -1)
 
+if [ -z "$SNAPSHOT_O" ]; then
+    echo "✗ No snapshot found after good deploy"
+    ls -la "$TEST_DIR/rollbacks/"
+    exit 1
+fi
+
 # Create bad commit and deploy (this creates second snapshot)
 echo "change-o2" >> cmd/server/main.go
 git add -A
@@ -1268,6 +1274,12 @@ bash "$TEST_DIR/deploy-test.sh" > /dev/null 2>&1
 
 # Get the snapshot (the first timestamped snapshot)
 SNAPSHOT_P=$(find "$TEST_DIR/rollbacks" -mindepth 1 -maxdepth 1 -type d -name '[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]-[0-9][0-9][0-9][0-9][0-9][0-9]' -printf '%f\n' | sort | head -1)
+
+if [ -z "$SNAPSHOT_P" ]; then
+    echo "✗ No snapshot found after snapshot deploy"
+    ls -la "$TEST_DIR/rollbacks/"
+    exit 1
+fi
 
 # Create current commit and deploy (creates second snapshot)
 echo "change-p2" >> cmd/server/main.go
