@@ -1000,8 +1000,9 @@ git push -q
 export STABILITY_WINDOW=10
 bash "$TEST_DIR/deploy-test.sh" > "$TEST_DIR/deploy-output-i.txt" 2>&1 || true
 
-# Check that it detected the crash (either MainPID changed or service became inactive)
-if grep -q "Service became inactive\|MainPID changed" "$TEST_DIR/deploy-output-i.txt"; then
+# Check that it detected the crash and rolled back
+if grep -q "Service became inactive\|MainPID changed\|Service crashed during health check" "$TEST_DIR/deploy-output-i.txt" \
+    && grep -q "Attempting automatic rollback" "$TEST_DIR/deploy-output-i.txt"; then
     echo "✓ Deploy late crash detected and rolled back"
 else
     echo "✗ Deploy late crash not detected"
