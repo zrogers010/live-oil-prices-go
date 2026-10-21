@@ -1203,8 +1203,7 @@ git push -q
 bash "$TEST_DIR/deploy-test.sh" > /dev/null 2>&1
 
 # Get the snapshot timestamp (only timestamped snapshots, not pre-rollback-*)
-# shellcheck disable=SC2012
-SNAPSHOT_O=$(ls -1 "$TEST_DIR/rollbacks" | grep -E '^[0-9]{8}-[0-9]{6}$' | head -1)
+SNAPSHOT_O=$(find "$TEST_DIR/rollbacks" -mindepth 1 -maxdepth 1 -type d -name '[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]-[0-9][0-9][0-9][0-9][0-9][0-9]' -printf '%f\n' | sort | head -1)
 
 echo "change-o2" >> cmd/server/main.go
 git add -A
@@ -1253,8 +1252,7 @@ git push -q
 bash "$TEST_DIR/deploy-test.sh" > /dev/null 2>&1
 
 # Get the snapshot (only timestamped snapshots, not pre-rollback-*)
-# shellcheck disable=SC2012
-SNAPSHOT_P=$(ls -1 "$TEST_DIR/rollbacks" | grep -E '^[0-9]{8}-[0-9]{6}$' | head -1)
+SNAPSHOT_P=$(find "$TEST_DIR/rollbacks" -mindepth 1 -maxdepth 1 -type d -name '[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]-[0-9][0-9][0-9][0-9][0-9][0-9]' -printf '%f\n' | sort | head -1)
 
 echo "change-p2" >> cmd/server/main.go
 git add -A
