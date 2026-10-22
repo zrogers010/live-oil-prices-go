@@ -1221,7 +1221,8 @@ echo ""
 echo "=== Test (n): No /tmp leaks after tests ==="
 
 # Every mktemp in deploy.sh landed in our private TMPDIR; it must be empty now
-TMP_FILES=$(find "$TMPDIR" -mindepth 1 -maxdepth 1)
+# Exclude .git_signing_key files (created by git, not deploy.sh)
+TMP_FILES=$(find "$TMPDIR" -mindepth 1 -maxdepth 1 ! -name '.git_signing_key_tmp*')
 if [ -n "$TMP_FILES" ]; then
     echo "✗ Leaked temp file(s):"
     echo "$TMP_FILES"
@@ -1253,19 +1254,18 @@ git commit -q -m "test o deploy 2 (good)"
 git push -q
 bash "$TEST_DIR/deploy-test.sh" > /dev/null 2>&1
 
-# Wait for snapshot to exist and be complete
-SNAPSHOT_O=""
-for _ in {1..10}; do
-    SNAPSHOT_O=$(find "$TEST_DIR/rollbacks" -mindepth 1 -maxdepth 1 -type d -name '[0-9]*' -printf '%f\n' | sort | head -1)
-    if [ -n "$SNAPSHOT_O" ] && [ -f "$TEST_DIR/rollbacks/$SNAPSHOT_O/server" ]; then
-        break
-    fi
-    sleep 0.1
-done
+# Get the snapshot created by deploy 2
+SNAPSHOT_O=$(find "$TEST_DIR/rollbacks" -mindepth 1 -maxdepth 1 -type d -name '[0-9]*' -printf '%f\n' | sort | head -1)
 
-if [ -z "$SNAPSHOT_O" ] || [ ! -f "$TEST_DIR/rollbacks/$SNAPSHOT_O/server" ]; then
-    echo "✗ No valid snapshot found after deploy 2"
-    ls -la "$TEST_DIR/rollbacks/"
+if [ -z "$SNAPSHOT_O" ]; then
+    echo "✗ No snapshot directory found after deploy 2"
+    ls -la "$TEST_DIR/rollbacks/" || echo "Rollbacks dir does not exist"
+    exit 1
+fi
+
+if [ ! -f "$TEST_DIR/rollbacks/$SNAPSHOT_O/server" ]; then
+    echo "✗ Snapshot $SNAPSHOT_O missing server binary"
+    ls -la "$TEST_DIR/rollbacks/$SNAPSHOT_O/"
     exit 1
 fi
 
@@ -1333,18 +1333,13 @@ git commit -q -m "test p deploy 2"
 git push -q
 bash "$TEST_DIR/deploy-test.sh" > /dev/null 2>&1
 
-# Wait for snapshot
-SNAPSHOT_P=""
-for _ in {1..10}; do
-    SNAPSHOT_P=$(find "$TEST_DIR/rollbacks" -mindepth 1 -maxdepth 1 -type d -name '[0-9]*' -printf '%f\n' | sort | head -1)
-    if [ -n "$SNAPSHOT_P" ] && [ -f "$TEST_DIR/rollbacks/$SNAPSHOT_P/server" ]; then
-        break
-    fi
-    sleep 0.1
-done
+# Get the snapshot
+SNAPSHOT_P=$(find "$TEST_DIR/rollbacks" -mindepth 1 -maxdepth 1 -type d -name '[0-9]*' -printf '%f\n' | sort | head -1)
 
 if [ -z "$SNAPSHOT_P" ] || [ ! -f "$TEST_DIR/rollbacks/$SNAPSHOT_P/server" ]; then
-    echo "✗ No valid snapshot found"
+    echo "✗ No valid snapshot found after deploy 2"
+    ls -la "$TEST_DIR/rollbacks/" || true
+    [ -n "$SNAPSHOT_P" ] && ls -la "$TEST_DIR/rollbacks/$SNAPSHOT_P/" || true
     exit 1
 fi
 
@@ -1395,18 +1390,13 @@ git commit -q -m "test q deploy 2"
 git push -q
 bash "$TEST_DIR/deploy-test.sh" > /dev/null 2>&1
 
-# Wait for snapshot
-SNAPSHOT_Q=""
-for _ in {1..10}; do
-    SNAPSHOT_Q=$(find "$TEST_DIR/rollbacks" -mindepth 1 -maxdepth 1 -type d -name '[0-9]*' -printf '%f\n' | sort | head -1)
-    if [ -n "$SNAPSHOT_Q" ] && [ -f "$TEST_DIR/rollbacks/$SNAPSHOT_Q/server" ]; then
-        break
-    fi
-    sleep 0.1
-done
+# Get the snapshot
+SNAPSHOT_Q=$(find "$TEST_DIR/rollbacks" -mindepth 1 -maxdepth 1 -type d -name '[0-9]*' -printf '%f\n' | sort | head -1)
 
 if [ -z "$SNAPSHOT_Q" ] || [ ! -f "$TEST_DIR/rollbacks/$SNAPSHOT_Q/server" ]; then
-    echo "✗ No valid snapshot found"
+    echo "✗ No valid snapshot found after deploy 2"
+    ls -la "$TEST_DIR/rollbacks/" || true
+    [ -n "$SNAPSHOT_Q" ] && ls -la "$TEST_DIR/rollbacks/$SNAPSHOT_Q/" || true
     exit 1
 fi
 
@@ -1456,18 +1446,13 @@ git commit -q -m "test r deploy 2"
 git push -q
 bash "$TEST_DIR/deploy-test.sh" > /dev/null 2>&1
 
-# Wait for snapshot
-SNAPSHOT_R=""
-for _ in {1..10}; do
-    SNAPSHOT_R=$(find "$TEST_DIR/rollbacks" -mindepth 1 -maxdepth 1 -type d -name '[0-9]*' -printf '%f\n' | sort | head -1)
-    if [ -n "$SNAPSHOT_R" ] && [ -f "$TEST_DIR/rollbacks/$SNAPSHOT_R/server" ]; then
-        break
-    fi
-    sleep 0.1
-done
+# Get the snapshot
+SNAPSHOT_R=$(find "$TEST_DIR/rollbacks" -mindepth 1 -maxdepth 1 -type d -name '[0-9]*' -printf '%f\n' | sort | head -1)
 
 if [ -z "$SNAPSHOT_R" ] || [ ! -f "$TEST_DIR/rollbacks/$SNAPSHOT_R/server" ]; then
-    echo "✗ No valid snapshot found"
+    echo "✗ No valid snapshot found after deploy 2"
+    ls -la "$TEST_DIR/rollbacks/" || true
+    [ -n "$SNAPSHOT_R" ] && ls -la "$TEST_DIR/rollbacks/$SNAPSHOT_R/" || true
     exit 1
 fi
 
