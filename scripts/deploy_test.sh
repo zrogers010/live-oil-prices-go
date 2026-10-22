@@ -209,15 +209,18 @@ case "\$1" in
         exit 3
         ;;
     restart|start)
-        # Record stop-before-swap ordering
-        if [ "\$1" = "stop" ] && [ -f "$TEST_DIR/record_swap_order" ]; then
-            echo "stop" >> "$TEST_DIR/swap_order.log"
-        fi
-        
-        # Check for restart failure marker
+        # Check for restart/start failure marker
         if [ -f "$TEST_DIR/restart_fail" ]; then
             echo "Mock restart failed" >&2
             exit 1
+        fi
+        
+        # If start and already running, no-op (like real systemd)
+        if [ "\$1" = "start" ] && [ -f "\$SERVICE_PID_FILE" ]; then
+            PID=\$(cat "\$SERVICE_PID_FILE" 2>/dev/null || echo "")
+            if [ -n "\$PID" ] && kill -0 "\$PID" 2>/dev/null; then
+                exit 0
+            fi
         fi
         
         # Stop old process if restarting
@@ -227,10 +230,28 @@ case "\$1" in
             rm -f "\$SERVICE_PID_FILE"
         fi
         
-        # Start new process
+        # Start new process (simulates Restart=on-failure: new PID even after crash)
         sleep 99999 &
         NEW_PID=\$!
         echo \$NEW_PID > "\$SERVICE_PID_FILE"
+        
+        # Simulate systemd Restart=on-failure behavior
+        if [ -f "$TEST_DIR/simulate_restart" ]; then
+            (
+                while true; do
+                    sleep 0.1
+                    if [ -f "\$SERVICE_PID_FILE" ]; then
+                        PID=\$(cat "\$SERVICE_PID_FILE" 2>/dev/null || echo "")
+                        if [ -n "\$PID" ] && ! kill -0 "\$PID" 2>/dev/null; then
+                            # Process died, restart it (new PID)
+                            sleep 99999 &
+                            echo \$! > "\$SERVICE_PID_FILE"
+                        fi
+                    fi
+                done
+            ) &
+            echo \$! > "$TEST_DIR/restart_monitor.pid"
+        fi
         exit 0
         ;;
     stop)
@@ -290,8 +311,19 @@ if [ -f "$TEST_DIR/health_fail" ]; then
     echo "500"
     exit 0
 fi
-echo "200"
-exit 0
+
+# Check if service process is actually running
+if [ -f "$TEST_DIR/service.pid" ]; then
+    PID=\$(cat "$TEST_DIR/service.pid" 2>/dev/null || echo "")
+    if [ -n "\$PID" ] && kill -0 "\$PID" 2>/dev/null; then
+        echo "200"
+        exit 0
+    fi
+fi
+
+# Service not running, connection refused
+echo "000"
+exit 7
 CURLEOF
 chmod +x "$TEST_DIR/curl"
 
@@ -987,10 +1019,14 @@ git add -A
 git commit -q -m "test i crash"
 git push -q
 
+# Enable auto-restart simulation (Restart=on-failure)
+touch "$TEST_DIR/simulate_restart"
+
 # Set up delayed crash (crash after 5 seconds, during stability window)
 (
     sleep 5
     # Kill the service process to simulate mid-window crash
+    # With simulate_restart enabled, systemd will restart it (new PID)
     if [ -f "$TEST_DIR/service.pid" ]; then
         PID=$(cat "$TEST_DIR/service.pid")
         kill -9 "$PID" 2>/dev/null || true
@@ -1000,8 +1036,15 @@ git push -q
 export STABILITY_WINDOW=10
 bash "$TEST_DIR/deploy-test.sh" > "$TEST_DIR/deploy-output-i.txt" 2>&1 || true
 
-# Check that it detected the crash and rolled back
-if grep -q "Service became inactive\|MainPID changed\|Service crashed during health check" "$TEST_DIR/deploy-output-i.txt" \
+# Stop the restart monitor
+if [ -f "$TEST_DIR/restart_monitor.pid" ]; then
+    kill "$(cat "$TEST_DIR/restart_monitor.pid")" 2>/dev/null || true
+    rm -f "$TEST_DIR/restart_monitor.pid"
+fi
+rm -f "$TEST_DIR/simulate_restart"
+
+# Check that it detected the crash/restart and rolled back
+if grep -q "Service became inactive\|MainPID changed\|Service restarted during stability window" "$TEST_DIR/deploy-output-i.txt" \
     && grep -q "Attempting automatic rollback" "$TEST_DIR/deploy-output-i.txt"; then
     echo "✓ Deploy late crash detected and rolled back"
 else
@@ -1189,4 +1232,212 @@ echo "✓ No /tmp leaks detected"
 echo "✓ Test (n) passed"
 
 echo ""
-echo "✓ All deploy tests passed (a-n)!"
+echo "=== Test (o): Rollback late crash after first good check ==="
+
+git checkout master -q 2>/dev/null || git checkout main -q
+rm -rf "$TEST_DIR/rollbacks"/*
+rm -rf bin
+
+# Create good commit and deploy (creates snapshot)
+echo "change-o1" >> cmd/server/main.go
+git add -A
+git commit -q -m "test o good"
+git push -q
+bash "$TEST_DIR/deploy-test.sh" > /dev/null 2>&1
+
+# Get the snapshot
+# shellcheck disable=SC2012
+SNAPSHOT_O=$(ls -1 "$TEST_DIR/rollbacks" | grep -E '^[0-9]' | head -1)
+
+# Create bad commit and deploy (creates another snapshot)
+echo "change-o2" >> cmd/server/main.go
+git add -A
+git commit -q -m "test o bad"
+git push -q
+bash "$TEST_DIR/deploy-test.sh" > /dev/null 2>&1
+
+# Enable auto-restart simulation
+touch "$TEST_DIR/simulate_restart"
+
+# Set up delayed crash during rollback stability window
+(
+    sleep 5
+    if [ -f "$TEST_DIR/service.pid" ]; then
+        PID=$(cat "$TEST_DIR/service.pid")
+        kill -9 "$PID" 2>/dev/null || true
+    fi
+) &
+
+export STABILITY_WINDOW=10
+bash "$TEST_DIR/rollback.sh" "$SNAPSHOT_O" > "$TEST_DIR/rollback-output-o.txt" 2>&1 || true
+
+# Stop the restart monitor
+if [ -f "$TEST_DIR/restart_monitor.pid" ]; then
+    kill "$(cat "$TEST_DIR/restart_monitor.pid")" 2>/dev/null || true
+    rm -f "$TEST_DIR/restart_monitor.pid"
+fi
+rm -f "$TEST_DIR/simulate_restart"
+
+# Check that rollback detected the crash/restart
+if grep -q "Service became inactive\|MainPID changed\|Service restarted during stability window" "$TEST_DIR/rollback-output-o.txt"; then
+    echo "✓ Rollback late crash detected"
+else
+    echo "✗ Rollback late crash not detected"
+    tail -50 "$TEST_DIR/rollback-output-o.txt"
+    exit 1
+fi
+
+export STABILITY_WINDOW=3
+
+echo "✓ Test (o) passed"
+
+echo ""
+echo "=== Test (p): Rollback stops service before swapping files ==="
+
+git checkout master -q 2>/dev/null || git checkout main -q
+rm -rf "$TEST_DIR/rollbacks"/*
+rm -rf bin
+
+# Create snapshot commit and deploy
+echo "change-p1" >> cmd/server/main.go
+git add -A
+git commit -q -m "test p snapshot"
+git push -q
+bash "$TEST_DIR/deploy-test.sh" > /dev/null 2>&1
+
+# Get the snapshot
+# shellcheck disable=SC2012
+SNAPSHOT_P=$(ls -1 "$TEST_DIR/rollbacks" | grep -E '^[0-9]' | head -1)
+
+# Create current commit and deploy
+echo "change-p2" >> cmd/server/main.go
+git add -A
+git commit -q -m "test p current"
+git push -q
+bash "$TEST_DIR/deploy-test.sh" > /dev/null 2>&1
+
+# Enable swap order recording
+touch "$TEST_DIR/record_swap_order"
+: > "$TEST_DIR/swap_order.log"
+
+bash "$TEST_DIR/rollback.sh" "$SNAPSHOT_P" > /dev/null 2>&1
+
+# Check that stop was called (should be in the log)
+if grep -q "^stop$" "$TEST_DIR/swap_order.log"; then
+    echo "✓ Service stopped before file swap"
+else
+    echo "✗ Service not stopped before file swap"
+    cat "$TEST_DIR/swap_order.log"
+    exit 1
+fi
+
+rm -f "$TEST_DIR/record_swap_order" "$TEST_DIR/swap_order.log"
+
+echo "✓ Test (p) passed"
+
+echo ""
+echo "=== Test (q): Rollback starts service after git checkout failure ==="
+
+git checkout master -q 2>/dev/null || git checkout main -q
+rm -rf "$TEST_DIR/rollbacks"/*
+rm -rf bin
+
+# Create snapshot
+echo "change-q1" >> cmd/server/main.go
+git add -A
+git commit -q -m "test q"
+git push -q
+bash "$TEST_DIR/deploy-test.sh" > /dev/null 2>&1
+
+# Get the snapshot
+# shellcheck disable=SC2012
+SNAPSHOT_Q=$(ls -1 "$TEST_DIR/rollbacks" | grep -E '^[0-9]' | head -1)
+
+# Make another commit
+echo "change-q2" >> cmd/server/main.go
+git add -A
+git commit -q -m "test q current"
+git push -q
+bash "$TEST_DIR/deploy-test.sh" > /dev/null 2>&1
+
+# Corrupt the snapshot COMMIT to trigger checkout failure
+SNAPSHOT_COMMIT=$(cat "$TEST_DIR/rollbacks/$SNAPSHOT_Q/COMMIT")
+echo "0000000000000000000000000000000000000000" > "$TEST_DIR/rollbacks/$SNAPSHOT_Q/COMMIT"
+
+# Try rollback - should fail but service should be running
+bash "$TEST_DIR/rollback.sh" "$SNAPSHOT_Q" > "$TEST_DIR/rollback-output-q.txt" 2>&1 || true
+
+# Check that service is running (trap started it)
+if [ -f "$TEST_DIR/service.pid" ] && kill -0 "$(cat "$TEST_DIR/service.pid")" 2>/dev/null; then
+    echo "✓ Service started after rollback failure"
+else
+    echo "✗ Service not running after rollback failure"
+    cat "$TEST_DIR/rollback-output-q.txt"
+    exit 1
+fi
+
+echo "✓ Test (q) passed"
+
+echo ""
+echo "=== Test (r): Rollback aborts on stop failure ==="
+
+git checkout master -q 2>/dev/null || git checkout main -q
+rm -rf "$TEST_DIR/rollbacks"/*
+rm -rf bin
+
+# Create snapshot
+echo "change-r1" >> cmd/server/main.go
+git add -A
+git commit -q -m "test r"
+git push -q
+bash "$TEST_DIR/deploy-test.sh" > /dev/null 2>&1
+
+# Get the snapshot
+# shellcheck disable=SC2012
+SNAPSHOT_R=$(ls -1 "$TEST_DIR/rollbacks" | grep -E '^[0-9]' | head -1)
+
+# Make another commit
+echo "change-r2" >> cmd/server/main.go
+git add -A
+git commit -q -m "test r current"
+git push -q
+bash "$TEST_DIR/deploy-test.sh" > /dev/null 2>&1
+
+# Make systemctl stop fail
+touch "$TEST_DIR/stop_fail"
+
+cat > "$TEST_DIR/systemctl-stop-fail" <<'STOPFAIL'
+#!/usr/bin/env bash
+if [ "$1" = "stop" ] && [ -f "TESTDIR_PLACEHOLDER/stop_fail" ]; then
+    echo "Mock stop failed" >&2
+    exit 1
+fi
+exec "TESTDIR_PLACEHOLDER/systemctl.bak" "$@"
+STOPFAIL
+sed -i "s|TESTDIR_PLACEHOLDER|$TEST_DIR|g" "$TEST_DIR/systemctl-stop-fail"
+chmod +x "$TEST_DIR/systemctl-stop-fail"
+mv "$TEST_DIR/systemctl" "$TEST_DIR/systemctl.bak"
+mv "$TEST_DIR/systemctl-stop-fail" "$TEST_DIR/systemctl"
+
+# Try rollback - should fail and not touch any files
+BINARY_BEFORE=$(md5sum bin/server | cut -d' ' -f1)
+bash "$TEST_DIR/rollback.sh" "$SNAPSHOT_R" > "$TEST_DIR/rollback-output-r.txt" 2>&1 || true
+
+# Restore systemctl
+mv "$TEST_DIR/systemctl.bak" "$TEST_DIR/systemctl"
+rm -f "$TEST_DIR/stop_fail"
+
+# Check that binary was not modified
+BINARY_AFTER=$(md5sum bin/server | cut -d' ' -f1)
+if [ "$BINARY_AFTER" = "$BINARY_BEFORE" ] && grep -q "Failed to stop service" "$TEST_DIR/rollback-output-r.txt"; then
+    echo "✓ Rollback aborted on stop failure without modifying files"
+else
+    echo "✗ Rollback did not abort properly on stop failure"
+    cat "$TEST_DIR/rollback-output-r.txt"
+    exit 1
+fi
+
+echo "✓ Test (r) passed"
+
+echo ""
+echo "✓ All tests passed (a-r)!"

@@ -11,6 +11,24 @@
 #
 set -euo pipefail
 
+SERVICE="liveoilprices"
+SERVICE_STARTED=false
+
+# Trap to ensure service is started on failure after we stopped it
+cleanup_on_exit() {
+    if [ "$SERVICE_STARTED" = false ]; then
+        echo ""
+        echo "NOTICE: Attempting to start service after failure..."
+        if sudo systemctl start "$SERVICE" 2>&1; then
+            echo "  ✓ Service started"
+        else
+            echo "  ERROR: Failed to start service!"
+            sudo systemctl status "$SERVICE" --no-pager 2>&1 || true
+        fi
+    fi
+}
+trap cleanup_on_exit EXIT
+
 if [ $# -ne 1 ]; then
     echo "Usage: $0 <timestamp>"
     echo "Example: $0 20261017-143022"
@@ -26,7 +44,6 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$PROJECT_DIR"
 
-SERVICE="liveoilprices"
 BIN="$PROJECT_DIR/bin/server"
 ROLLBACK_DIR="/home/deploy/liveoilprices-rollbacks"
 ROLLBACK_PATH="$ROLLBACK_DIR/$TIMESTAMP"
@@ -140,17 +157,35 @@ restore_from_backup() {
         [ -d "$BACKUP_PATH/templates" ] && rm -rf web/templates && cp -r "$BACKUP_PATH/templates" web/
         [ -d "$BACKUP_PATH/js" ] && rm -rf web/static/js && cp -r "$BACKUP_PATH/js" web/static/
         [ -d "$BACKUP_PATH/css" ] && rm -rf web/static/css && cp -r "$BACKUP_PATH/css" web/static/
+        
+        # Try to start the service with the restored backup
+        echo "  Starting service with restored backup..."
+        if sudo systemctl start "$SERVICE" 2>&1; then
+            SERVICE_STARTED=true
+            echo "  ✓ Service started with backup"
+        else
+            echo "  ERROR: Failed to start service with backup!"
+        fi
     fi
 }
 
 # Stop service before swapping files (mirrors deploy.sh stop-before-swap)
 echo "  Stopping service before file restoration..."
-sudo systemctl stop "$SERVICE" 2>&1 || true
+if ! sudo systemctl stop "$SERVICE" 2>&1; then
+    echo "  ERROR: Failed to stop service!"
+    sudo systemctl status "$SERVICE" --no-pager 2>&1 || true
+    echo ""
+    echo "Cannot rollback while service is running and stop failed."
+    echo "Manual intervention required."
+    exit 1
+fi
 
-# Restore binary
+# Restore binary (temp file + mv to avoid ETXTBSY)
 mkdir -p "$(dirname "$BIN")"
-cp "$ROLLBACK_PATH/server" "$BIN"
-chmod +x "$BIN"
+TEMP_BIN="$(dirname "$BIN")/.server.tmp.$$"
+cp "$ROLLBACK_PATH/server" "$TEMP_BIN"
+chmod +x "$TEMP_BIN"
+mv -f "$TEMP_BIN" "$BIN"
 echo "  ✓ Restored binary"
 
 # Restore templates
@@ -217,6 +252,7 @@ if ! sudo systemctl start "$SERVICE" 2>&1; then
     echo "Manual intervention required."
     exit 1
 fi
+SERVICE_STARTED=true
 
 sleep 2
 
