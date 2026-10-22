@@ -38,6 +38,7 @@ cd "$TEST_DIR/repo"
 git init -q
 git config user.email "test@example.com"
 git config user.name "Test User"
+git config commit.gpgsign false
 
 # Create project structure
 mkdir -p bin cmd/server web/templates web/static/js web/static/css frontend/src
@@ -1218,21 +1219,6 @@ git push -q -f
 echo "✓ Test (m) passed"
 
 echo ""
-echo "=== Test (n): No /tmp leaks after tests ==="
-
-# Every mktemp in deploy.sh landed in our private TMPDIR; it must be empty now
-# Exclude .git_signing_key files (created by git, not deploy.sh)
-TMP_FILES=$(find "$TMPDIR" -mindepth 1 -maxdepth 1 ! -name '.git_signing_key_tmp*')
-if [ -n "$TMP_FILES" ]; then
-    echo "✗ Leaked temp file(s):"
-    echo "$TMP_FILES"
-    exit 1
-fi
-
-echo "✓ No /tmp leaks detected"
-echo "✓ Test (n) passed"
-
-echo ""
 echo "=== Test (o): Rollback late crash after first good check ==="
 
 git checkout master -q 2>/dev/null || git checkout main -q
@@ -1339,7 +1325,9 @@ SNAPSHOT_P=$(find "$TEST_DIR/rollbacks" -mindepth 1 -maxdepth 1 -type d -name '[
 if [ -z "$SNAPSHOT_P" ] || [ ! -f "$TEST_DIR/rollbacks/$SNAPSHOT_P/server" ]; then
     echo "✗ No valid snapshot found after deploy 2"
     ls -la "$TEST_DIR/rollbacks/" || true
-    [ -n "$SNAPSHOT_P" ] && ls -la "$TEST_DIR/rollbacks/$SNAPSHOT_P/" || true
+    if [ -n "$SNAPSHOT_P" ]; then
+        ls -la "$TEST_DIR/rollbacks/$SNAPSHOT_P/" || true
+    fi
     exit 1
 fi
 
@@ -1396,7 +1384,9 @@ SNAPSHOT_Q=$(find "$TEST_DIR/rollbacks" -mindepth 1 -maxdepth 1 -type d -name '[
 if [ -z "$SNAPSHOT_Q" ] || [ ! -f "$TEST_DIR/rollbacks/$SNAPSHOT_Q/server" ]; then
     echo "✗ No valid snapshot found after deploy 2"
     ls -la "$TEST_DIR/rollbacks/" || true
-    [ -n "$SNAPSHOT_Q" ] && ls -la "$TEST_DIR/rollbacks/$SNAPSHOT_Q/" || true
+    if [ -n "$SNAPSHOT_Q" ]; then
+        ls -la "$TEST_DIR/rollbacks/$SNAPSHOT_Q/" || true
+    fi
     exit 1
 fi
 
@@ -1452,7 +1442,9 @@ SNAPSHOT_R=$(find "$TEST_DIR/rollbacks" -mindepth 1 -maxdepth 1 -type d -name '[
 if [ -z "$SNAPSHOT_R" ] || [ ! -f "$TEST_DIR/rollbacks/$SNAPSHOT_R/server" ]; then
     echo "✗ No valid snapshot found after deploy 2"
     ls -la "$TEST_DIR/rollbacks/" || true
-    [ -n "$SNAPSHOT_R" ] && ls -la "$TEST_DIR/rollbacks/$SNAPSHOT_R/" || true
+    if [ -n "$SNAPSHOT_R" ]; then
+        ls -la "$TEST_DIR/rollbacks/$SNAPSHOT_R/" || true
+    fi
     exit 1
 fi
 
@@ -1500,4 +1492,27 @@ fi
 echo "✓ Test (r) passed"
 
 echo ""
-echo "✓ All tests passed (a-r)!"
+echo "=== Test (n): No /tmp leaks after tests ==="
+
+# Every mktemp in deploy.sh/rollback.sh landed in our private TMPDIR; it must be empty now
+TMP_FILES=$(find "$TMPDIR" -mindepth 1 -maxdepth 1)
+if [ -n "$TMP_FILES" ]; then
+    echo "✗ Leaked temp file(s):"
+    echo "$TMP_FILES"
+    exit 1
+fi
+
+# Check for leftover .server.tmp.* files from rollback.sh
+BIN_TMP_FILES=$(find "$TEST_DIR/repo/bin" -name '.server.tmp.*' 2>/dev/null || true)
+if [ -n "$BIN_TMP_FILES" ]; then
+    echo "✗ Leaked bin/.server.tmp.* file(s):"
+    echo "$BIN_TMP_FILES"
+    exit 1
+fi
+
+echo "✓ No /tmp leaks detected"
+echo "✓ No leftover temp binaries"
+echo "✓ Test (n) passed"
+
+echo ""
+echo "✓ All tests passed (a-r+n)!"
