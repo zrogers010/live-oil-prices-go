@@ -1225,14 +1225,21 @@ git checkout master -q 2>/dev/null || git checkout main -q
 rm -rf "$TEST_DIR/rollbacks"/*
 rm -rf bin
 
-# Deploy 1: creates initial binary (snapshot created)
+# Deploy 1: creates initial binary
 echo "change-o1" >> cmd/server/main.go
 git add -A
 git commit -q -m "test o deploy 1"
 git push -q
 bash "$TEST_DIR/deploy-test.sh" > /dev/null 2>&1
 
-# Deploy 2: creates snapshot of deploy 1 and new binary
+# Verify binary exists after deploy 1
+if [ ! -f "bin/server" ]; then
+    echo "✗ No binary after deploy 1"
+    ls -la bin/ || echo "bin/ does not exist"
+    exit 1
+fi
+
+# Deploy 2: creates snapshot of deploy 1's binary
 echo "change-o2" >> cmd/server/main.go
 echo "/* css-o2 */" > web/static/css/styles.css
 git add -A
@@ -1312,7 +1319,12 @@ git commit -q -m "test p deploy 1"
 git push -q
 bash "$TEST_DIR/deploy-test.sh" > /dev/null 2>&1
 
-# Deploy 2: creates snapshot of deploy 1
+if [ ! -f "bin/server" ]; then
+    echo "✗ No binary after deploy 1"
+    exit 1
+fi
+
+# Deploy 2: creates snapshot of deploy 1's binary
 echo "change-p2" >> cmd/server/main.go
 git add -A
 git commit -q -m "test p deploy 2"
@@ -1371,7 +1383,12 @@ git commit -q -m "test q deploy 1"
 git push -q
 bash "$TEST_DIR/deploy-test.sh" > /dev/null 2>&1
 
-# Deploy 2: creates snapshot of deploy 1
+if [ ! -f "bin/server" ]; then
+    echo "✗ No binary after deploy 1"
+    exit 1
+fi
+
+# Deploy 2: creates snapshot of deploy 1's binary
 echo "change-q2" >> cmd/server/main.go
 git add -A
 git commit -q -m "test q deploy 2"
@@ -1429,7 +1446,12 @@ git commit -q -m "test r deploy 1"
 git push -q
 bash "$TEST_DIR/deploy-test.sh" > /dev/null 2>&1
 
-# Deploy 2: creates snapshot of deploy 1
+if [ ! -f "bin/server" ]; then
+    echo "✗ No binary after deploy 1"
+    exit 1
+fi
+
+# Deploy 2: creates snapshot of deploy 1's binary
 echo "change-r2" >> cmd/server/main.go
 git add -A
 git commit -q -m "test r deploy 2"
