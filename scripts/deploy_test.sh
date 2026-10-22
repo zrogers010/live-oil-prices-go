@@ -1246,8 +1246,7 @@ git push -q
 bash "$TEST_DIR/deploy-test.sh" > /dev/null 2>&1
 
 # Get the snapshot
-# shellcheck disable=SC2012
-SNAPSHOT_O=$(ls -1 "$TEST_DIR/rollbacks" | grep -E '^[0-9]' | head -1)
+SNAPSHOT_O=$(find "$TEST_DIR/rollbacks" -mindepth 1 -maxdepth 1 -type d -name '[0-9]*' -printf '%f\n' | sort | head -1)
 
 # Create bad commit and deploy (creates another snapshot)
 echo "change-o2" >> cmd/server/main.go
@@ -1306,8 +1305,7 @@ git push -q
 bash "$TEST_DIR/deploy-test.sh" > /dev/null 2>&1
 
 # Get the snapshot
-# shellcheck disable=SC2012
-SNAPSHOT_P=$(ls -1 "$TEST_DIR/rollbacks" | grep -E '^[0-9]' | head -1)
+SNAPSHOT_P=$(find "$TEST_DIR/rollbacks" -mindepth 1 -maxdepth 1 -type d -name '[0-9]*' -printf '%f\n' | sort | head -1)
 
 # Create current commit and deploy
 echo "change-p2" >> cmd/server/main.go
@@ -1350,8 +1348,7 @@ git push -q
 bash "$TEST_DIR/deploy-test.sh" > /dev/null 2>&1
 
 # Get the snapshot
-# shellcheck disable=SC2012
-SNAPSHOT_Q=$(ls -1 "$TEST_DIR/rollbacks" | grep -E '^[0-9]' | head -1)
+SNAPSHOT_Q=$(find "$TEST_DIR/rollbacks" -mindepth 1 -maxdepth 1 -type d -name '[0-9]*' -printf '%f\n' | sort | head -1)
 
 # Make another commit
 echo "change-q2" >> cmd/server/main.go
@@ -1393,8 +1390,7 @@ git push -q
 bash "$TEST_DIR/deploy-test.sh" > /dev/null 2>&1
 
 # Get the snapshot
-# shellcheck disable=SC2012
-SNAPSHOT_R=$(ls -1 "$TEST_DIR/rollbacks" | grep -E '^[0-9]' | head -1)
+SNAPSHOT_R=$(find "$TEST_DIR/rollbacks" -mindepth 1 -maxdepth 1 -type d -name '[0-9]*' -printf '%f\n' | sort | head -1)
 
 # Make another commit
 echo "change-r2" >> cmd/server/main.go
