@@ -11,6 +11,36 @@
 #
 set -euo pipefail
 
+SERVICE="liveoilprices"
+SERVICE_STOPPED=false
+SERVICE_STARTED=false
+
+# Trap to ensure service is started on failure after we stopped it
+cleanup_on_exit() {
+    ORIG_RC=$?
+    set +e
+    if [ "$SERVICE_STOPPED" = true ] && [ "$SERVICE_STARTED" = false ]; then
+        echo ""
+        echo "NOTICE: Rollback aborted after the service was stopped (exit $ORIG_RC)."
+        # Files may be half-swapped: put the pre-rollback state back before starting
+        # (restore_from_backup starts the service itself when it has a backup binary)
+        if [ -n "${BACKUP_PATH:-}" ] && [ -d "$BACKUP_PATH" ]; then
+            restore_from_backup
+        fi
+        if [ "$SERVICE_STARTED" = false ]; then
+            echo "NOTICE: Attempting to start service after failure..."
+            if sudo systemctl start "$SERVICE" 2>&1; then
+                echo "  ✓ Service started"
+            else
+                echo "  ERROR: Failed to start service!"
+                sudo systemctl status "$SERVICE" --no-pager 2>&1 || true
+            fi
+        fi
+    fi
+    exit $ORIG_RC
+}
+trap cleanup_on_exit EXIT
+
 if [ $# -ne 1 ]; then
     echo "Usage: $0 <timestamp>"
     echo "Example: $0 20261017-143022"
@@ -26,7 +56,6 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$PROJECT_DIR"
 
-SERVICE="liveoilprices"
 BIN="$PROJECT_DIR/bin/server"
 ROLLBACK_DIR="/home/deploy/liveoilprices-rollbacks"
 ROLLBACK_PATH="$ROLLBACK_DIR/$TIMESTAMP"
@@ -140,10 +169,32 @@ restore_from_backup() {
         [ -d "$BACKUP_PATH/templates" ] && rm -rf web/templates && cp -r "$BACKUP_PATH/templates" web/
         [ -d "$BACKUP_PATH/js" ] && rm -rf web/static/js && cp -r "$BACKUP_PATH/js" web/static/
         [ -d "$BACKUP_PATH/css" ] && rm -rf web/static/css && cp -r "$BACKUP_PATH/css" web/static/
+        
+        # Try to start the service with the restored backup
+        echo "  Starting service with restored backup..."
+        # Mark before the attempt so the EXIT trap never retries a failed start
+        SERVICE_STARTED=true
+        if sudo systemctl start "$SERVICE" 2>&1; then
+            echo "  ✓ Service started with backup"
+        else
+            echo "  ERROR: Failed to start service with backup!"
+        fi
     fi
 }
 
-# Restore binary (copy to temp then mv to avoid "Text file busy" if service is running)
+# Stop service before swapping files (mirrors deploy.sh stop-before-swap)
+echo "  Stopping service before file restoration..."
+if ! sudo systemctl stop "$SERVICE" 2>&1; then
+    echo "  ERROR: Failed to stop service!"
+    sudo systemctl status "$SERVICE" --no-pager 2>&1 || true
+    echo ""
+    echo "Cannot rollback while service is running and stop failed."
+    echo "Manual intervention required."
+    exit 1
+fi
+SERVICE_STOPPED=true
+
+# Restore binary (temp file + mv to avoid ETXTBSY)
 mkdir -p "$(dirname "$BIN")"
 TEMP_BIN="$(dirname "$BIN")/.server.tmp.$$"
 cp "$ROLLBACK_PATH/server" "$TEMP_BIN"
@@ -204,14 +255,15 @@ if [ -n "$SNAPSHOT_COMMIT" ]; then
     fi
 fi
 
-# Restart service
+# Start service (already stopped before file restoration)
 echo ""
-echo "[4/4] Restarting service..."
-if ! sudo systemctl restart "$SERVICE" 2>&1; then
-    echo "  ERROR: systemctl restart failed!"
+echo "[4/4] Starting service..."
+SERVICE_STARTED=true
+if ! sudo systemctl start "$SERVICE" 2>&1; then
+    echo "  ERROR: systemctl start failed!"
     sudo systemctl status "$SERVICE" --no-pager 2>&1 || true
     echo ""
-    echo "Failed to restart after rollback."
+    echo "Failed to start after rollback."
     echo "Manual intervention required."
     exit 1
 fi
