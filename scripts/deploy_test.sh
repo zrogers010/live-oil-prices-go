@@ -10,6 +10,13 @@ TEST_DIR=$(mktemp -d)
 export TMPDIR="$TEST_DIR/tmp"
 mkdir -p "$TMPDIR"
 
+# Isolate from user's global git config (signing keys, etc.)
+export GIT_CONFIG_GLOBAL="$TEST_DIR/gitconfig"
+cat > "$GIT_CONFIG_GLOBAL" <<EOF
+[commit]
+	gpgsign = false
+EOF
+
 cleanup() {
     # Kill any mock service processes
     if [ -f "$TEST_DIR/service.pid" ]; then
@@ -1248,7 +1255,7 @@ git push -q
 bash "$TEST_DIR/deploy-test.sh" > /dev/null 2>&1
 
 # Get the snapshot created by deploy 2
-SNAPSHOT_O=$(find "$TEST_DIR/rollbacks" -mindepth 1 -maxdepth 1 -type d -name '[0-9]*' -printf '%f\n' | sort | head -1)
+SNAPSHOT_O=$(find "$TEST_DIR/rollbacks" -mindepth 1 -maxdepth 1 -type d -name '[0-9]*' -printf '%f\n' | sort | tail -1)
 
 if [ -z "$SNAPSHOT_O" ]; then
     echo "✗ No snapshot directory found after deploy 2"
@@ -1332,7 +1339,7 @@ git push -q
 bash "$TEST_DIR/deploy-test.sh" > /dev/null 2>&1
 
 # Get the snapshot
-SNAPSHOT_P=$(find "$TEST_DIR/rollbacks" -mindepth 1 -maxdepth 1 -type d -name '[0-9]*' -printf '%f\n' | sort | head -1)
+SNAPSHOT_P=$(find "$TEST_DIR/rollbacks" -mindepth 1 -maxdepth 1 -type d -name '[0-9]*' -printf '%f\n' | sort | tail -1)
 
 if [ -z "$SNAPSHOT_P" ] || [ ! -f "$TEST_DIR/rollbacks/$SNAPSHOT_P/server" ]; then
     echo "✗ No valid snapshot found after deploy 2"
@@ -1396,7 +1403,7 @@ git push -q
 bash "$TEST_DIR/deploy-test.sh" > /dev/null 2>&1
 
 # Get the snapshot
-SNAPSHOT_Q=$(find "$TEST_DIR/rollbacks" -mindepth 1 -maxdepth 1 -type d -name '[0-9]*' -printf '%f\n' | sort | head -1)
+SNAPSHOT_Q=$(find "$TEST_DIR/rollbacks" -mindepth 1 -maxdepth 1 -type d -name '[0-9]*' -printf '%f\n' | sort | tail -1)
 
 if [ -z "$SNAPSHOT_Q" ] || [ ! -f "$TEST_DIR/rollbacks/$SNAPSHOT_Q/server" ]; then
     echo "✗ No valid snapshot found after deploy 2"
@@ -1459,7 +1466,7 @@ git push -q
 bash "$TEST_DIR/deploy-test.sh" > /dev/null 2>&1
 
 # Get the snapshot
-SNAPSHOT_R=$(find "$TEST_DIR/rollbacks" -mindepth 1 -maxdepth 1 -type d -name '[0-9]*' -printf '%f\n' | sort | head -1)
+SNAPSHOT_R=$(find "$TEST_DIR/rollbacks" -mindepth 1 -maxdepth 1 -type d -name '[0-9]*' -printf '%f\n' | sort | tail -1)
 
 if [ -z "$SNAPSHOT_R" ] || [ ! -f "$TEST_DIR/rollbacks/$SNAPSHOT_R/server" ]; then
     echo "✗ No valid snapshot found after deploy 2"
@@ -1512,6 +1519,88 @@ else
 fi
 
 echo "✓ Test (r) passed"
+
+echo ""
+echo "=== Test (s): Rollback trap does not start service on nonexistent snapshot ==="
+
+git checkout master -q 2>/dev/null || git checkout main -q
+
+# Ensure service is running, then stop it
+"$TEST_DIR/systemctl" start liveoilprices > /dev/null 2>&1
+"$TEST_DIR/systemctl" stop liveoilprices > /dev/null 2>&1
+
+# Clear stub log
+: > "$TEST_DIR/systemctl-stub.log"
+
+# Try rollback to nonexistent snapshot - should exit 1 without starting
+bash "$TEST_DIR/rollback.sh" nonexistent_snapshot > /dev/null 2>&1 || true
+
+# Check that stub log has no start (trap should not have started service)
+if grep -q "^start " "$TEST_DIR/systemctl-stub.log"; then
+    echo "✗ Rollback trap started service on nonexistent snapshot"
+    cat "$TEST_DIR/systemctl-stub.log"
+    exit 1
+fi
+
+echo "✓ Test (s) passed"
+
+echo ""
+echo "=== Test (t): Rollback trap does not start service on stop failure ==="
+
+git checkout master -q 2>/dev/null || git checkout main -q
+rm -rf "$TEST_DIR/rollbacks"/*
+rm -rf bin
+
+# Deploy 1: creates initial binary
+echo "change-t1" >> cmd/server/main.go
+git add -A
+git commit -q -m "test t deploy 1"
+git push -q
+bash "$TEST_DIR/deploy-test.sh" > /dev/null 2>&1
+
+# Deploy 2: creates snapshot
+echo "change-t2" >> cmd/server/main.go
+git add -A
+git commit -q -m "test t deploy 2"
+git push -q
+bash "$TEST_DIR/deploy-test.sh" > /dev/null 2>&1
+
+SNAPSHOT_T=$(find "$TEST_DIR/rollbacks" -mindepth 1 -maxdepth 1 -type d -name '[0-9]*' -printf '%f\n' | sort | tail -1)
+
+# Make systemctl stop fail
+touch "$TEST_DIR/stop_fail"
+
+cat > "$TEST_DIR/systemctl-stop-fail" <<'STOPFAIL'
+#!/usr/bin/env bash
+if [ "$1" = "stop" ] && [ -f "TESTDIR_PLACEHOLDER/stop_fail" ]; then
+    echo "Mock stop failed" >&2
+    exit 1
+fi
+exec "TESTDIR_PLACEHOLDER/systemctl.bak" "$@"
+STOPFAIL
+sed -i "s|TESTDIR_PLACEHOLDER|$TEST_DIR|g" "$TEST_DIR/systemctl-stop-fail"
+chmod +x "$TEST_DIR/systemctl-stop-fail"
+mv "$TEST_DIR/systemctl" "$TEST_DIR/systemctl.bak"
+mv "$TEST_DIR/systemctl-stop-fail" "$TEST_DIR/systemctl"
+
+# Clear stub log
+: > "$TEST_DIR/systemctl-stub.log"
+
+# Try rollback - should fail without starting
+bash "$TEST_DIR/rollback.sh" "$SNAPSHOT_T" > /dev/null 2>&1 || true
+
+# Restore systemctl
+mv "$TEST_DIR/systemctl.bak" "$TEST_DIR/systemctl"
+rm -f "$TEST_DIR/stop_fail"
+
+# Check that stub log has no start
+if grep -q "^start " "$TEST_DIR/systemctl-stub.log"; then
+    echo "✗ Rollback trap started service on stop failure"
+    cat "$TEST_DIR/systemctl-stub.log"
+    exit 1
+fi
+
+echo "✓ Test (t) passed"
 
 echo ""
 echo "=== Test (n): No /tmp leaks after tests ==="

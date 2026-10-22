@@ -12,11 +12,13 @@
 set -euo pipefail
 
 SERVICE="liveoilprices"
+SERVICE_STOPPED=false
 SERVICE_STARTED=false
 
 # Trap to ensure service is started on failure after we stopped it
 cleanup_on_exit() {
-    if [ "$SERVICE_STARTED" = false ]; then
+    ORIG_RC=$?
+    if [ "$SERVICE_STOPPED" = true ] && [ "$SERVICE_STARTED" = false ]; then
         echo ""
         echo "NOTICE: Attempting to start service after failure..."
         if sudo systemctl start "$SERVICE" 2>&1; then
@@ -26,6 +28,7 @@ cleanup_on_exit() {
             sudo systemctl status "$SERVICE" --no-pager 2>&1 || true
         fi
     fi
+    exit $ORIG_RC
 }
 trap cleanup_on_exit EXIT
 
@@ -179,6 +182,7 @@ if ! sudo systemctl stop "$SERVICE" 2>&1; then
     echo "Manual intervention required."
     exit 1
 fi
+SERVICE_STOPPED=true
 
 # Restore binary (temp file + mv to avoid ETXTBSY)
 mkdir -p "$(dirname "$BIN")"
@@ -244,6 +248,7 @@ fi
 # Start service (already stopped before file restoration)
 echo ""
 echo "[4/4] Starting service..."
+SERVICE_STARTED=true
 if ! sudo systemctl start "$SERVICE" 2>&1; then
     echo "  ERROR: systemctl start failed!"
     sudo systemctl status "$SERVICE" --no-pager 2>&1 || true
@@ -252,7 +257,6 @@ if ! sudo systemctl start "$SERVICE" 2>&1; then
     echo "Manual intervention required."
     exit 1
 fi
-SERVICE_STARTED=true
 
 sleep 2
 
