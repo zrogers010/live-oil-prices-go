@@ -1238,27 +1238,42 @@ git checkout master -q 2>/dev/null || git checkout main -q
 rm -rf "$TEST_DIR/rollbacks"/*
 rm -rf bin
 
-# Setup: create initial binary (no snapshot - no pre-existing binary)
-echo "change-o0" >> cmd/server/main.go
-git add -A
-git commit -q -m "test o setup"
-git push -q
-bash "$TEST_DIR/deploy-test.sh" > /dev/null 2>&1
-
-# Create good commit and deploy (creates snapshot of setup binary)
+# Deploy 1: creates initial binary (snapshot created)
 echo "change-o1" >> cmd/server/main.go
 git add -A
-git commit -q -m "test o good"
+git commit -q -m "test o deploy 1"
 git push -q
 bash "$TEST_DIR/deploy-test.sh" > /dev/null 2>&1
 
-# Get the snapshot
-SNAPSHOT_O=$(find "$TEST_DIR/rollbacks" -mindepth 1 -maxdepth 1 -type d -name '[0-9]*' -printf '%f\n' | sort | head -1)
-
-# Create bad commit and deploy (creates another snapshot)
+# Deploy 2: creates snapshot of deploy 1 and new binary
 echo "change-o2" >> cmd/server/main.go
+echo "/* css-o2 */" > web/static/css/styles.css
 git add -A
-git commit -q -m "test o bad"
+git commit -q -m "test o deploy 2 (good)"
+git push -q
+bash "$TEST_DIR/deploy-test.sh" > /dev/null 2>&1
+
+# Wait for snapshot to exist and be complete
+SNAPSHOT_O=""
+for _ in {1..10}; do
+    SNAPSHOT_O=$(find "$TEST_DIR/rollbacks" -mindepth 1 -maxdepth 1 -type d -name '[0-9]*' -printf '%f\n' | sort | head -1)
+    if [ -n "$SNAPSHOT_O" ] && [ -f "$TEST_DIR/rollbacks/$SNAPSHOT_O/server" ]; then
+        break
+    fi
+    sleep 0.1
+done
+
+if [ -z "$SNAPSHOT_O" ] || [ ! -f "$TEST_DIR/rollbacks/$SNAPSHOT_O/server" ]; then
+    echo "✗ No valid snapshot found after deploy 2"
+    ls -la "$TEST_DIR/rollbacks/"
+    exit 1
+fi
+
+# Deploy 3: creates another snapshot, we'll rollback from this to snapshot of deploy 2
+echo "change-o3" >> cmd/server/main.go
+echo "/* css-o3 */" > web/static/css/styles.css
+git add -A
+git commit -q -m "test o deploy 3 (bad)"
 git push -q
 bash "$TEST_DIR/deploy-test.sh" > /dev/null 2>&1
 
@@ -1304,27 +1319,39 @@ git checkout master -q 2>/dev/null || git checkout main -q
 rm -rf "$TEST_DIR/rollbacks"/*
 rm -rf bin
 
-# Setup: create initial binary
-echo "change-p0" >> cmd/server/main.go
-git add -A
-git commit -q -m "test p setup"
-git push -q
-bash "$TEST_DIR/deploy-test.sh" > /dev/null 2>&1
-
-# Create snapshot commit and deploy
+# Deploy 1: creates initial binary
 echo "change-p1" >> cmd/server/main.go
 git add -A
-git commit -q -m "test p snapshot"
+git commit -q -m "test p deploy 1"
 git push -q
 bash "$TEST_DIR/deploy-test.sh" > /dev/null 2>&1
 
-# Get the snapshot
-SNAPSHOT_P=$(find "$TEST_DIR/rollbacks" -mindepth 1 -maxdepth 1 -type d -name '[0-9]*' -printf '%f\n' | sort | head -1)
-
-# Create current commit and deploy
+# Deploy 2: creates snapshot of deploy 1
 echo "change-p2" >> cmd/server/main.go
 git add -A
-git commit -q -m "test p current"
+git commit -q -m "test p deploy 2"
+git push -q
+bash "$TEST_DIR/deploy-test.sh" > /dev/null 2>&1
+
+# Wait for snapshot
+SNAPSHOT_P=""
+for _ in {1..10}; do
+    SNAPSHOT_P=$(find "$TEST_DIR/rollbacks" -mindepth 1 -maxdepth 1 -type d -name '[0-9]*' -printf '%f\n' | sort | head -1)
+    if [ -n "$SNAPSHOT_P" ] && [ -f "$TEST_DIR/rollbacks/$SNAPSHOT_P/server" ]; then
+        break
+    fi
+    sleep 0.1
+done
+
+if [ -z "$SNAPSHOT_P" ] || [ ! -f "$TEST_DIR/rollbacks/$SNAPSHOT_P/server" ]; then
+    echo "✗ No valid snapshot found"
+    exit 1
+fi
+
+# Deploy 3: we'll rollback from this
+echo "change-p3" >> cmd/server/main.go
+git add -A
+git commit -q -m "test p deploy 3"
 git push -q
 bash "$TEST_DIR/deploy-test.sh" > /dev/null 2>&1
 
@@ -1354,27 +1381,39 @@ git checkout master -q 2>/dev/null || git checkout main -q
 rm -rf "$TEST_DIR/rollbacks"/*
 rm -rf bin
 
-# Setup: create initial binary
-echo "change-q0" >> cmd/server/main.go
-git add -A
-git commit -q -m "test q setup"
-git push -q
-bash "$TEST_DIR/deploy-test.sh" > /dev/null 2>&1
-
-# Create snapshot
+# Deploy 1: creates initial binary
 echo "change-q1" >> cmd/server/main.go
 git add -A
-git commit -q -m "test q"
+git commit -q -m "test q deploy 1"
 git push -q
 bash "$TEST_DIR/deploy-test.sh" > /dev/null 2>&1
 
-# Get the snapshot
-SNAPSHOT_Q=$(find "$TEST_DIR/rollbacks" -mindepth 1 -maxdepth 1 -type d -name '[0-9]*' -printf '%f\n' | sort | head -1)
-
-# Make another commit
+# Deploy 2: creates snapshot of deploy 1
 echo "change-q2" >> cmd/server/main.go
 git add -A
-git commit -q -m "test q current"
+git commit -q -m "test q deploy 2"
+git push -q
+bash "$TEST_DIR/deploy-test.sh" > /dev/null 2>&1
+
+# Wait for snapshot
+SNAPSHOT_Q=""
+for _ in {1..10}; do
+    SNAPSHOT_Q=$(find "$TEST_DIR/rollbacks" -mindepth 1 -maxdepth 1 -type d -name '[0-9]*' -printf '%f\n' | sort | head -1)
+    if [ -n "$SNAPSHOT_Q" ] && [ -f "$TEST_DIR/rollbacks/$SNAPSHOT_Q/server" ]; then
+        break
+    fi
+    sleep 0.1
+done
+
+if [ -z "$SNAPSHOT_Q" ] || [ ! -f "$TEST_DIR/rollbacks/$SNAPSHOT_Q/server" ]; then
+    echo "✗ No valid snapshot found"
+    exit 1
+fi
+
+# Deploy 3: we'll rollback from this
+echo "change-q3" >> cmd/server/main.go
+git add -A
+git commit -q -m "test q deploy 3"
 git push -q
 bash "$TEST_DIR/deploy-test.sh" > /dev/null 2>&1
 
@@ -1403,27 +1442,39 @@ git checkout master -q 2>/dev/null || git checkout main -q
 rm -rf "$TEST_DIR/rollbacks"/*
 rm -rf bin
 
-# Setup: create initial binary
-echo "change-r0" >> cmd/server/main.go
-git add -A
-git commit -q -m "test r setup"
-git push -q
-bash "$TEST_DIR/deploy-test.sh" > /dev/null 2>&1
-
-# Create snapshot
+# Deploy 1: creates initial binary
 echo "change-r1" >> cmd/server/main.go
 git add -A
-git commit -q -m "test r"
+git commit -q -m "test r deploy 1"
 git push -q
 bash "$TEST_DIR/deploy-test.sh" > /dev/null 2>&1
 
-# Get the snapshot
-SNAPSHOT_R=$(find "$TEST_DIR/rollbacks" -mindepth 1 -maxdepth 1 -type d -name '[0-9]*' -printf '%f\n' | sort | head -1)
-
-# Make another commit
+# Deploy 2: creates snapshot of deploy 1
 echo "change-r2" >> cmd/server/main.go
 git add -A
-git commit -q -m "test r current"
+git commit -q -m "test r deploy 2"
+git push -q
+bash "$TEST_DIR/deploy-test.sh" > /dev/null 2>&1
+
+# Wait for snapshot
+SNAPSHOT_R=""
+for _ in {1..10}; do
+    SNAPSHOT_R=$(find "$TEST_DIR/rollbacks" -mindepth 1 -maxdepth 1 -type d -name '[0-9]*' -printf '%f\n' | sort | head -1)
+    if [ -n "$SNAPSHOT_R" ] && [ -f "$TEST_DIR/rollbacks/$SNAPSHOT_R/server" ]; then
+        break
+    fi
+    sleep 0.1
+done
+
+if [ -z "$SNAPSHOT_R" ] || [ ! -f "$TEST_DIR/rollbacks/$SNAPSHOT_R/server" ]; then
+    echo "✗ No valid snapshot found"
+    exit 1
+fi
+
+# Deploy 3: we'll rollback from this
+echo "change-r3" >> cmd/server/main.go
+git add -A
+git commit -q -m "test r deploy 3"
 git push -q
 bash "$TEST_DIR/deploy-test.sh" > /dev/null 2>&1
 
