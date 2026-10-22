@@ -18,14 +18,23 @@ SERVICE_STARTED=false
 # Trap to ensure service is started on failure after we stopped it
 cleanup_on_exit() {
     ORIG_RC=$?
+    set +e
     if [ "$SERVICE_STOPPED" = true ] && [ "$SERVICE_STARTED" = false ]; then
         echo ""
-        echo "NOTICE: Attempting to start service after failure..."
-        if sudo systemctl start "$SERVICE" 2>&1; then
-            echo "  ✓ Service started"
-        else
-            echo "  ERROR: Failed to start service!"
-            sudo systemctl status "$SERVICE" --no-pager 2>&1 || true
+        echo "NOTICE: Rollback aborted after the service was stopped (exit $ORIG_RC)."
+        # Files may be half-swapped: put the pre-rollback state back before starting
+        # (restore_from_backup starts the service itself when it has a backup binary)
+        if [ -n "${BACKUP_PATH:-}" ] && [ -d "$BACKUP_PATH" ]; then
+            restore_from_backup
+        fi
+        if [ "$SERVICE_STARTED" = false ]; then
+            echo "NOTICE: Attempting to start service after failure..."
+            if sudo systemctl start "$SERVICE" 2>&1; then
+                echo "  ✓ Service started"
+            else
+                echo "  ERROR: Failed to start service!"
+                sudo systemctl status "$SERVICE" --no-pager 2>&1 || true
+            fi
         fi
     fi
     exit $ORIG_RC
@@ -163,8 +172,9 @@ restore_from_backup() {
         
         # Try to start the service with the restored backup
         echo "  Starting service with restored backup..."
+        # Mark before the attempt so the EXIT trap never retries a failed start
+        SERVICE_STARTED=true
         if sudo systemctl start "$SERVICE" 2>&1; then
-            SERVICE_STARTED=true
             echo "  ✓ Service started with backup"
         else
             echo "  ERROR: Failed to start service with backup!"

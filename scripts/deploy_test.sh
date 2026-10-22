@@ -198,6 +198,8 @@ chmod +x "$TEST_DIR/sudo"
 cat > "$TEST_DIR/systemctl" <<SYSTEMEOF
 #!/usr/bin/env bash
 SERVICE_PID_FILE="$TEST_DIR/service.pid"
+# Log every call so tests can assert exactly which systemctl actions ran
+echo "\$*" >> "$TEST_DIR/systemctl-stub.log"
 
 case "\$1" in
     is-active)
@@ -217,6 +219,10 @@ case "\$1" in
         exit 3
         ;;
     restart|start)
+        # Record what is on disk at start time (ordering test)
+        if [ -f "$TEST_DIR/record_swap_order" ]; then
+            echo "start \$(md5sum < "$TEST_DIR/repo/bin/server" 2>/dev/null | cut -c1-32) \$(md5sum < "$TEST_DIR/repo/web/static/css/styles.css" 2>/dev/null | cut -c1-32)" >> "$TEST_DIR/swap_order.log"
+        fi
         # Check for restart/start failure marker
         if [ -f "$TEST_DIR/restart_fail" ]; then
             echo "Mock restart failed" >&2
@@ -243,29 +249,13 @@ case "\$1" in
         NEW_PID=\$!
         echo \$NEW_PID > "\$SERVICE_PID_FILE"
         
-        # Simulate systemd Restart=on-failure behavior
-        if [ -f "$TEST_DIR/simulate_restart" ]; then
-            (
-                while true; do
-                    sleep 0.1
-                    if [ -f "\$SERVICE_PID_FILE" ]; then
-                        PID=\$(cat "\$SERVICE_PID_FILE" 2>/dev/null || echo "")
-                        if [ -n "\$PID" ] && ! kill -0 "\$PID" 2>/dev/null; then
-                            # Process died, restart it (new PID)
-                            sleep 99999 &
-                            echo \$! > "\$SERVICE_PID_FILE"
-                        fi
-                    fi
-                done
-            ) &
-            echo \$! > "$TEST_DIR/restart_monitor.pid"
-        fi
         exit 0
         ;;
     stop)
         # Record stop-before-swap ordering
+        # Record what is on disk at stop time (ordering test)
         if [ -f "$TEST_DIR/record_swap_order" ]; then
-            echo "stop" >> "$TEST_DIR/swap_order.log"
+            echo "stop \$(md5sum < "$TEST_DIR/repo/bin/server" 2>/dev/null | cut -c1-32) \$(md5sum < "$TEST_DIR/repo/web/static/css/styles.css" 2>/dev/null | cut -c1-32)" >> "$TEST_DIR/swap_order.log"
         fi
         
         if [ -f "\$SERVICE_PID_FILE" ]; then
@@ -1009,6 +999,34 @@ fi
 echo "✓ Test (h) passed"
 
 echo ""
+# inject_after_first_good <output-file> <restart|die>
+# Waits until the script under test logs its first good health check, then 1s
+# later either replaces the service process with a NEW PID atomically
+# (systemd Restart=on-failure; the unit never looks inactive), or kills it for
+# good (crash, no restart: is-active exits 3, health returns 000).
+# Triggering on the log line (not a fixed sleep) makes the timing deterministic.
+inject_after_first_good() {
+    local out="$1" mode="$2" n=0 old new
+    while ! grep -q "Initial health check passed" "$out" 2>/dev/null; do
+        sleep 0.1
+        n=$((n + 1))
+        if [ "$n" -ge 600 ]; then
+            return 0
+        fi
+    done
+    sleep 1
+    old=$(cat "$TEST_DIR/service.pid" 2>/dev/null || echo "")
+    if [ "$mode" = "restart" ]; then
+        sleep 99999 &
+        new=$!
+        echo "$new" > "$TEST_DIR/service.pid.tmp"
+        mv -f "$TEST_DIR/service.pid.tmp" "$TEST_DIR/service.pid"
+    fi
+    if [ -n "$old" ]; then
+        kill -9 "$old" 2>/dev/null || true
+    fi
+}
+
 echo "=== Test (i): M5 - Deploy late crash after first good check ==="
 
 git checkout master -q 2>/dev/null || git checkout main -q
@@ -1027,37 +1045,47 @@ git add -A
 git commit -q -m "test i crash"
 git push -q
 
-# Enable auto-restart simulation (Restart=on-failure)
-touch "$TEST_DIR/simulate_restart"
-
-# Set up delayed crash (crash after 5 seconds, during stability window)
-(
-    sleep 5
-    # Kill the service process to simulate mid-window crash
-    # With simulate_restart enabled, systemd will restart it (new PID)
-    if [ -f "$TEST_DIR/service.pid" ]; then
-        PID=$(cat "$TEST_DIR/service.pid")
-        kill -9 "$PID" 2>/dev/null || true
-    fi
-) &
+# Mid-window crash with Restart=on-failure: new MainPID 1s after first good check
+: > "$TEST_DIR/deploy-output-i.txt"
+inject_after_first_good "$TEST_DIR/deploy-output-i.txt" restart &
+INJ_PID=$!
 
 export STABILITY_WINDOW=10
-bash "$TEST_DIR/deploy-test.sh" > "$TEST_DIR/deploy-output-i.txt" 2>&1 || true
+RC_I=0
+bash "$TEST_DIR/deploy-test.sh" > "$TEST_DIR/deploy-output-i.txt" 2>&1 || RC_I=$?
+wait "$INJ_PID" || true
 
-# Stop the restart monitor
-if [ -f "$TEST_DIR/restart_monitor.pid" ]; then
-    kill "$(cat "$TEST_DIR/restart_monitor.pid")" 2>/dev/null || true
-    rm -f "$TEST_DIR/restart_monitor.pid"
-fi
-rm -f "$TEST_DIR/simulate_restart"
-
-# Check that it detected the crash/restart and rolled back
-if grep -q "Service became inactive\|MainPID changed\|Service restarted during stability window" "$TEST_DIR/deploy-output-i.txt" \
+# Must be caught by the PID check inside the window, then rolled back, non-zero exit
+if [ "$RC_I" -ne 0 ] \
+    && grep -q "Service restarted during stability window" "$TEST_DIR/deploy-output-i.txt" \
     && grep -q "Attempting automatic rollback" "$TEST_DIR/deploy-output-i.txt"; then
     echo "✓ Deploy late crash detected and rolled back"
 else
     echo "✗ Deploy late crash not detected"
     tail -50 "$TEST_DIR/deploy-output-i.txt"
+    exit 1
+fi
+
+# (i2) Crash with NO restart mid-window: must be detected as a crash (fast path)
+git checkout master -q 2>/dev/null || git checkout main -q
+echo "change-i3" >> cmd/server/main.go
+git add -A
+git commit -q -m "test i2 crash no restart"
+git push -q
+: > "$TEST_DIR/deploy-output-i2.txt"
+inject_after_first_good "$TEST_DIR/deploy-output-i2.txt" die &
+INJ_PID=$!
+RC_I2=0
+HEALTH_CHECK_TIMEOUT=30 bash "$TEST_DIR/deploy-test.sh" > "$TEST_DIR/deploy-output-i2.txt" 2>&1 || RC_I2=$?
+wait "$INJ_PID" || true
+
+if [ "$RC_I2" -ne 0 ] \
+    && grep -q "Service crashed during health check" "$TEST_DIR/deploy-output-i2.txt" \
+    && grep -q "Attempting automatic rollback" "$TEST_DIR/deploy-output-i2.txt"; then
+    echo "✓ Deploy late crash (no restart) detected as crash and rolled back"
+else
+    echo "✗ Deploy late crash (no restart) not detected as crash (rc=$RC_I2)"
+    tail -50 "$TEST_DIR/deploy-output-i2.txt"
     exit 1
 fi
 
@@ -1277,34 +1305,40 @@ git commit -q -m "test o deploy 3 (bad)"
 git push -q
 bash "$TEST_DIR/deploy-test.sh" > /dev/null 2>&1
 
-# Enable auto-restart simulation
-touch "$TEST_DIR/simulate_restart"
-
-# Set up delayed crash during rollback stability window
-(
-    sleep 5
-    if [ -f "$TEST_DIR/service.pid" ]; then
-        PID=$(cat "$TEST_DIR/service.pid")
-        kill -9 "$PID" 2>/dev/null || true
-    fi
-) &
+# (o1) Restart=on-failure mid-window: new MainPID 1s after first good check
+: > "$TEST_DIR/rollback-output-o.txt"
+inject_after_first_good "$TEST_DIR/rollback-output-o.txt" restart &
+INJ_PID=$!
 
 export STABILITY_WINDOW=10
-bash "$TEST_DIR/rollback.sh" "$SNAPSHOT_O" > "$TEST_DIR/rollback-output-o.txt" 2>&1 || true
+RC_O=0
+bash "$TEST_DIR/rollback.sh" "$SNAPSHOT_O" > "$TEST_DIR/rollback-output-o.txt" 2>&1 || RC_O=$?
+wait "$INJ_PID" || true
 
-# Stop the restart monitor
-if [ -f "$TEST_DIR/restart_monitor.pid" ]; then
-    kill "$(cat "$TEST_DIR/restart_monitor.pid")" 2>/dev/null || true
-    rm -f "$TEST_DIR/restart_monitor.pid"
-fi
-rm -f "$TEST_DIR/simulate_restart"
-
-# Check that rollback detected the crash/restart
-if grep -q "Service became inactive\|MainPID changed\|Service restarted during stability window" "$TEST_DIR/rollback-output-o.txt"; then
-    echo "✓ Rollback late crash detected"
+if [ "$RC_O" -ne 0 ] && grep -q "Service restarted during stability window" "$TEST_DIR/rollback-output-o.txt"; then
+    echo "✓ Rollback late restart (MainPID change) detected"
 else
-    echo "✗ Rollback late crash not detected"
+    echo "✗ Rollback late crash not detected (rc=$RC_O)"
     tail -50 "$TEST_DIR/rollback-output-o.txt"
+    exit 1
+fi
+
+# (o2) Crash with NO restart mid-window: must fail fast as a crash, not wait out the timeout
+: > "$TEST_DIR/rollback-output-o2.txt"
+inject_after_first_good "$TEST_DIR/rollback-output-o2.txt" die &
+INJ_PID=$!
+RC_O2=0
+T0=$(date +%s)
+HEALTH_CHECK_TIMEOUT=30 bash "$TEST_DIR/rollback.sh" "$SNAPSHOT_O" > "$TEST_DIR/rollback-output-o2.txt" 2>&1 || RC_O2=$?
+T_O2=$(( $(date +%s) - T0 ))
+wait "$INJ_PID" || true
+
+if [ "$RC_O2" -ne 0 ] && grep -q "Service crashed during health check" "$TEST_DIR/rollback-output-o2.txt" \
+    && [ "$T_O2" -lt 25 ]; then
+    echo "✓ Rollback late crash (no restart) detected in ${T_O2}s"
+else
+    echo "✗ Rollback late crash (no restart) not detected as crash (rc=$RC_O2, ${T_O2}s)"
+    tail -30 "$TEST_DIR/rollback-output-o2.txt"
     exit 1
 fi
 
@@ -1321,6 +1355,7 @@ rm -rf bin
 
 # Deploy 1: creates initial binary
 echo "change-p1" >> cmd/server/main.go
+echo "/* css-p1 */" > web/static/css/styles.css
 git add -A
 git commit -q -m "test p deploy 1"
 git push -q
@@ -1352,23 +1387,34 @@ fi
 
 # Deploy 3: we'll rollback from this
 echo "change-p3" >> cmd/server/main.go
+echo "/* css-p3 */" > web/static/css/styles.css
 git add -A
 git commit -q -m "test p deploy 3"
 git push -q
 bash "$TEST_DIR/deploy-test.sh" > /dev/null 2>&1
 
-# Enable swap order recording
+# What is live now (deploy 3) vs what the snapshot holds; they must differ
+LIVE_P="$(md5sum < bin/server | cut -c1-32) $(md5sum < web/static/css/styles.css | cut -c1-32)"
+SNAP_P="$(md5sum < "$TEST_DIR/rollbacks/$SNAPSHOT_P/server" | cut -c1-32) $(md5sum < "$TEST_DIR/rollbacks/$SNAPSHOT_P/css/styles.css" | cut -c1-32)"
+if [ "$LIVE_P" = "$SNAP_P" ]; then
+    echo "✗ Test setup: snapshot identical to live files, ordering not observable"
+    exit 1
+fi
+
+# Enable swap order recording (mock records on-disk hashes at stop and start)
 touch "$TEST_DIR/record_swap_order"
 : > "$TEST_DIR/swap_order.log"
 
-bash "$TEST_DIR/rollback.sh" "$SNAPSHOT_P" > /dev/null 2>&1
+bash "$TEST_DIR/rollback.sh" "$SNAPSHOT_P" > "$TEST_DIR/rollback-output-p.txt" 2>&1
 
-# Check that stop was called (should be in the log)
-if grep -q "^stop$" "$TEST_DIR/swap_order.log"; then
-    echo "✓ Service stopped before file swap"
+# Expect exactly: stop while live files untouched, then start after binary AND css swapped
+EXPECTED_P="$(printf 'stop %s\nstart %s' "$LIVE_P" "$SNAP_P")"
+if [ "$(cat "$TEST_DIR/swap_order.log")" = "$EXPECTED_P" ]; then
+    echo "✓ Service stopped before binary/CSS swap and started after it"
 else
-    echo "✗ Service not stopped before file swap"
-    cat "$TEST_DIR/swap_order.log"
+    echo "✗ Wrong stop/swap/start ordering"
+    echo "expected:"; echo "$EXPECTED_P"
+    echo "got:"; cat "$TEST_DIR/swap_order.log"
     exit 1
 fi
 
@@ -1421,19 +1467,69 @@ git commit -q -m "test q deploy 3"
 git push -q
 bash "$TEST_DIR/deploy-test.sh" > /dev/null 2>&1
 
-# Corrupt the snapshot COMMIT to trigger checkout failure
-SNAPSHOT_COMMIT=$(cat "$TEST_DIR/rollbacks/$SNAPSHOT_Q/COMMIT")
-echo "0000000000000000000000000000000000000000" > "$TEST_DIR/rollbacks/$SNAPSHOT_Q/COMMIT"
+# Make git checkout fail AFTER the stop and file swap (commit exists, so the
+# pre-stop M3 check passes): a stale index.lock
+BIN_BEFORE_Q=$(md5sum < bin/server | cut -c1-32)
+touch .git/index.lock
+: > "$TEST_DIR/systemctl-stub.log"
+RC_Q=0
+bash "$TEST_DIR/rollback.sh" "$SNAPSHOT_Q" > "$TEST_DIR/rollback-output-q.txt" 2>&1 || RC_Q=$?
+rm -f .git/index.lock
 
-# Try rollback - should fail but service should be running
-bash "$TEST_DIR/rollback.sh" "$SNAPSHOT_Q" > "$TEST_DIR/rollback-output-q.txt" 2>&1 || true
-
-# Check that service is running (trap started it)
-if [ -f "$TEST_DIR/service.pid" ] && kill -0 "$(cat "$TEST_DIR/service.pid")" 2>/dev/null; then
-    echo "✓ Service started after rollback failure"
+# Must: exit non-zero, have stopped then started again, and restored pre-rollback files
+if [ "$RC_Q" -ne 0 ] \
+    && grep -q "Failed to checkout" "$TEST_DIR/rollback-output-q.txt" \
+    && grep -q "^stop " "$TEST_DIR/systemctl-stub.log" \
+    && grep -q "^start " "$TEST_DIR/systemctl-stub.log" \
+    && [ "$(md5sum < bin/server | cut -c1-32)" = "$BIN_BEFORE_Q" ] \
+    && [ -f "$TEST_DIR/service.pid" ] && kill -0 "$(cat "$TEST_DIR/service.pid")" 2>/dev/null; then
+    echo "✓ Checkout failure after stop: backup restored, service running, rc=$RC_Q"
 else
-    echo "✗ Service not running after rollback failure"
+    echo "✗ Service not running / files not restored after checkout failure (rc=$RC_Q)"
     cat "$TEST_DIR/rollback-output-q.txt"
+    cat "$TEST_DIR/systemctl-stub.log"
+    exit 1
+fi
+
+# (q2) Unexpected error after stop (set -e abort mid-swap, no restore_from_backup):
+# the EXIT trap must start the service and keep the non-zero exit code.
+REAL_CP=$(command -v cp)
+cat > "$TEST_DIR/cp" <<CPEOF
+#!/usr/bin/env bash
+for a in "\$@"; do
+    if [ "\$a" = "$TEST_DIR/rollbacks/$SNAPSHOT_Q/js" ]; then
+        echo "cp: injected failure" >&2
+        exit 1
+    fi
+done
+exec "$REAL_CP" "\$@"
+CPEOF
+chmod +x "$TEST_DIR/cp"
+: > "$TEST_DIR/systemctl-stub.log"
+# Fingerprint every deployed file (binary, templates, js, css)
+tree_sum() { find bin/server web/templates web/static -type f -print0 2>/dev/null | sort -z | xargs -0 md5sum | md5sum | cut -c1-32; }
+LIVE_Q2=$(tree_sum)
+LIST_Q2=$(find bin/server web/templates web/static -type f | sort | tr '\n' ' ')
+RC_Q2=0
+bash "$TEST_DIR/rollback.sh" "$SNAPSHOT_Q" > "$TEST_DIR/rollback-output-q2.txt" 2>&1 || RC_Q2=$?
+rm -f "$TEST_DIR/cp"
+# Binary and templates were already swapped when cp(js) failed; the trap must
+# put the pre-rollback files back before starting (no half-swapped start)
+AFTER_Q2=$(tree_sum)
+
+if [ "$RC_Q2" -ne 0 ] \
+    && grep -q "cp: injected failure" "$TEST_DIR/rollback-output-q2.txt" \
+    && grep -q "Attempting to restore from pre-rollback backup" "$TEST_DIR/rollback-output-q2.txt" \
+    && [ "$AFTER_Q2" = "$LIVE_Q2" ] \
+    && grep -q "^stop " "$TEST_DIR/systemctl-stub.log" \
+    && [ "$(grep -c '^start ' "$TEST_DIR/systemctl-stub.log")" -eq 1 ] \
+    && [ -f "$TEST_DIR/service.pid" ] && kill -0 "$(cat "$TEST_DIR/service.pid")" 2>/dev/null; then
+    echo "✓ Abort after stop: pre-rollback files restored, service started once, rc=$RC_Q2"
+else
+    echo "✗ Service left stopped / half-swapped files / exit code masked after abort mid-swap (rc=$RC_Q2)"
+    echo "before: $LIVE_Q2 [$LIST_Q2]"; echo "after:  $AFTER_Q2 [$(find bin/server web/templates web/static -type f | sort | tr '\n' ' ')]"
+    cat "$TEST_DIR/rollback-output-q2.txt"
+    cat "$TEST_DIR/systemctl-stub.log"
     exit 1
 fi
 
@@ -1533,11 +1629,13 @@ git checkout master -q 2>/dev/null || git checkout main -q
 : > "$TEST_DIR/systemctl-stub.log"
 
 # Try rollback to nonexistent snapshot - should exit 1 without starting
-bash "$TEST_DIR/rollback.sh" nonexistent_snapshot > /dev/null 2>&1 || true
+RC_S=0
+bash "$TEST_DIR/rollback.sh" nonexistent_snapshot > /dev/null 2>&1 || RC_S=$?
 
-# Check that stub log has no start (trap should not have started service)
-if grep -q "^start " "$TEST_DIR/systemctl-stub.log"; then
-    echo "✗ Rollback trap started service on nonexistent snapshot"
+# Stub logs every call: there must be no start, and the unit must still be down
+if [ "$RC_S" -eq 0 ] || grep -q "^start " "$TEST_DIR/systemctl-stub.log" \
+    || "$TEST_DIR/systemctl" is-active --quiet liveoilprices; then
+    echo "✗ Rollback trap started service on nonexistent snapshot (rc=$RC_S)"
     cat "$TEST_DIR/systemctl-stub.log"
     exit 1
 fi
@@ -1603,6 +1701,28 @@ fi
 echo "✓ Test (t) passed"
 
 echo ""
+echo "=== Test (u): Rollback start failure exits non-zero, no second start ==="
+
+touch "$TEST_DIR/restart_fail"
+: > "$TEST_DIR/systemctl-stub.log"
+RC_U=0
+bash "$TEST_DIR/rollback.sh" "$SNAPSHOT_T" > "$TEST_DIR/rollback-output-u.txt" 2>&1 || RC_U=$?
+rm -f "$TEST_DIR/restart_fail"
+
+if [ "$RC_U" -ne 0 ] \
+    && grep -q "Failed to start after rollback" "$TEST_DIR/rollback-output-u.txt" \
+    && [ "$(grep -c '^start ' "$TEST_DIR/systemctl-stub.log")" -eq 1 ]; then
+    echo "✓ Start failure reported, rc=$RC_U, single start attempt"
+else
+    echo "✗ Rollback start failure not reported correctly (rc=$RC_U)"
+    cat "$TEST_DIR/rollback-output-u.txt"
+    cat "$TEST_DIR/systemctl-stub.log"
+    exit 1
+fi
+
+echo "✓ Test (u) passed"
+
+echo ""
 echo "=== Test (n): No /tmp leaks after tests ==="
 
 # Every mktemp in deploy.sh/rollback.sh landed in our private TMPDIR; it must be empty now
@@ -1626,4 +1746,4 @@ echo "✓ No leftover temp binaries"
 echo "✓ Test (n) passed"
 
 echo ""
-echo "✓ All tests passed (a-r+n)!"
+echo "✓ All tests passed (a-u+n)!"
