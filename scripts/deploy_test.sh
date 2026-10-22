@@ -1238,7 +1238,14 @@ git checkout master -q 2>/dev/null || git checkout main -q
 rm -rf "$TEST_DIR/rollbacks"/*
 rm -rf bin
 
-# Create good commit and deploy (creates snapshot)
+# Setup: create initial binary (no snapshot - no pre-existing binary)
+echo "change-o0" >> cmd/server/main.go
+git add -A
+git commit -q -m "test o setup"
+git push -q
+bash "$TEST_DIR/deploy-test.sh" > /dev/null 2>&1
+
+# Create good commit and deploy (creates snapshot of setup binary)
 echo "change-o1" >> cmd/server/main.go
 git add -A
 git commit -q -m "test o good"
@@ -1297,6 +1304,13 @@ git checkout master -q 2>/dev/null || git checkout main -q
 rm -rf "$TEST_DIR/rollbacks"/*
 rm -rf bin
 
+# Setup: create initial binary
+echo "change-p0" >> cmd/server/main.go
+git add -A
+git commit -q -m "test p setup"
+git push -q
+bash "$TEST_DIR/deploy-test.sh" > /dev/null 2>&1
+
 # Create snapshot commit and deploy
 echo "change-p1" >> cmd/server/main.go
 git add -A
@@ -1340,6 +1354,13 @@ git checkout master -q 2>/dev/null || git checkout main -q
 rm -rf "$TEST_DIR/rollbacks"/*
 rm -rf bin
 
+# Setup: create initial binary
+echo "change-q0" >> cmd/server/main.go
+git add -A
+git commit -q -m "test q setup"
+git push -q
+bash "$TEST_DIR/deploy-test.sh" > /dev/null 2>&1
+
 # Create snapshot
 echo "change-q1" >> cmd/server/main.go
 git add -A
@@ -1381,6 +1402,13 @@ echo "=== Test (r): Rollback aborts on stop failure ==="
 git checkout master -q 2>/dev/null || git checkout main -q
 rm -rf "$TEST_DIR/rollbacks"/*
 rm -rf bin
+
+# Setup: create initial binary
+echo "change-r0" >> cmd/server/main.go
+git add -A
+git commit -q -m "test r setup"
+git push -q
+bash "$TEST_DIR/deploy-test.sh" > /dev/null 2>&1
 
 # Create snapshot
 echo "change-r1" >> cmd/server/main.go
